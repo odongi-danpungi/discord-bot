@@ -1,0 +1,23 @@
+import { createHash, generateKeyPairSync } from 'node:crypto';
+import { mkdir, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+
+const args=process.argv.slice(2);
+const valueOf=flag=>{const i=args.indexOf(flag);return i>=0?args[i+1]:null;};
+const outDir=path.resolve(valueOf('--out')||'data/release-signing');
+const name=String(valueOf('--name')||'Local Release Publisher').trim().slice(0,80)||'Local Release Publisher';
+const {publicKey,privateKey}=generateKeyPairSync('ed25519');
+const publicKeyPem=String(publicKey.export({type:'spki',format:'pem'}));
+const privateKeyPem=String(privateKey.export({type:'pkcs8',format:'pem'}));
+const fingerprint=createHash('sha256').update(publicKey.export({type:'spki',format:'der'})).digest('hex');
+const keyId=`dd-${fingerprint.slice(0,16)}`;
+await mkdir(outDir,{recursive:true});
+const privateFile=path.join(outDir,`${keyId}-private.pem`),publicFile=path.join(outDir,`${keyId}-public.pem`);
+await writeFile(privateFile,privateKeyPem,{mode:0o600});
+await writeFile(publicFile,publicKeyPem,{mode:0o644});
+console.log(`Release key generated: ${keyId}`);
+console.log(`Name: ${name}`);
+console.log(`Fingerprint: ${fingerprint}`);
+console.log(`Private key: ${privateFile}`);
+console.log(`Public key: ${publicFile}`);
+console.log('개인키는 공유하거나 Update JSON/ZIP 안에 넣지 마세요. 가능하면 업데이트를 만드는 PC에만 보관하세요.');
