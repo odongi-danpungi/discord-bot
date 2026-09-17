@@ -33,19 +33,24 @@ Imported runtime modules:
 - `src/broadcast.js`
 - `src/config.js`
 - `src/guide.js`
+- `src/incident-workflow.js`
+- `src/interactions.js`
 - `src/json-store.js`
 - `src/messages.js`
 - `src/operations-guard.js`
 - `src/operations.js`
 - `src/profiles.js`
 - `src/recovery-continuity.js`
+- `src/recovery-drill.js`
 - `src/recovery-store.js`
 - `src/release-trust-root.js`
 - `src/request-deduper.js`
+- `src/runtime-health.js`
 - `src/sse-hub.js`
 - `src/store.js`
 - `src/teams.js`
 - `src/version.js`
+- `src/viewer.js`
 
 ## Remaining runtime import
 
@@ -54,18 +59,13 @@ Imported runtime modules:
 - `src/discord-permission-audit.js`
 - `src/discord-policy.js`
 - `src/discord-service.js`
-- `src/incident-workflow.js`
 - `src/index.js`
-- `src/interactions.js`
 - `src/performance-capacity.js`
 - `src/production-readiness.js`
 - `src/recovery-audit.js`
-- `src/recovery-drill.js`
 - `src/release-center.js`
 - `src/restore-transaction.js`
-- `src/runtime-health.js`
 - `src/supply-chain.js`
-- `src/viewer.js`
 
 After the runtime layer, import and verify `package-lock.json`, `public/`, `test/`, and the five PNG design/game assets. Then compare the complete repository file manifest against the v5.0 Final Release before opening the final `develop -> main` PR.
 
