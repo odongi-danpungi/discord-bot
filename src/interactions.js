@@ -21,7 +21,7 @@ export function installInteractions({client,config,store,operations,discord,view
       const current=()=>store.read().find(r=>r.guildId===config.guildId&&r.discordId===userId);
       if(interaction.isChatInputCommand()&&interaction.commandName==='setting'){
         const memberRoles=interaction.member?.roles,hasRole=Array.isArray(memberRoles)?memberRoles.includes(config.adminRoleId):memberRoles?.cache?.has(config.adminRoleId);
-        if(!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)&&!(config.adminRoleId&&hasRole))return interaction.reply({content:'서버 관리 권한이 필요핣니다.',...ephemeral});
+        if(!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)&&!(config.adminRoleId&&hasRole))return interaction.reply({content:'서버 관리 권한이 필요합니다.',...ephemeral});
         await interaction.deferReply(ephemeral);await discord.setup();return interaction.editReply('카테고리·채널과 사용자 연동 패널을 설정했습니다. 반복 실행해도 기존 패널을 갱신합니다.');
       }
       if(interaction.isButton()&&interaction.customId==='avatar_access'){
