@@ -1,0 +1,28 @@
+{
+  "name": "discord-game-roster-bot",
+  "version": "5.0.0",
+  "private": true,
+  "description": "Discord registration bot and admin random-selection dashboard",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js --dev",
+    "check": "node scripts/check.js",
+    "test": "node --test",
+    "demo": "node src/index.js --demo",
+    "release:bundle": "node scripts/make-release-bundle.js",
+    "release:keygen": "node scripts/generate-release-key.js",
+    "preflight": "node scripts/preflight.js"
+  },
+  "engines": {
+    "node": ">=22.22.2"
+  },
+  "dependencies": {
+    "discord.js": "^14.27.0",
+    "dotenv": "^16.5.0",
+    "express": "^5.1.0"
+  },
+  "devDependencies": {
+    "jsdom": "^30.0.1"
+  }
+}
