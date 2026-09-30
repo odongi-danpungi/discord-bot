@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>댕댕 플레이 · OBS Overlay</title>
+  <link rel="stylesheet" href="/broadcast/overlay.css">
+</head>
+<body>
+<main id="obsOverlay" class="obs-overlay" data-layout="wide" aria-live="polite">
+  <section class="overlay-topbar">
+    <div class="live-brand"><span class="live-dot"></span><strong>DAENGDAENG LIVE</strong></div>
+    <div class="session-meta"><span id="overlayGame">방송 대기</span><b id="overlayRound">READY</b><span id="overlayPhase">대기</span></div>
+    <div class="connection" id="overlayConnection" data-state="connecting"><i></i><span>연결 중</span></div>
+  </section>
+
+  <section class="participant-strip">
+    <article class="participant-card current-card" id="currentCard">
+      <div class="card-label"><span>NOW</span><small id="currentSource">—</small></div>
+      <strong id="currentName">호출 대기</strong>
+      <div class="participant-meta"><span id="currentStatus">현재 참가자가 없습니다</span><b id="callCountdown">—</b></div>
+    </article>
+    <article class="participant-card next-card" id="nextCard">
+      <div class="card-label"><span>NEXT</span><small id="nextSource">—</small></div>
+      <strong id="nextName">대기 없음</strong>
+      <div class="participant-meta"><span id="nextStatus">다음 참가자 대기</span><b><span id="waitingCount">0</span>명 대기</b></div>
+    </article>
+  </section>
+
+  <section class="result-grid">
+    <article class="overlay-panel winner-panel" id="winnerPanel">
+      <div class="panel-head"><span>DRAW RESULT</span><b>추첨 결과</b></div>
+      <div id="overlayWinners" class="winner-list"><span class="empty">결과 대기</span></div>
+    </article>
+    <article class="overlay-panel team-panel" id="teamPanel">
+      <div class="panel-head"><span>TEAM BOARD</span><b>현재 팀</b></div>
+      <div id="overlayTeams" class="overlay-teams"><span class="empty">팀 편성 대기</span></div>
+    </article>
+  </section>
+
+  <section class="event-feed" id="eventPanel">
+    <div class="event-title"><span>LIVE FEED</span><b>방송 이벤트</b></div>
+    <div id="overlayEvents" class="event-items"><span class="empty">새 이벤트를 기다리는 중입니다</span></div>
+  </section>
+</main>
+<script type="module" src="/broadcast/overlay.js"></script>
+</body>
+</html>

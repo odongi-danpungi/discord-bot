@@ -1,8 +1,8 @@
 {
   "name": "discord-game-roster-bot",
-  "version": "5.0.0",
+  "version": "5.1.0",
   "private": true,
-  "description": "Discord registration bot and admin random-selection dashboard",
+  "description": "Discord registration bot with admin dashboard and official Naver Cafe integration",
   "type": "module",
   "scripts": {
     "start": "node src/index.js",
@@ -12,7 +12,12 @@
     "demo": "node src/index.js --demo",
     "release:bundle": "node scripts/make-release-bundle.js",
     "release:keygen": "node scripts/generate-release-key.js",
-    "preflight": "node scripts/preflight.js"
+    "verify:final": "node scripts/final-verify.js",
+    "healthcheck": "node scripts/healthcheck.js",
+    "env:check": "node scripts/env-check.js",
+    "deployment:compare": "node scripts/deployment-compare.js",
+    "preflight": "node scripts/preflight.js",
+    "verify:ci": "node scripts/final-verify.js"
   },
   "engines": {
     "node": ">=22.22.2"
@@ -20,7 +25,8 @@
   "dependencies": {
     "discord.js": "^14.27.0",
     "dotenv": "^16.5.0",
-    "express": "^5.1.0"
+    "express": "^5.1.0",
+    "iconv-lite": "^0.7.3"
   },
   "devDependencies": {
     "jsdom": "^30.0.1"

@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b1018">
+<title>댕댕봇 · 모바일 Live Control</title>
+<link rel="stylesheet" href="/mobile-control.css">
+</head>
+<body>
+<main class="mobile-shell">
+  <header class="mobile-header">
+    <div><p class="eyebrow">MOBILE LIVE CONTROL</p><h1>댕댕봇</h1></div>
+    <div class="status-stack"><span id="mobileAccess" class="pill">권한 확인 중</span><span id="mobileLive" class="pill">CHZZK 확인 중</span><span id="mobileSync" class="pill">동기화 중</span></div>
+  </header>
+
+  <nav class="mobile-tabs" aria-label="모바일 방송 운영 메뉴">
+    <button id="mobileTabLive" type="button" class="active" aria-selected="true">Live Control</button>
+    <button id="mobileTabHub" type="button" aria-selected="false">Broadcast Hub</button>
+    <button id="mobileTabRunbook" type="button" aria-selected="false">Runbook</button>
+    <button id="mobileTabHealth" type="button" aria-selected="false">Health</button>
+    <button id="mobileTabRecovery" type="button" aria-selected="false">Recovery</button>
+  </nav>
+
+  <section id="mobileSafety" class="safety-card" aria-live="polite">
+    <div><strong>제어 일시 잠금</strong><span id="mobileSafetyText">실시간 연결을 확인하고 있습니다.</span></div>
+    <button id="mobileReload" type="button">상태 새로고침</button>
+  </section>
+
+  <div id="mobileLiveView" class="mobile-view active">
+    <section class="session-card">
+      <div class="session-title"><div><span id="mobilePhase" class="phase">대기</span><h2 id="mobileTitle">방송 운영 대기</h2></div><a id="mobileFullLink" class="icon-link" href="/" aria-label="전체 대시보드">PC</a></div>
+      <div class="metric-grid">
+        <article><span>회차</span><strong id="mobileRound">—</strong></article>
+        <article><span>게임</span><strong id="mobileGame">대기 중</strong></article>
+        <article><span>대기</span><strong id="mobileWaiting">0</strong></article>
+        <article><span>참석</span><strong id="mobileConfirmed">0 / 0</strong></article>
+      </div>
+    </section>
+
+    <section class="call-card" id="mobileCallCard">
+      <p class="eyebrow">CURRENT CALL</p>
+      <strong id="mobileCallName">호출 대기</strong>
+      <span id="mobileCallTimer">대기 참가자가 없습니다.</span>
+      <div class="call-actions">
+        <button id="mobileJoin" class="good" disabled>✓ 참가</button>
+        <button id="mobilePass" class="secondary" disabled>↪ 다음판</button>
+        <button id="mobileNoShow" class="danger" disabled>! 노쇼</button>
+      </div>
+    </section>
+
+    <section class="primary-card">
+      <p class="eyebrow">ONE TAP</p>
+      <button id="mobilePrimary" class="primary-action">상태 불러오는 중…</button>
+      <p id="mobilePrimaryHint" class="hint">PC 대시보드와 실시간으로 동기화됩니다.</p>
+    </section>
+
+    <section class="quick-grid" aria-label="방송 빠른 제어">
+      <button data-mobile-op="callNext">🔔<span>다음 참가자 호출</span></button>
+      <button data-mobile-op="close">🔒<span>모집 마감</span></button>
+      <button data-mobile-op="reopen">↩<span>다시 열기</span></button>
+      <button data-mobile-op="draw">🎲<span>추첨</span></button>
+      <button data-mobile-op="attendance">✅<span>참석 확인</span></button>
+      <button data-mobile-op="replace">🔁<span>빈자리</span></button>
+      <button data-mobile-op="teams">👥<span>팀 편성</span></button>
+      <button data-mobile-op="reshuffle">🔀<span>재편성</span></button>
+      <button data-mobile-op="publish">📣<span>Discord</span></button>
+    </section>
+
+    <section class="queue-card">
+      <div class="section-head"><div><p class="eyebrow">UP NEXT</p><h2>다음 참가자</h2></div><span id="mobileQueueCount" class="pill">0명</span></div>
+      <div id="mobileQueue" class="queue-list"><p class="empty">대기자가 없습니다.</p></div>
+    </section>
+
+    <section class="danger-zone">
+      <button id="mobileEnd" class="end-button" disabled>■ 현재 회차 종료</button>
+    </section>
+  </div>
+
+  <div id="mobileHubView" class="mobile-view" hidden>
+    <section id="mobileHubDenied" class="hub-denied" hidden>
+      <strong>Broadcast Hub 권한이 없습니다.</strong>
+      <p>운영자 계정에 <code>broadcast</code> 권한이 있어야 프리셋·일정·투표·알림센터를 관리할 수 있습니다.</p>
+    </section>
+
+    <div id="mobileHubContent">
+      <section class="hub-card hub-overview">
+        <div class="section-head"><div><p class="eyebrow">BROADCAST HUB</p><h2>방송 운영</h2></div><button id="mobileChzzkCheck" class="mini-button" type="button">CHZZK 재확인</button></div>
+        <div class="hub-stat-grid">
+          <article><span>완료 회차</span><strong id="hubCompleted">0</strong></article>
+          <article><span>총 신청</span><strong id="hubApplicants">0</strong></article>
+          <article><span>노쇼</span><strong id="hubNoShows">0</strong></article>
+          <article><span>방송 시작</span><strong id="hubLiveStarts">0</strong></article>
+        </div>
+        <div id="hubNextSchedule" class="hub-next">예정된 방송 일정이 없습니다.</div>
+      </section>
+
+      <section class="hub-card">
+        <div class="section-head"><div><p class="eyebrow">GAME PRESETS</p><h2>게임 프리셋</h2></div><span id="hubPresetCount" class="pill">0개</span></div>
+        <div id="hubPresetList" class="hub-list"><p class="empty">프리셋이 없습니다.</p></div>
+        <div class="hub-form compact-form">
+          <label><span>현재 회차 저장 이름</span><input id="hubPresetName" maxlength="80" placeholder="예: 금요일 칼바람"></label>
+          <button id="hubSavePreset" type="button">현재 회차를 프리셋으로 저장</button>
+        </div>
+        <p id="hubPresetHint" class="hint">프리셋으로 모집을 시작하려면 broadcast + live 권한이 필요합니다.</p>
+      </section>
+
+      <section class="hub-card">
+        <div class="section-head"><div><p class="eyebrow">SCHEDULE</p><h2>방송 일정</h2></div><span id="hubScheduleCount" class="pill">0개</span></div>
+        <div class="hub-form">
+          <label><span>제목</span><input id="hubScheduleTitle" maxlength="120" placeholder="예: 금요일 시참 방송"></label>
+          <label><span>시작 시간</span><input id="hubScheduleAt" type="datetime-local"></label>
+          <label><span>프리셋</span><select id="hubSchedulePreset"><option value="">프리셋 없음</option></select></label>
+          <label><span>메모</span><textarea id="hubScheduleNote" maxlength="500" rows="2" placeholder="운영 메모"></textarea></label>
+          <button id="hubAddSchedule" type="button">일정 등록</button>
+        </div>
+        <div id="hubScheduleList" class="hub-list"><p class="empty">등록된 일정이 없습니다.</p></div>
+      </section>
+
+      <section class="hub-card">
+        <div class="section-head"><div><p class="eyebrow">VIEWER POLL</p><h2>시청자 투표</h2></div><span id="hubPollState" class="pill">대기</span></div>
+        <div id="hubActivePoll" class="hub-poll"><p class="empty">진행 중인 투표가 없습니다.</p></div>
+        <div class="hub-form">
+          <label><span>질문</span><input id="hubPollQuestion" maxlength="180" placeholder="예: 다음 게임은?"></label>
+          <label><span>선택지</span><textarea id="hubPollOptions" rows="3" maxlength="500" placeholder="칼바람, 협곡, 이터널 리턴"></textarea></label>
+          <button id="hubStartPoll" type="button">새 투표 시작</button>
+        </div>
+      </section>
+
+      <section class="hub-card">
+        <div class="section-head"><div><p class="eyebrow">NOTIFICATIONS</p><h2>통합 알림센터</h2></div><span class="pill">5채널</span></div>
+        <div class="notification-list">
+          <label><input id="hubNotifyBroadcast" type="checkbox"><span>CHZZK 방송 시작/종료 → Discord</span></label>
+          <label><input id="hubNotifySchedule" type="checkbox"><span>방송 일정 시작 알림</span></label>
+          <label><input id="hubNotifyParticipation" type="checkbox"><span>시참 운영 알림</span></label>
+          <label><input id="hubNotifyNaver" type="checkbox"><span>Naver Cafe 모니터 알림</span></label>
+          <label><input id="hubNotifySystem" type="checkbox"><span>시스템 운영 알림</span></label>
+        </div>
+        <button id="hubSaveNotifications" class="wide-button" type="button">알림 설정 저장</button>
+      </section>
+
+      <section class="hub-card">
+        <div class="section-head"><div><p class="eyebrow">TIMELINE</p><h2>최근 방송 타임라인</h2></div><span class="pill">최근 12개</span></div>
+        <div id="hubTimeline" class="hub-list timeline-list"><p class="empty">타임라인이 없습니다.</p></div>
+      </section>
+    </div>
+  </div>
+
+  <div id="mobileRunbookView" class="mobile-view" hidden>
+    <section id="mobileRunbookDenied" class="hub-denied" hidden>
+      <strong>Runbook 권한이 없습니다.</strong>
+      <p>운영자 계정에 <code>broadcast</code> 권한이 있어야 체크리스트와 인수인계를 관리할 수 있습니다.</p>
+    </section>
+    <div id="mobileRunbookContent">
+      <section class="runbook-mobile-card">
+        <div class="section-head"><div><p class="eyebrow">BROADCAST RUNBOOK</p><h2 id="mobileRunbookTitle">방송 운영 Runbook</h2></div><span id="mobileRunbookProgress" class="pill">0%</span></div>
+        <p id="mobileRunbookSummary" class="hint">방송 전 · 방송 중 · 방송 후 절차를 확인합니다.</p><p id="mobileRunbookAutoPhase" class="runbook-auto-phase">자동 단계 감지 대기 중</p>
+        <div class="runbook-mobile-stats"><article><span>완료</span><strong id="mobileRunbookDone">0</strong></article><article><span>대기</span><strong id="mobileRunbookPending">0</strong></article><article><span>현재 담당</span><strong id="mobileRunbookOwner">—</strong></article></div>
+        <button id="mobileRunbookNew" class="secondary wide-button" type="button">새 방송 Runbook 시작</button>
+      </section>
+      <section class="runbook-mobile-card">
+        <div class="section-head"><div><p class="eyebrow">CHECKLIST</p><h2>운영 절차</h2></div><span id="mobileRunbookPhase" class="pill">방송 전</span></div>
+        <div id="mobileRunbookSteps" class="runbook-mobile-list"><p class="empty">Runbook을 불러오는 중…</p></div>
+      </section>
+      <section class="runbook-mobile-card">
+        <div class="section-head"><div><p class="eyebrow">OPERATOR HANDOFF</p><h2>인수인계</h2></div><span id="mobileHandoffCount" class="pill">0건</span></div>
+        <label class="mobile-field"><span>다음 담당자</span><input id="mobileHandoffTo" maxlength="80" placeholder="예: sub-operator"></label>
+        <label class="mobile-field"><span>인수인계 메모</span><textarea id="mobileHandoffNote" rows="4" maxlength="1200" placeholder="예: 3판 참석 확인 중 · 다음 참가자 호출 대기"></textarea></label>
+        <p class="hint">토큰·비밀번호·개인 식별정보는 입력하지 마세요. 긴급 잠금 또는 SSE 장애 중에도 이 메모는 저장할 수 있습니다.</p>
+        <button id="mobileSaveHandoff" class="wide-button" type="button">인수인계 저장</button>
+        <div id="mobileHandoffHistory" class="runbook-mobile-history"><p class="empty">인수인계 기록이 없습니다.</p></div>
+      </section>
+      <section class="runbook-mobile-card">
+        <div class="section-head"><div><p class="eyebrow">RUNBOOK TIMELINE</p><h2>최근 운영 기록</h2></div><span class="pill">최근 8건</span></div>
+        <div id="mobileRunbookActivity" class="runbook-mobile-history"><p class="empty">Runbook 활동 기록이 없습니다.</p></div>
+      </section>
+      <section class="runbook-mobile-card">
+        <div class="section-head"><div><p class="eyebrow">BROADCAST CLOSEOUT</p><h2>방송 마감</h2></div><span id="mobileRunbookCloseoutBadge" class="pill">진행 중</span></div>
+        <p id="mobileRunbookCloseoutHint" class="hint">모든 절차와 방송 종료를 확인하면 Runbook을 마감할 수 있습니다.</p>
+        <div id="mobileRunbookCloseoutSummary" class="runbook-mobile-history"><p class="empty">아직 마감되지 않았습니다.</p></div>
+        <label class="mobile-field"><span>다음 방송 인수인계 요약</span><textarea id="mobileRunbookCloseoutNote" rows="3" maxlength="1200" placeholder="다음 방송에서 이어갈 작업을 입력하세요."></textarea></label>
+        <button id="mobileRunbookCloseout" class="primary wide-button" type="button">방송 Runbook 마감</button>
+      </section>
+    </div>
+  </div>
+
+  <div id="mobileHealthView" class="mobile-view" hidden>
+    <section class="health-card">
+      <div class="section-head"><div><p class="eyebrow">RUNTIME HEALTH</p><h2>방송 시스템 상태</h2></div><span id="healthOverall" class="pill">확인 중</span></div>
+      <div class="health-stat-grid">
+        <article><span>Uptime</span><strong id="healthUptime">—</strong></article>
+        <article><span>API 오류율</span><strong id="healthApiErrors">—</strong></article>
+        <article><span>활성 장애</span><strong id="healthIncidentCount">—</strong></article>
+        <article><span>메모리</span><strong id="healthMemory">—</strong></article>
+      </div>
+      <div class="health-actions"><button id="healthRefresh" type="button">상태 새로고침</button><button id="healthCopy" class="secondary" type="button">진단 요약 복사</button></div>
+      <p id="healthCheckedAt" class="hint">아직 상태를 확인하지 않았습니다.</p>
+    </section>
+
+    <section class="health-card">
+      <div class="section-head"><div><p class="eyebrow">CONNECTORS</p><h2>연결 상태</h2></div><span class="pill">5개</span></div>
+      <div id="healthServices" class="service-grid"><p class="empty">연결 상태를 불러오는 중…</p></div>
+    </section>
+
+    <section class="health-card">
+      <div class="section-head"><div><p class="eyebrow">INCIDENT CENTER</p><h2>활성 장애</h2></div><span id="healthIncidentBadge" class="pill">0건</span></div>
+      <p id="healthIncidentPermission" class="hint">관리자는 모바일에서 장애를 확인·해제할 수 있습니다.</p>
+      <div id="healthIncidents" class="incident-mobile-list"><p class="empty">활성 장애가 없습니다.</p></div>
+    </section>
+
+    <section class="health-card">
+      <div class="section-head"><div><p class="eyebrow">INCIDENT TIMELINE</p><h2>최근 처리 기록</h2></div><span class="pill">최근 20개</span></div>
+      <div id="healthTimeline" class="incident-timeline"><p class="empty">처리 기록이 없습니다.</p></div>
+    </section>
+  </div>
+
+  <div id="mobileRecoveryView" class="mobile-view" hidden>
+    <section id="recoveryDenied" class="hub-denied" hidden>
+      <strong>Recovery & Emergency Controls는 관리자 전용입니다.</strong>
+      <p>운영자 계정에서는 복원·긴급 잠금·백업 관리 기능을 사용할 수 없습니다.</p>
+    </section>
+    <div id="recoveryContent">
+      <section class="recovery-card emergency-card">
+        <div class="section-head"><div><p class="eyebrow">EMERGENCY CONTROL</p><h2>긴급 운영 잠금</h2></div><span id="recoveryEmergencyState" class="pill">확인 중</span></div>
+        <p id="recoveryEmergencyText" class="recovery-explain">장애 대응 중 운영 변경을 잠그고 자동 복원 지점을 만들 수 있습니다.</p>
+        <div class="emergency-actions"><button id="recoveryLock" class="danger" type="button">긴급 잠금</button><button id="recoveryUnlock" class="good" type="button">잠금 해제</button></div>
+        <p class="hint">잠금 중에는 관리자/운영자/시청자/Discord 시참 변경과 자동 회차 타이머·호출 타이머를 중지합니다. 상태 모니터링과 장애 처리는 계속됩니다.</p>
+      </section>
+      <section class="recovery-card">
+        <div class="section-head"><div><p class="eyebrow">SELF CHECK</p><h2>복구 준비 상태</h2></div><span id="recoverySelfState" class="pill">확인 중</span></div>
+        <div class="recovery-stat-grid"><article><span>PASS</span><strong id="recoveryPass">0</strong></article><article><span>WARN</span><strong id="recoveryWarn">0</strong></article><article><span>FAIL</span><strong id="recoveryFail">0</strong></article><article><span>복원 지점</span><strong id="recoveryPointCount">0</strong></article></div>
+        <div class="health-actions"><button id="recoveryRefresh" type="button">복구 상태 점검</button><button id="recoveryCheckpoint" class="secondary" type="button">현재 상태 보호</button></div>
+        <div id="recoveryChecks" class="recovery-checks"><p class="empty">점검 결과를 불러오는 중…</p></div>
+      </section>
+      <section class="recovery-card">
+        <div class="section-head"><div><p class="eyebrow">RESTORE POINTS</p><h2>복원 지점</h2></div><span id="recoveryPointBadge" class="pill">0개</span></div>
+        <div id="recoveryPoints" class="recovery-list"><p class="empty">복원 지점이 없습니다.</p></div>
+      </section>
+      <section class="recovery-card">
+        <div class="section-head"><div><p class="eyebrow">EXPORT</p><h2>긴급 자료</h2></div><span class="pill">JSON</span></div>
+        <div class="recovery-downloads"><a id="recoveryBackup" href="/api/backup">전체 백업 다운로드</a><a id="recoveryDiagnostics" href="/api/runtime/diagnostics">진단 JSON 다운로드</a></div>
+      </section>
+      <section class="recovery-card">
+        <div class="section-head"><div><p class="eyebrow">RECOVERY AUDIT</p><h2>최근 복구 기록</h2></div><span class="pill">최근 20개</span></div>
+        <div id="recoveryAudit" class="incident-timeline"><p class="empty">복구 기록이 없습니다.</p></div>
+      </section>
+    </div>
+  </div>
+
+  <div id="mobileNotice" class="notice" role="status" aria-live="polite"></div>
+  <footer><span id="mobileVersion">v—</span><a id="mobileFullFooter" href="/">전체 관리자 대시보드 ↗</a></footer>
+</main>
+<script type="module" src="/mobile-control.js"></script>
+</body>
+</html>

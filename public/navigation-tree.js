@@ -1,0 +1,23 @@
+const make=(tag,text,cls)=>{const e=document.createElement(tag);if(text)e.textContent=text;if(cls)e.className=cls;return e;};
+function branch(label,level){const d=make('details',null,'menu-branch menu-'+level),s=make('summary',label);d.append(s);d.addEventListener('toggle',()=>{if(d.open)for(const sibling of d.parentElement.children)if(sibling!==d&&sibling.tagName==='DETAILS')sibling.open=false;});return d;}
+function reveal(item){let p=item.parentElement;while(p){if(p.tagName==='DETAILS')p.open=true;p=p.parentElement;}}
+const dashboard=document.querySelector('.sidebar nav');
+if(dashboard){
+ const leaves=new Map([...dashboard.querySelectorAll('[data-tab]')].map(e=>[e.dataset.tab,e]));
+ const links=new Map([...dashboard.querySelectorAll('a[href]')].map(e=>[e.getAttribute('href'),e]));
+ const tree=[['방송 운영',[['방송 준비',['preflight','runbook']],['실시간 진행',['live','operate','/mobile-control.html']],['방송 화면',['broadcast','/game-studio.html','/broadcast/']],['방송 기록',['broadcastarchive','history']]]],['커뮤니티',[['모집·공지',[['모집글·통합 공지','/community.html#recruitment'],['게시 이력','/community.html#publication'],['방송 후기','/community.html#recap']]],['참가자 관리',['members',['내 시참 패널','/community.html#my-panel'],['공정 선발','/community.html#fairness']]],['소통·알림', [['알림 구독','/community.html#subscriptions'],['규칙·FAQ','/community.html#guide'],['운영자 문의','/community.html#tickets']]]]],['시스템 관리',[['상태·성능',['runtime','capacity']],['장애·복구',['incidents','recovery']],['배포·업데이트',['deployment','release']],['연결·보안',['settings','discordaudit','supply']]]]];
+ const home=leaves.get('home');dashboard.replaceChildren(home);home.querySelector('span').textContent='운영 홈';home.querySelectorAll('kbd').forEach(x=>x.remove());
+ for(const [major,groups] of tree){const top=branch(major,'major');for(const [middle,items] of groups){const mid=branch(middle,'middle');for(const key of items){let leaf;if(Array.isArray(key)){leaf=make('a',key[0],'nav');leaf.href=key[1];}else leaf=leaves.get(key)||links.get(key);if(leaf){leaf.querySelectorAll('kbd').forEach(x=>x.remove());mid.append(leaf);}}top.append(mid);}dashboard.append(top);}
+ const crumbs=make('p','홈','menu-breadcrumb');crumbs.setAttribute('aria-label','현재 메뉴 위치');document.querySelector('.header-copy').prepend(crumbs);
+ const sync=()=>{const active=dashboard.querySelector('[data-tab].active');if(!active)return;reveal(active);const parents=[];let p=active.parentElement;while(p!==dashboard&&p){if(p.tagName==='DETAILS')parents.unshift(p.querySelector('summary').textContent);p=p.parentElement;}crumbs.textContent=[...parents,active.textContent.trim()].join(' › ');};
+ new MutationObserver(sync).observe(dashboard,{subtree:true,attributes:true,attributeFilter:['aria-current']});sync();
+ const homePage=document.querySelector('[data-page="home"]'),extra=make('details',null,'home-extra');extra.append(make('summary','일정·투표 및 최근 활동 보기'));const grid=make('div',null,'home-extra-grid');for(const cls of ['home-broadcast-panel','home-activity-panel']){const panel=homePage.querySelector('.'+cls);if(panel)grid.append(panel);}extra.append(grid);homePage.append(extra);
+}
+const community=document.querySelector('.community-studio main>nav');
+if(community){
+ const groups=[['모집·공지',[['공지 작성',[['모집글·통합 공지','recruitment'],['방송 후기','recap']]],['게시 관리',[['미리보기·게시 이력','publication']]]]],['참가자 운영',[['참여 설정',[['내 시참 패널','my-panel'],['공정 선발','fairness']]],['알림 설정',[['게임별 구독 역할','subscriptions']]]]],['소통·안내',[['안내 관리',[['규칙·FAQ','guide']]],['문의 관리',[['접수·답변','tickets']]]]]];
+ community.replaceChildren();const items=new Map();for(const [major,children] of groups){const top=branch(major,'major');for(const [middle,leaves] of children){const mid=branch(middle,'middle');for(const [label,id] of leaves){const a=make('a',label,'nav');a.href='#'+id;mid.append(a);items.set(id,{a,path:[major,middle,label].join(' › ')});}top.append(mid);}community.append(top);}
+ const crumbs=make('p',null,'menu-breadcrumb');community.parentElement.querySelector('h1').after(crumbs);
+ function select(){const id=items.has(location.hash.slice(1))?location.hash.slice(1):'recruitment';const visible=new Set([id]);if(['recruitment','recap'].includes(id))visible.add('publication');if(['subscriptions','fairness'].includes(id)){visible.add('subscriptions');visible.add('fairness');}for(const section of document.querySelectorAll('.community-studio main>section'))section.hidden=!visible.has(section.id);for(const [key,{a}] of items){a.classList.toggle('active',key===id);if(key===id)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');}const chosen=items.get(id);reveal(chosen.a);crumbs.textContent=chosen.path;}
+ addEventListener('hashchange',select);select();
+}

@@ -1,0 +1,9 @@
+{
+  "schema": "daengdaeng-deployment-contract-v1",
+  "version": "4.17.6",
+  "manifestDigest": "REPLACE_WITH_VERIFIED_RELEASE_MANIFEST_DIGEST",
+  "publicBaseUrl": "https://bot.example.com/",
+  "naverRedirectUri": "https://bot.example.com/naver/callback",
+  "host": "0.0.0.0",
+  "port": 3000
+}

@@ -1,0 +1,18 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>댕댕 플레이 · 레이스 스튜디오</title><link rel="stylesheet" href="/studio.css"></head><body>
+<div id="dd-play">
+ <aside class="dd-sidebar"><a href="/" class="dd-brand"><span class="dd-mark">d.</span><span>댕댕 플레이<small>DAENGDAENG PLAY</small></span></a>
+ <span class="dd-nav-label">RACE STUDIO</span>
+ <nav aria-label="스튜디오 선택"><button data-view="race" class="dd-nav is-on" aria-pressed="true"><span>⚑</span>그랑프리</button><button data-view="maps" class="dd-nav" aria-pressed="false"><span>▦</span>서킷 도감</button></nav>
+ <div class="dd-side-bottom"><a href="/" class="dd-nav">시참 운영 →</a><a href="/viewer/" class="dd-nav">시청자 대시보드 ↗</a><a href="/broadcast/" target="_blank" rel="noopener" class="dd-nav">방송·OBS 화면 ↗</a><span class="dd-version">v4.11 · DATA RELIABILITY</span></div></aside>
+ <main class="dd-main"><header class="dd-header"><div><p class="dd-kicker">YOUR COMMUNITY, IN PLAY.</p><h1 data-title>댕댕 그랑프리</h1></div><span class="dd-status" data-mode>가상 참가자 체험</span></header>
+ <section data-panel="race"><div class="dd-gamebar"><label>서킷<select data-map aria-label="레이스 서킷"></select></label><label>랩 수<select data-laps aria-label="레이스 랩 수"><option value="1">1 LAP</option><option value="2">2 LAPS</option><option value="3" selected>3 LAPS</option><option value="4">4 LAPS</option><option value="5">5 LAPS</option></select></label><label>가상 참가자<input data-count type="number" min="2" max="100" value="8"></label><label>선정 인원<input data-winners type="number" min="1" max="50" value="2"></label><button data-start class="dd-button dd-primary">가상 레이스 시작</button></div>
+ <div class="dd-stage"><canvas data-stage width="1000" height="640" aria-label="자동차 레이스 경기 화면"></canvas></div>
+ <div class="dd-playback"><button data-pause class="dd-button" disabled>일시 정지</button><button data-replay class="dd-button" disabled>같은 경기 다시 보기</button><label>속도<select data-speed aria-label="재생 속도"><option value="1">1×</option><option value="2">2×</option><option value="4">4×</option></select></label><span data-clock>경기 대기</span></div>
+ <div class="dd-telemetry" data-telemetry><div><span>선두</span><strong data-leader>—</strong></div><div><span>현재 랩</span><strong data-lap>—</strong></div><div><span>선두 격차</span><strong data-gap>—</strong></div><div><span>진행률</span><strong data-progress>—</strong></div></div>
+ <div class="dd-result" data-result role="status">1~5랩 · 동일 차량 성능 · 공통 부스트 패드</div>
+ <div class="dd-live" data-live hidden><div><strong>현재 모집 경기</strong><p data-session>모집 확인 중</p></div><button data-commit class="dd-button dd-primary" disabled>현재 모집 레이스 추첨 확정</button><button data-last class="dd-button" disabled>저장된 레이스 보기</button></div>
+ </section>
+ <section data-panel="maps" hidden><div class="dd-mapheading"><h2>레이스 서킷</h2><span>1~5 LAPS / 동일 차량 성능 / 공통 부스트 패드</span></div><div data-race-maps class="dd-mapgrid"></div></section>
+ <footer class="dd-footer"><span>SMALL PLAY. BIG MOMENTS.</span><span>v4.11 · Race Director · 저장된 결과 재생</span></footer>
+ </main>
+</div><script type="module" src="/game-studio.js"></script></body></html>
