@@ -5,6 +5,7 @@ import { createBroadcastRouter } from './broadcast.js';
 import { DEFAULT_AVATAR } from '../public/avatar.js';
 import { guideState, editGuide, guideProgress, searchGuide } from './guide.js';
 import express from 'express';
+import { dashboardExposureWarning } from './dashboard-exposure.js';
 import { randomInt, randomUUID, randomBytes, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { applyAction } from './operations.js';
@@ -397,9 +398,9 @@ export function createApp({config,store,operations,recovery,discord,discordPolic
     await safeAudit({category:'discord',action:'discord_policy_baseline',summary:`Discord 정상 기준선 저장 · ${baseline.digest.slice(0,12)}`});
     res.json(await buildDiscordPolicyView({force:true,record:false}));
   }catch(error){next(error)}});
-  app.get('/api/health',async(_req,res)=>{
+  app.get('/api/health',async(req,res)=>{
     if(!statusCache||Date.now()-statusAt>5000){statusCache=await discord.diagnostics();statusAt=Date.now();}
-    const remoteWarning=!['127.0.0.1','localhost','::1'].includes(config.host)?'대시보드가 로컬 전용이 아닙니다. 외부 공개 시 HTTPS 리버스 프록시와 접근 제어를 사용하세요.':'';
+    const remoteWarning=dashboardExposureWarning(config,req.secure);
     const current=operations.read(),runtimeState=runtime.snapshot({liveClients:streams.size,version:APP_VERSION,revision:Number(current.revision)||0,recovered:store.recovered||operations.recovered||recoveryStore.recovered||policyStore.recovered||incidentStore.recovered||Boolean(naver?.authStore?.recovered)||Boolean(naverMonitor?.store?.recovered)||Boolean(naverParticipation?.recovered)}),capacityState=await performanceSnapshot(),incidentSummary=incidentStore.summary();
     const policySummary=policyStore.summary();res.json({...statusCache,warning:[discord.warning||statusCache.warning,remoteWarning].filter(Boolean).join(' · '),recovered:store.recovered||operations.recovered||recoveryStore.recovered||policyStore.recovered||incidentStore.recovered||Boolean(naver?.authStore?.recovered)||Boolean(naverMonitor?.store?.recovered)||Boolean(naverParticipation?.recovered),liveClients:streams.size,runtimeStatus:runtimeState.status,capacityStatus:capacityState.status,incidentStatus:incidentSummary.status,incidentCounts:incidentSummary.counts,policyMonitorStatus:policySummary.monitorState?.lastStatus||'idle',policyDriftStatus:policySummary.monitorState?.lastComparisonStatus||'none',policyMonitorEnabled:Boolean(policySummary.monitor?.enabled),policyMaintenance:Boolean(policySummary.maintenance?.active),policyAcknowledged:Boolean(policySummary.acknowledgement?.digest&&policySummary.acknowledgement.digest===policySummary.monitorState?.lastComparisonDigest),profile:config.profile,draining,version:APP_VERSION,revision:Number(current.revision)||0});
   });

@@ -1,4 +1,10 @@
 export const DASHBOARD_TABS = Object.freeze({
+  naversearch:{title:'네이버 카페 검색',section:'네이버',shortcut:''},
+  navermonitor:{title:'네이버 새 글 감시·알림',section:'네이버',shortcut:''},
+  naverqueue:{title:'네이버 시참 접수',section:'네이버',shortcut:''},
+  naverwrite:{title:'네이버 카페 게시글 작성',section:'네이버',shortcut:''},
+  naver:{title:'네이버 카페 운영',section:'네이버',shortcut:''},
+  discord:{title:'Discord 서버 운영',section:'디스코드',shortcut:''},
   home:{title:'방송 운영 대시보드',section:'방송 운영',shortcut:'Alt+0'},
   preflight:{title:'방송 시작 전 점검',section:'방송 운영',shortcut:''},
   runbook:{title:'방송 Runbook · 운영자 인수인계',section:'방송 운영',shortcut:''},
