@@ -66,8 +66,8 @@ function render(){
 async function refresh(){try{[status,monitor,participation]=await Promise.all([get('/api/naver/status'),get('/api/naver/monitor'),get('/api/naver/participation')]);render();renderMonitor();renderParticipation();}catch(error){notice(error.message,true);}}
 async function withBusy(fn){if(busy)return;busy=true;render();try{await fn();}catch(error){notice(error.message,true);}finally{busy=false;render();}}
 
-registerDirtyGroup({id:'naver-monitor',label:'네이버 공개글 모니터 설정',tab:'settings',inputs:['naverMonitorQuery','naverMonitorInterval','naverMonitorCafeUrl','naverMonitorEnabled','naverMonitorDiscordAlerts']});
-registerDirtyGroup({id:'naver-article-draft',label:'네이버 카페 게시글 초안',tab:'settings',inputs:['naverCafeId','naverMenuId','naverArticleSubject','naverArticleContent']});
+registerDirtyGroup({id:'naver-monitor',label:'네이버 공개글 모니터 설정',tab:'navermonitor',inputs:['naverMonitorQuery','naverMonitorInterval','naverMonitorCafeUrl','naverMonitorEnabled','naverMonitorDiscordAlerts']});
+registerDirtyGroup({id:'naver-article-draft',label:'네이버 카페 게시글 초안',tab:'naverwrite',inputs:['naverCafeId','naverMenuId','naverArticleSubject','naverArticleContent']});
 
 $('naverRefresh')?.addEventListener('click',refresh);
 $('naverConnect')?.addEventListener('click',()=>withBusy(async()=>{

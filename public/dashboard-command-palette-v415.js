@@ -1,6 +1,12 @@
 import { DASHBOARD_TABS } from './dashboard-shell.js';
 
 const TAB_KEYWORDS=Object.freeze({
+  naver:['네이버','계정','OAuth','naver'],
+  naversearch:['네이버 검색','카페 검색'],
+  navermonitor:['네이버 감시','카페 알림'],
+  naverqueue:['네이버 시참','메모 게시판'],
+  naverwrite:['카페 게시글','네이버 글쓰기'],
+  discord:['디스코드 연결','서버 설정'],
   home:['홈','대시보드','요약','상태','방송 운영','overview','dashboard'],
   preflight:['방송 준비','사전 점검','체크리스트','go live','preflight','준비 상태','방송 시작 전'],
   runbook:['runbook','런북','운영 절차','체크리스트','인수인계','handoff','교대','방송 전','방송 후'],

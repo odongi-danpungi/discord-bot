@@ -1,3 +1,10 @@
+## v5.1.1 — Business dashboard workspaces
+
+- Separate Naver account, search, monitoring, participation and publishing pages; independent Discord operations and unified broadcast/Queue navigation.
+- Light administrative theme, preserving OBS output and existing controls.
+- HTTPS exposure warning now uses Express trusted-proxy request security and administrator authentication instead of host binding alone.
+- Preserve unsaved Naver draft guards on the new pages.
+
 ## 5.1.0 - Complete GitHub Integration
 
 - Restore the complete v4.17.5 baseline and preserve v4.17.6 monitoring and v4.18.0 community/dashboard improvements; data schema remains v2.

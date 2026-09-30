@@ -11,7 +11,7 @@ test('v4.15 dashboard shell normalizes deep links and rejects unknown tabs',()=>
 });
 
 test('v4.15 dashboard shell metadata covers every existing admin tab',()=>{
-  const expected=['home','preflight','runbook','broadcastarchive','live','operate','broadcast','members','history','recovery','runtime','incidents','capacity','deployment','release','supply','discordaudit','settings'];
+  const expected=['naversearch','navermonitor','naverqueue','naverwrite','naver','discord','home','preflight','runbook','broadcastarchive','live','operate','broadcast','members','history','recovery','runtime','incidents','capacity','deployment','release','supply','discordaudit','settings'];
   assert.deepEqual(Object.keys(DASHBOARD_TABS),expected);
   assert.equal(dashboardMeta('release').section,'배포·보안');
   assert.equal(dashboardMeta('home').title,'방송 운영 대시보드');
