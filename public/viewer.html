@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#f7f6ef">
+<title>댕댕 플레이 · 시청자 대시보드</title>
+<link rel="stylesheet" href="/viewer/viewer.css">
+</head>
+<body>
+<header><strong>댕댕 플레이 <small>DAENGDAENG PLAY</small></strong><span>시청자 대시보드 · 시참 / 투표 / 레이스 프로필</span></header>
+<main>
+  <section id="login">
+    <p class="eyebrow">VIEWER DASHBOARD</p>
+    <h1>내 시참 상태와<br>방송 참여를 한 곳에서</h1>
+    <p>Discord의 ‘시청자 대시보드’ 버튼에서 받은 일회용 코드를 입력하세요.</p>
+    <label>일회용 로그인 코드<input id="code" autocomplete="off" maxlength="100" placeholder="Discord에서 받은 코드"></label>
+    <button id="loginButton">내 대시보드 열기</button>
+    <button id="demoLogin" hidden>가상 시청자로 체험</button>
+  </section>
+
+  <section id="editor" hidden>
+    <div class="viewer-title"><div><p class="eyebrow">MY DASHBOARD</p><h1 id="name"></h1></div><button id="logout" class="secondary compact">로그아웃</button></div>
+
+    <section id="viewerParticipation" class="participation-card">
+      <div class="section-head"><div><p class="eyebrow">LIVE PARTICIPATION</p><h2 id="participationTitle">시참 상태</h2></div><button id="participationRefresh" class="secondary compact">새로고침</button></div>
+      <div class="participation-metrics">
+        <article><span>회차</span><strong id="participationRound">—</strong></article>
+        <article><span>게임</span><strong id="participationGame">—</strong></article>
+        <article><span>내 상태</span><strong id="participationState">대기</strong></article>
+        <article><span>내 순번</span><strong id="participationPosition">—</strong></article>
+      </div>
+      <div id="participationCall" class="call-panel" hidden>
+        <strong>진행자가 지금 호출했습니다.</strong>
+        <span id="participationCallTimer">응답 시간을 확인 중입니다.</span>
+        <div class="button-row"><button data-participation-action="call_join">✓ 참가할게요</button><button class="secondary" data-participation-action="call_pass">↪ 이번판 패스</button></div>
+      </div>
+      <p id="participationHint" class="participation-hint">현재 시참 상태를 불러오는 중입니다.</p>
+      <div id="participationActions" class="participation-actions"></div>
+      <div id="participationReservations" class="reservation-list"></div>
+      <p id="participationStatus" class="inline-status" role="status" aria-live="polite"></p>
+    </section>
+
+    <section id="viewerPoll" hidden>
+      <p class="eyebrow">LIVE POLL</p><h2 id="viewerPollQuestion">방송 투표</h2><div id="viewerPollOptions"></div><p id="viewerPollStatus"></p>
+    </section>
+
+    <div class="layout">
+      <article class="character-card"><span class="tag">RACE COLOR PREVIEW</span><canvas id="preview" width="450" height="300" aria-label="레이스 색상 미리보기"></canvas><p>저장한 색상은 자동차 레이스 추첨 연출의 참가자 표시 색상으로 사용됩니다.</p></article>
+      <article><h2>내 레이스 색상</h2><p>기본 색상과 보조 색상을 선택하세요. 추첨 확률이나 차량 성능에는 영향을 주지 않습니다.</p><div id="fields"></div><button id="save">레이스 프로필 저장</button><button id="reset" class="secondary">기본 색상</button><p>다음 레이스부터 적용됩니다.</p></article>
+    </div>
+  </section>
+  <p id="status" role="status" aria-live="polite"></p>
+</main>
+<script type="module" src="/viewer/viewer.js"></script>
+</body>
+</html>

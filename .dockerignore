@@ -1,0 +1,15 @@
+node_modules
+.git
+.env
+.env.*
+!.env.example
+data/*
+!data/.gitkeep
+*.zip
+npm-debug.log*
+
+# Local credentials must never enter an image build context.
+config.local.json
+config.json
+*.pem
+*.key

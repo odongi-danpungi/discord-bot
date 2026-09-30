@@ -1,0 +1,24 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import {JSDOM} from 'jsdom';
+import {communityState} from '../src/community.js';
+import {guideState} from '../src/guide.js';
+test('community dashboard preserves FAQ edits, escapes preview and sends authenticated button actions',async t=>{
+ const dom=new JSDOM(await readFile(new URL('../public/community.html',import.meta.url),'utf8'),{runScripts:'outside-only',url:'https://example.test/community.html'}),w=dom.window,requests=[];
+ t.after(()=>w.close());
+ const state={...communityState({}),guide:guideState({}),archives:[],session:null};
+ state.drafts=[{id:'test',title:'<img src=x onerror=alert(1)>',content:'<script>unsafe</script>',delivery:{discord:{status:'draft'},naver:{status:'draft'}}}];
+ w.confirm=()=>true;
+ w.fetch=async(url,options={})=>{requests.push({url,options});return {ok:true,json:async()=>url==='/api/snapshot'?{csrf:'test-csrf'}:state};};
+ await w.eval('(async()=>{'+await readFile(new URL('../public/community-panel.js',import.meta.url),'utf8')+'})()');
+ const d=w.document;
+ assert.equal(d.querySelector('#drafts img'),null);assert.equal(d.querySelector('#drafts script'),null);
+ const initial=d.querySelectorAll('.faq-row').length;d.getElementById('add-faq').click();assert.equal(d.querySelectorAll('.faq-row').length,initial+1);
+ const row=d.querySelector('.faq-row:last-child');row.querySelector('input').value='추가 질문';row.querySelector('textarea').value='추가 답변';
+ d.querySelector('.faq-row button').click();assert.equal(d.querySelector('.faq-row:last-child input').value,'추가 질문');
+ d.getElementById('save-faq').click();await new Promise(r=>setTimeout(r,20));
+ const saved=requests.find(r=>r.url.endsWith('/guide'));assert.equal(saved.options.headers['X-CSRF-Token'],'test-csrf');assert.ok(saved.options.headers['Idempotency-Key']);assert.equal(JSON.parse(saved.options.body).content.items.at(-1).answer,'추가 답변');
+ [...d.querySelectorAll('#drafts button')].find(b=>b.textContent==='두 곳에 게시').click();await new Promise(r=>setTimeout(r,20));
+ const sent=requests.find(r=>r.url.endsWith('/publish'));assert.deepEqual(JSON.parse(sent.options.body).targets,['discord','naver']);assert.equal(JSON.parse(sent.options.body).confirm,'게시');
+});

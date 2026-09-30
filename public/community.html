@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>커뮤니티 운영 · 댕댕봇</title><link rel="stylesheet" href="/community.css"><script type="module" src="/community-panel.js"></script><link rel="stylesheet" href="/studio-theme.css"><link rel="stylesheet" href="/navigation-tree.css"><script type="module" src="/navigation-tree.js"></script></head>
+<body class="community-studio"><header><a href="/">← 운영 대시보드</a><span>댕댕봇 · COMMUNITY</span></header><main>
+<h1>커뮤니티 운영</h1><p>모집부터 공지, 참가자 문의까지. 미리 확인하고 버튼으로 실행하세요.</p>
+<p id="notice" role="status" aria-live="polite">불러오는 중…</p><button id="refresh">새로고침</button>
+<nav aria-label="커뮤니티 메뉴"><a href="#recruitment">모집·공지</a><a href="#my-panel">내 시참</a><a href="#fairness">공정성</a><a href="#recap">방송 후기</a><a href="#subscriptions">알림 구독</a><a href="#guide">규칙·FAQ</a><a href="#tickets">문의</a></nav>
+<section id="subscriptions"><h2>알림 채널과 게임별 구독</h2><p>기존 채널과 권한 없는 알림 전용 역할을 선택하세요. 역할이 없으면 Discord에서 먼저 만들어 주세요. 참가자는 직접 구독·해제합니다.</p><button id="load-options">Discord 채널·역할 불러오기</button><label>공지 채널<select id="channel"><option value="">선택 안 함</option></select></label><div id="roles"></div></section>
+<section id="fairness"><h2>시참 공정성</h2><p>저장한 규칙은 다음에 여는 회차부터 적용됩니다. 기존 회차의 선발 기준은 바뀌지 않습니다. 공정 선발은 게임 연출 대신 즉시 결과를 표시합니다. ‘신규’는 보관된 최근 최대 50회 참가 기록 기준입니다.</p>
+<label><input id="fair-enabled" type="checkbox">공정 선발 사용</label><label><input id="fair-unplayed" type="checkbox">오늘 미참가자 우선 (한국 시간)</label><label><input id="fair-wait" type="checkbox">같은 우선순위에서는 접수 순서 우선</label>
+<label>연속 참가 제한 (0은 제한 없음)<input id="fair-max" type="number" min="0" max="20" value="0"></label><label>신규 참가자 우선 자리<input id="fair-new" type="number" min="0" max="50" value="0"></label><button id="save-settings">채널·구독·공정성 설정 저장</button><p id="current-session"></p></section>
+<section id="recruitment"><h2>모집글과 통합 공지</h2><p>현재 열린 시참 모집을 카페·디스코드 공지로 연결합니다. 모집이 없으면 <a href="/">컨트롤 센터</a>에서 먼저 열어 주세요.</p>
+<label>알림 주제<select id="topic"><option value="aram">칼바람 모집</option><option value="rift">협곡 모집</option><option value="er">이터널 리턴 모집</option><option value="live">방송 시작</option></select></label>
+<label>공지 양식<select id="template"><option value="일반 안내">일반 안내</option><option value="방송 일정">방송 일정</option><option value="일정 변경">일정 변경</option><option value="휴방 안내">휴방 안내</option><option value="결과 발표">결과 발표</option></select></label><button id="apply-template">양식 넣기</button>
+<label>제목<input id="title" maxlength="150" value="방송 안내"></label><label>내용·참가 조건·일정<textarea id="content" maxlength="1200" rows="5"></textarea></label>
+<div class="actions"><button id="recruit-draft">현재 모집으로 신청 링크 만들기</button><button id="notice-draft">통합 공지 초안 만들기</button></div></section>
+<section id="my-panel"><h2>디스코드 내 시참 패널</h2><p>본인에게만 보이는 신청·취소·호출 응답·최근 참가 기록·문의 확인 버튼을 게시합니다. 참가 정보 수정은 기존 /연동을 사용합니다.</p><button id="publish-panel">공지 채널에 내 시참 패널 게시·갱신</button></section>
+<section id="recap"><h2>방송 후기</h2><p>인원 통계만 공개합니다. 개인 노쇼 기록이나 내부 메모는 포함하지 않습니다.</p><label>종료 회차<select id="archive"><option value="">종료 회차 없음</option></select></label><label>한 줄 후기·하이라이트 링크·다음 일정<textarea id="recap-content" maxlength="1200" rows="3"></textarea></label><button id="recap-draft">후기 초안 만들기</button></section>
+<section id="publication"><h2>미리보기와 게시 이력</h2><p>게시 버튼을 누르기 전까지 외부에 전송하지 않습니다. 전송 결과가 불확실하면 실제 게시물을 확인한 후 결과를 기록하세요.</p><div id="drafts"></div></section>
+<section id="guide"><h2>규칙·FAQ 안내</h2><p>저장하면 디스코드 안내와 참가자 페이지에 함께 반영됩니다.</p><label>규칙 제목<input id="rules-title" maxlength="100"></label><label>규칙 내용<textarea id="rules-body" rows="5" maxlength="3000"></textarea></label><button id="save-rules">규칙 게시</button>
+<h3>자주 묻는 질문</h3><div id="faq"></div><button id="add-faq">질문 추가</button><button id="save-faq">FAQ 게시</button></section>
+<section id="tickets"><h2>운영자 문의함</h2><p>문의자는 본인의 문의와 답변만 확인할 수 있습니다. 닫힌 문의는 새 문의 접수 시 30일 보관 기준으로 정리합니다.</p><div id="ticket-list"></div></section>
+</main></body></html>

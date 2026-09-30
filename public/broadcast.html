@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>댕댕 플레이 · 방송 화면</title>
+  <link rel="stylesheet" href="/broadcast/broadcast.css">
+</head>
+<body>
+<div id="broadcastRoot" class="broadcast-shell">
+  <header class="broadcast-header">
+    <div class="brand"><span class="mark">d.</span><div><strong id="broadcastBrandTitle">댕댕 플레이</strong><small>LIVE BROADCAST DIRECTOR</small></div></div>
+    <div class="header-meta"><span id="gameBadge" class="badge">대기</span><strong id="roundText">READY</strong><span id="connection" class="connection" data-state="connecting">실시간 연결 중</span></div>
+  </header>
+
+  <main class="broadcast-main">
+    <section class="panel hero-panel" data-panel="standby">
+      <p class="eyebrow">COMMUNITY PLAY</p>
+      <h1 id="standbyTitle">다음 시참을 준비 중입니다</h1>
+      <p id="standbyMessage" class="lead">모집이 시작되면 신청 현황과 추첨 결과가 이 화면에 자동으로 표시됩니다.</p>
+      <div class="standby-orbit"><span></span><span></span><span></span></div>
+    </section>
+
+    <section class="panel recruit-panel" data-panel="recruit" hidden>
+      <div class="section-heading"><div><p class="eyebrow">NOW RECRUITING</p><h1 id="recruitTitle">시참 모집</h1></div><div id="recruitCountdown" class="countdown">수동 마감</div></div>
+      <p id="recruitDescription" class="description"></p>
+      <div class="recruit-grid">
+        <article class="big-stat"><span>신청 현황</span><strong><b id="applicantCount">0</b><small> / <span id="targetCount">0</span>명</small></strong><div class="meter"><i id="applicantMeter"></i></div></article>
+        <article class="applicant-board"><span class="label">최근 신청</span><div id="applicantNames" class="chips"></div></article>
+      </div>
+    </section>
+
+    <section class="panel draw-ready-panel" data-panel="draw-ready" hidden>
+      <p class="eyebrow">DRAW LOCKED</p><h1>모집 마감 · 추첨 준비 완료</h1>
+      <div class="ready-number"><strong id="readyApplicants">0</strong><span>명 중</span><strong id="readyTarget">0</strong><span>명 선정</span></div>
+      <p>운영자가 추첨을 시작하면 저장된 결과가 이 화면에서 자동 재생됩니다.</p>
+    </section>
+
+    <section class="panel game-panel" data-panel="game" hidden>
+      <div class="game-topline"><div><p class="eyebrow">LIVE DRAW</p><h1 id="directorMode">추첨 진행</h1></div><div class="director-status"><span id="directorStatus">LIVE RESULT</span><strong id="directorProgress">0%</strong></div></div>
+      <div class="stage"><canvas id="directorCanvas" width="1000" height="640" aria-label="실시간 추첨 경기 화면"></canvas></div>
+      <div class="telemetry">
+        <div><span>선두 / 생존</span><strong id="directorLeader">—</strong></div>
+        <div><span>랩 / 모드</span><strong id="directorLap">—</strong></div>
+        <div><span>격차 / 타격</span><strong id="directorGap">—</strong></div>
+        <div><span>진행률</span><strong id="directorProgressMirror">0%</strong></div>
+      </div>
+      <p id="directorResult" class="sr-status" aria-live="polite"></p>
+      <span id="directorSession" hidden></span><span id="directorEligible" hidden></span><span id="directorLastSaved" hidden></span>
+    </section>
+
+    <section class="panel winner-panel" data-panel="winners" hidden>
+      <p class="eyebrow">DRAW COMPLETE</p><h1>이번 판 당첨자</h1>
+      <div id="winnerCards" class="winner-cards"></div>
+      <p class="subcopy">당첨자는 Discord에서 참석 확인을 진행해 주세요.</p>
+    </section>
+
+    <section class="panel attendance-panel" data-panel="attendance" hidden>
+      <div class="section-heading"><div><p class="eyebrow">ATTENDANCE CHECK</p><h1>참석 확인 중</h1></div><div id="attendanceCountdown" class="countdown">—</div></div>
+      <div class="attendance-grid"><article><span>확인 완료</span><strong id="confirmedCount">0</strong></article><article><span>전체 당첨</span><strong id="winnerCount">0</strong></article></div>
+      <div id="attendanceCards" class="attendance-cards"></div>
+    </section>
+
+    <section class="panel teams-panel" data-panel="teams" hidden>
+      <p class="eyebrow">TEAM RESULT</p><h1>팀 편성 완료</h1>
+      <div id="teamCards" class="team-cards"></div>
+    </section>
+
+    <section class="panel ended-panel" data-panel="ended" hidden>
+      <p class="eyebrow">SESSION COMPLETE</p><h1>이번 회차가 종료되었습니다</h1>
+      <div id="endedSummary" class="ended-summary"></div>
+      <p class="lead">다음 모집이 시작되면 방송 화면이 자동으로 전환됩니다.</p>
+    </section>
+  </main>
+
+  <footer class="broadcast-footer"><span id="footerTitle">DAENGDAENG PLAY · LIVE</span><span id="footerStatus">실시간 상태 확인 중</span></footer>
+</div>
+<script type="module" src="/broadcast/broadcast.js"></script>
+</body>
+</html>
