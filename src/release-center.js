@@ -68,7 +68,9 @@ async function fileHash(file){const data=await readFile(file);return {sha256:sha
 async function fileHashOrNull(file){try{return await fileHash(file);}catch(error){if(error?.code==='ENOENT'||error?.code==='ENOTDIR')return null;throw error;}}
 
 async function walk(dir,root,items){
-  let info;try{info=await lstat(dir);}catch(error){if(error?.code==='ENOENT')return;throw error;}
+  // Strip the allowlist's trailing slash so POSIX inspects malformed files
+  // and reports the same safe validation error as Windows before traversal.
+  let info;try{info=await lstat(path.resolve(dir));}catch(error){if(error?.code==='ENOENT')return;throw error;}
   if(!info.isDirectory()||info.isSymbolicLink())throw Error('Manifest source must be a regular directory');
   const entries=await readdir(dir,{withFileTypes:true});
   for(const entry of entries){

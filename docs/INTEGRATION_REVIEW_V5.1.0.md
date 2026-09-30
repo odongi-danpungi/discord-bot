@@ -64,3 +64,8 @@ GitHub main `f3b13a12ab1ee246f6014ebde3bb062be6b85afc`는 11개 파일의 v5.0 s
 사용자가 해야 할 일은 실제 Secret을 Railway에 직접 입력하고, 기존 NAVER_TOKEN_KEY/운영 데이터를 유지하며, 카페 OAuth callback·Discord 최소 권한·CHZZK 채널을 확인하는 것이다. 이후 PRODUCTION_CHECKLIST의 실제 E2E와 gate 순서대로 검증해야 한다. 현재 production traffic 활성화와 무인 롤백 성공을 인증할 수 없다.
 
 다음 개선 우선순위: 개인 패널의 crash-safe 외부 메시지 reconciliation, 실제 Linux/볼륨 장애 훈련, 카페/Discord 실제 E2E 기록, 필요할 때 데이터베이스 기반 다중 인스턴스 전환. 기능 추가보다 이 항목을 우선한다.
+
+## 원격 CI 최초 실행에서 발견한 오류
+
+Windows 두 조합은 통과했으나 Linux 두 조합에서 manifest의 잘못된 디렉터리 입력 테스트가 실패했다. POSIX의 trailing slash 처리 때문에 ENOTDIR 원문이 반환되었다. 검사 전에 절대 경로로 정규화하여 플랫폼 공통의 안전한 오류를 반환하도록 src/release-center.js를 수정했다. 테스트 조건은 완화하지 않았다. 수정 후 Release 집중 회귀를 통과했으며 최종 원격 재실행 결과는 전달 보고서에 기록한다.
+

@@ -6,6 +6,7 @@
 - Add Railway volume entrypoint/configuration, production environment/E2E/rollback checklist, and executable LF shell files.
 - Run Node directly as the container process for shutdown signal delivery; keep private key/environment files out of Git.
 - Block overlapping personal menu panel requests until the saved message reference is available; add concurrency/error-release regression coverage.
+- Normalize manifest directory inspection across POSIX and Windows so malformed source roots fail with the same sanitized validation error.
 
 ## 4.18.0 - Community Operations
 
