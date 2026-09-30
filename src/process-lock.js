@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, open, readFile, stat, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { atomicWriteFile, syncDirectory } from './durable-file.js';
+const processOwnedLocks=new Map();
 
 function defaultAlive(pid){
   if(!Number.isInteger(pid)||pid<1)return false;
@@ -76,6 +77,7 @@ export class ProcessLock {
     await unlinkIfExists(this.stateFile);
     await unlink(this.file);
     this.owns=false;
+    if(processOwnedLocks.get(this.file)===this.instanceId)processOwnedLocks.delete(this.file);
     await syncDirectory(path.dirname(this.file));
     return true;
   }
@@ -94,7 +96,12 @@ export async function acquireProcessLock({file,pid=process.pid,instanceId=random
         const error=Error('다른 봇 프로세스가 잠금 파일을 생성 중입니다. 잠시 후 다시 시도해 주세요.');error.code='EINSTANCEACTIVE';throw error;
       }
     }
-    if(Number.isInteger(previous.pid)&&previous.pid>0&&isAlive(previous.pid)){
+    // A process cannot be its own previous incarnation. PID 1 is commonly
+    // reused after a container restart with a persistent volume. Retain an
+    // in-process ownership registry so a second acquisition in this same
+    // process is still rejected. Never override another live process's PID.
+    const reusedSelfPid=pid===process.pid&&previous.pid===process.pid&&isAlive===defaultAlive&&!processOwnedLocks.has(absolute);
+    if(Number.isInteger(previous.pid)&&previous.pid>0&&!reusedSelfPid&&isAlive(previous.pid)){
       const error=Error('이미 봇 프로세스가 실행 중입니다. 기존 실행 창을 종료한 뒤 다시 시도해 주세요.');
       error.code='EINSTANCEACTIVE';throw error;
     }
@@ -111,6 +118,7 @@ export async function acquireProcessLock({file,pid=process.pid,instanceId=random
   let handle;
   try{handle=await open(absolute,'wx',0o600);}
   catch(error){if(error.code==='EEXIST')throw Object.assign(Error('이미 봇이 시작 중입니다. 기존 실행 창을 이용해 주세요.'),{code:'EINSTANCEACTIVE'});throw error;}
+  processOwnedLocks.set(absolute,instanceId);
   const meta={pid,instanceId,createdAt:now,updatedAt:now,phase:'starting',revision:null,signal:null};
   try{
     await handle.writeFile(JSON.stringify({pid,instanceId,createdAt:now}));
@@ -118,7 +126,7 @@ export async function acquireProcessLock({file,pid=process.pid,instanceId=random
     await handle.close();handle=null;
     await syncDirectory(path.dirname(absolute));
   }
-  catch(error){await handle?.close().catch(()=>{});await unlinkIfExists(absolute).catch(()=>{});throw error;}
+  catch(error){processOwnedLocks.delete(absolute);await handle?.close().catch(()=>{});await unlinkIfExists(absolute).catch(()=>{});throw error;}
   // A state sidecar may be orphaned only when the lock itself was absent. Now that
   // this process owns the exclusive file it is safe to replace that stale sidecar.
   if(!hadPrevious){await unlinkIfExists(stateFile+'.tmp');await unlinkIfExists(stateFile);}
