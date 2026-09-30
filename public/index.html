@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>댕댕봇 · 방송 참여 관리</title><link rel="stylesheet" href="/style.css">
-<link rel="stylesheet" href="/studio-theme.css"><link rel="stylesheet" href="/navigation-tree.css"><link rel="stylesheet" href="/business-theme.css"><script type="module" src="/navigation-tree.js"></script></head>
+<link rel="stylesheet" href="/studio-theme.css"><link rel="stylesheet" href="/navigation-tree.css"><link rel="stylesheet" href="/business-theme.css"><link rel="stylesheet" href="/reference-layout.css"><script type="module" src="/navigation-tree.js"></script></head>
 <body>
 <a class="skip-link" href="#mainContent">본문으로 건너뛰기</a>
 <div class="sr-only" id="dashboardA11yStatus" role="status" aria-live="polite" aria-atomic="true"></div>
@@ -66,6 +66,7 @@
 
 <section data-page="home" class="dashboard-home-page">
   <section class="dashboard-home-hero" id="homeHero" data-status="ready">
+<div class="home-connection-bar" aria-label="방송 및 봇 연결 상태">    <article><span>CHZZK</span><strong id="homeChzzkState">확인 중</strong><small id="homeChzzkDetail">방송 상태를 불러오는 중</small></article><article><span>DISCORD BOT</span><strong id="homeBotState">확인 중</strong><small>서버 연결 상태</small></article></div>
     <div class="home-hero-copy">
       <p class="eyebrow">BROADCAST OPERATIONS HOME</p>
       <h2 id="homeHeroTitle">방송 운영 준비</h2>
@@ -81,7 +82,6 @@
   </section>
 
   <div class="home-metrics" aria-label="방송 운영 핵심 지표">
-    <article><span>CHZZK</span><strong id="homeChzzkState">확인 중</strong><small id="homeChzzkDetail">방송 상태를 불러오는 중</small></article>
     <article><span>현재 회차</span><strong id="homeRound">—</strong><small id="homeRoundDetail">진행 중인 회차 없음</small></article>
     <article><span>참가 / 필요</span><strong id="homeApplicants">0 / 0</strong><small id="homeApplicantDetail">모집 대기</small></article>
     <article><span>통합 Queue</span><strong id="homeQueueCount">0</strong><small id="homeQueueDetail">호출 대기</small></article>
@@ -91,15 +91,17 @@
 
   <div class="home-grid">
     <section class="panel home-next-panel">
-      <div class="panel-heading"><div><p class="eyebrow">NEXT ACTION</p><h2>지금 해야 할 작업</h2></div><span class="badge" id="homeOverallBadge">READY</span></div>
+      <div class="panel-heading"><div><p class="eyebrow">NEXT ACTION</p><h2>운영 알림</h2></div><span class="badge" id="homeOverallBadge">READY</span></div>
       <div class="home-next-action" id="homeNextAction" data-tone="primary">
         <div><small>추천</small><strong id="homeNextTitle">운영 상태 확인</strong><p id="homeNextText">데이터를 불러오는 중입니다.</p></div>
         <button class="primary" id="homeNextButton" data-home-nav="operate">열기</button>
       </div>
-      <div class="home-alert-list" id="homeAlerts"><p class="empty">상태를 불러오는 중…</p></div>
+      <div class="home-service-nav" aria-label="서비스별 운영 바로가기"><button class="secondary" data-home-nav="discord">디스코드</button><button class="secondary" data-home-nav="naver">네이버 카페</button><button class="secondary" data-home-nav="live">통합 운영</button></div>
+<div class="home-alert-list" id="homeAlerts"><p class="empty">상태를 불러오는 중…</p></div>
     </section>
 
     <section class="panel home-status-panel">
+<div class="home-bot-profile"><span class="bot-monogram" aria-hidden="true">D</span><strong>댕댕봇</strong><small>방송 · 커뮤니티 운영</small></div>
       <div class="panel-heading"><div><p class="eyebrow">LIVE STATUS</p><h2>방송·연결 상태</h2></div><button class="secondary compact" id="homeRefresh">상태 새로고침</button></div>
       <div class="home-status-list">
         <article><span>Discord</span><strong id="homeDiscord">확인 중</strong></article>
@@ -125,7 +127,7 @@
     </section>
 
     <section class="panel home-activity-panel">
-      <div class="panel-heading"><div><p class="eyebrow">RECENT ACTIVITY</p><h2>최근 운영 활동</h2></div><button class="secondary compact" data-home-nav="history">전체 기록</button></div>
+      <div class="panel-heading"><div><p class="eyebrow">RECENT ACTIVITY</p><h2>운영 피드</h2></div><button class="secondary compact" data-home-nav="history">전체 기록</button></div>
       <div class="home-activity-list" id="homeActivity"><p class="empty">최근 활동이 없습니다.</p></div>
     </section>
   </div>

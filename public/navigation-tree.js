@@ -11,7 +11,7 @@ if(dashboard){
  const crumbs=make('p','홈','menu-breadcrumb');crumbs.setAttribute('aria-label','현재 메뉴 위치');document.querySelector('.header-copy').prepend(crumbs);
  const sync=()=>{const active=dashboard.querySelector('[data-tab].active');if(!active)return;reveal(active);const parents=[];let p=active.parentElement;while(p!==dashboard&&p){if(p.tagName==='DETAILS')parents.unshift(p.querySelector('summary').textContent);p=p.parentElement;}crumbs.textContent=[...parents,active.textContent.trim()].join(' › ');};
  new MutationObserver(sync).observe(dashboard,{subtree:true,attributes:true,attributeFilter:['aria-current']});sync();
- const homePage=document.querySelector('[data-page="home"]'),extra=make('details',null,'home-extra');extra.append(make('summary','일정·투표 및 최근 활동 보기'));const grid=make('div',null,'home-extra-grid');for(const cls of ['home-broadcast-panel','home-activity-panel']){const panel=homePage.querySelector('.'+cls);if(panel)grid.append(panel);}extra.append(grid);homePage.append(extra);
+ const homePage=document.querySelector('[data-page="home"]'),extra=make('details',null,'home-extra');extra.append(make('summary','일정·투표 보기'));const grid=make('div',null,'home-extra-grid');for(const cls of ['home-broadcast-panel']){const panel=homePage.querySelector('.'+cls);if(panel)grid.append(panel);}extra.append(grid);homePage.append(extra);
 }
 const community=document.querySelector('.community-studio main>nav');
 if(community){

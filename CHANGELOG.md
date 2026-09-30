@@ -1,3 +1,8 @@
+## v5.1.2 — Reference dashboard layout
+
+- Wide broadcast/bot connection bar, left bot summary and Queue, central operating notices, and right live activity feed.
+- Preserve light styling, separate service navigation, mobile layout, real status data and all existing controls.
+
 ## v5.1.1 — Business dashboard workspaces
 
 - Separate Naver account, search, monitoring, participation and publishing pages; independent Discord operations and unified broadcast/Queue navigation.
