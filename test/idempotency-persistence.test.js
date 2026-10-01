@@ -39,11 +39,18 @@ test('pending request from a dead boot becomes uncertain and cannot be executed 
 
 test('coalesced alias keys are both persisted as completed before a later boot',async()=>withStore(async store=>{
   const guard=createIdempotencyGuard({persistentStore:store,ownerId:'boot-a',recentDuplicateMs:100,ttlMs:1000}),middleware=guard.middleware({scope:()=> 'admin'});let runs=0;
-  const handler=async(_req,res)=>{runs++;await sleep(15);res.json({ok:true});};
-  await Promise.all([
-    dispatch(middleware,{key:'persist-alias-001',body:{same:true},handler}),
-    dispatch(middleware,{key:'persist-alias-002',body:{same:true},handler})
-  ]);
+  let started,release;
+  const handlerStarted=new Promise(resolve=>{started=resolve;});
+  const handlerRelease=new Promise(resolve=>{release=resolve;});
+  const handler=async(_req,res)=>{runs++;started();await handlerRelease;res.json({ok:true});};
+  const first=dispatch(middleware,{key:'persist-alias-001',body:{same:true},handler});
+  await handlerStarted;
+  const second=dispatch(middleware,{key:'persist-alias-002',body:{same:true},handler});
+  // Keep the leader pending until the alias disk claim completes. Disk latency
+  // must not turn this concurrent-request test into a sequential-request test.
+  await store.flush();
+  release();
+  await Promise.all([first,second]);
   await store.flush();assert.equal(runs,1);assert.equal(store.stats().completed,2);guard.clear();
   const reboot=createIdempotencyGuard({persistentStore:store,ownerId:'boot-b'}),rebootMw=reboot.middleware({scope:()=> 'admin'});let rebootRuns=0;
   const retry=await dispatch(rebootMw,{key:'persist-alias-002',body:{same:true},handler:(_req,res)=>{rebootRuns++;res.json({ok:true});}});
