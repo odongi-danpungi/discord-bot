@@ -25,13 +25,13 @@ export function createBroadcastRouter({config,store,operations,version,participa
   const unsubscribeOperations=operations.subscribe(push),unsubscribeStore=store.subscribe(push),unsubscribeQueue=participationQueue?.subscribe?.(push)||(()=>{});
 
   router.use((_req,res,next)=>{res.set({'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Permissions-Policy':'camera=(), microphone=(), geolocation=()','Cross-Origin-Opener-Policy':'same-origin','Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; frame-ancestors 'self'; base-uri 'self'; form-action 'none'"});next();});
-  router.get('/broadcast.css',(_req,res)=>res.sendFile(publicDir+'broadcast.css'));
-  router.get('/broadcast.js',(_req,res)=>res.sendFile(publicDir+'broadcast.js'));
-  router.get('/overlay.css',(_req,res)=>res.sendFile(publicDir+'overlay.css'));
-  router.get('/overlay.js',(_req,res)=>res.sendFile(publicDir+'overlay.js'));
+  router.get('/broadcast.css',(_req,res)=>res.sendFile('broadcast.css',{root:publicDir}));
+  router.get('/broadcast.js',(_req,res)=>res.sendFile('broadcast.js',{root:publicDir}));
+  router.get('/overlay.css',(_req,res)=>res.sendFile('overlay.css',{root:publicDir}));
+  router.get('/overlay.js',(_req,res)=>res.sendFile('overlay.js',{root:publicDir}));
   router.use('/assets',express.static(publicDir,{etag:false,index:false}));
-  router.get('/',requireAuth,(_req,res)=>res.sendFile(publicDir+'broadcast.html'));
-  router.get(['/overlay','/overlay/'],requireAuth,(_req,res)=>res.sendFile(publicDir+'overlay.html'));
+  router.get('/',requireAuth,(_req,res)=>res.sendFile('broadcast.html',{root:publicDir}));
+  router.get(['/overlay','/overlay/'],requireAuth,(_req,res)=>res.sendFile('overlay.html',{root:publicDir}));
   router.use('/api',requireAuth);
   router.get('/api/snapshot',(_req,res)=>res.json(snapshot()));
   router.get('/api/draw/:id',(req,res)=>{
