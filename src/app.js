@@ -39,6 +39,7 @@ import { assertLiveControlFresh, createLiveControlMutationGate, readExpectedLive
 const equal=(a,b)=>{const x=Buffer.from(a||''),y=Buffer.from(b||'');return x.length===y.length&&timingSafeEqual(x,y)};
 export function createApp({config,store,operations,recovery,discord,discordPolicy=null,incidentWorkflow=null,idempotencyStore=null,naver=null,naverMonitor=null,naverParticipation=null,chzzkLiveMonitor=null,participationQueue=null,participationCalls=null,broadcastOps=null,viewerAuth=createViewerAuth(),instanceId='',runtimeHealth=null,performanceCapacity=null,backupManager=null,releaseCenter=null,startupPreflight=null,startupEnvironmentValidation=null}) {
   const app=express();if(Number(config.trustProxyHops)>0)app.set('trust proxy',Number(config.trustProxyHops));
+  const dashboardSessions=createDashboardSessions({config});
   const csrf=randomBytes(24).toString('hex'),failed=new Map(),streams=new Set(),streamClosers=new Map(),streamIdentities=new Map(),approvalGuard=createApprovalGuard(),apiIdempotency=createIdempotencyGuard({persistentStore:idempotencyStore,ownerId:instanceId}),liveMutationGate=createLiveControlMutationGate(),dashboardStreamLimit=12;
   const runtime=runtimeHealth||{recordApi:()=>{},recordIncident:()=>{},recordSse:()=>{},recordTick:()=>{},snapshot:()=>({status:'pass',incidents:[]}),diagnosticBundle:()=>({format:'daengdaeng-runtime-diagnostics-v1'})};
   const performance=performanceCapacity||new PerformanceCapacity();
@@ -190,7 +191,7 @@ export function createApp({config,store,operations,recovery,discord,discordPolic
   };
   const unsubscribeOperations=operations.subscribe(pushLive),unsubscribeStore=store.subscribe(pushLive),unsubscribeRecovery=typeof recoveryStore.subscribe==='function'?recoveryStore.subscribe(pushLive):()=>{},unsubscribeBroadcastOps=typeof broadcastOps?.subscribe==='function'?broadcastOps.subscribe(pushLive):()=>{},unsubscribePolicy=typeof policyStore.subscribe==='function'?policyStore.subscribe(pushLive):()=>{},unsubscribeIncident=typeof incidentStore.subscribe==='function'?incidentStore.subscribe(pushLive):()=>{},unsubscribeNaverParticipation=typeof naverParticipation?.subscribe==='function'?naverParticipation.subscribe(pushLive):()=>{},unsubscribeChzzkLive=typeof chzzkLiveMonitor?.store?.subscribe==='function'?chzzkLiveMonitor.store.subscribe(pushLive):()=>{},unsubscribeParticipationQueue=typeof participationQueue?.subscribe==='function'?participationQueue.subscribe(pushLive):()=>{};
   app.disable('x-powered-by');
-  const broadcast=createBroadcastRouter({config,store,operations,version:APP_VERSION,participationQueue});
+  const broadcast=createBroadcastRouter({config,store,operations,version:APP_VERSION,participationQueue,sessionIdentity:req=>dashboardSessions.identity(req)});
   const performanceSnapshot=async()=>{
     const current=operations.read(),runtimeState=runtime.snapshot({liveClients:streams.size,version:APP_VERSION,revision:Number(current.revision)||0,recovered:store.recovered||operations.recovered||recoveryStore.recovered||policyStore.recovered||incidentStore.recovered||Boolean(naver?.authStore?.recovered)||Boolean(naverMonitor?.store?.recovered)||Boolean(naverParticipation?.recovered)||Boolean(participationQueue?.recovered)}),broadcastStats=broadcast.stats?.()||{liveClients:0,limit:8};
     const dataFootprint=await measureDataFootprint([store.file,operations.file,recoveryStore.file,policyStore.file,incidentStore.file,idempotencyStore?.file,naver?.authStore?.file,naverMonitor?.store?.file,naverParticipation?.file,chzzkLiveMonitor?.store?.file,participationQueue?.file,broadcastOps?.file].filter(Boolean));
@@ -213,7 +214,6 @@ export function createApp({config,store,operations,recovery,discord,discordPolic
   });
   const participantOperationGuard=()=>{if(draining||emergencyState().locked||['staging','applying','rolling-back','restart-required','rollback-restart-required'].includes(releaseCenter?.snapshot?.()?.status))throw Object.assign(Error('운영 잠금 또는 재시작 대기 중입니다.'),{status:423,statusCode:423});};
   app.use('/viewer',createViewerRouter({config,store,operations,viewerAuth,broadcastOps,participationQueue,participationCalls,emergencyState,readyCheckGuard:participantOperationGuard}));
-  const dashboardSessions=createDashboardSessions({config});
   app.use('/auth',dashboardSessions.router);
   app.get('/naver/callback',async(req,res)=>{
     res.set({'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; form-action 'none'; frame-ancestors 'none'"});

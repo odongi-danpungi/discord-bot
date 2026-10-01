@@ -8,12 +8,12 @@ const loopbackHost=host=>['127.0.0.1','localhost','::1'].includes(String(host||'
 const loopbackAddress=address=>['127.0.0.1','::1','::ffff:127.0.0.1'].includes(String(address||''));
 const equal=(a,b)=>{const x=Buffer.from(String(a||'')),y=Buffer.from(String(b||''));return x.length===y.length&&timingSafeEqual(x,y)};
 
-export function createBroadcastRouter({config,store,operations,version,participationQueue=null}){
+export function createBroadcastRouter({config,store,operations,version,participationQueue=null,sessionIdentity=()=>null}){
   const router=express.Router(),streams=new Set(),streamClosers=new Map();const streamLimit=8;let seq=0,pushQueued=false;
   const records=()=>store.read().filter(r=>r.guildId===config.guildId);
   const snapshot=()=>{const state=operations.read(),safeRecords=records();return {...buildBroadcastSnapshot(state,safeRecords,version),overlay:buildBroadcastOverlaySnapshot(state,safeRecords,participationQueue?.summary?.()||null,version)};};
   const basicAuthorized=req=>{const auth=req.get('authorization')||'';if(!auth.startsWith('Basic '))return false;let decoded='';try{decoded=Buffer.from(auth.slice(6),'base64').toString('utf8')}catch{return false}const colon=decoded.indexOf(':');return colon>=0&&equal(decoded.slice(0,colon),config.dashboardUser)&&equal(decoded.slice(colon+1),config.dashboardPassword)};
-  const authorized=req=>(loopbackHost(config.host)&&loopbackAddress(req.socket?.remoteAddress))||Boolean(config.broadcastToken&&equal(req.query.token||req.get('x-broadcast-token'),config.broadcastToken))||basicAuthorized(req);
+  const authorized=req=>(loopbackHost(config.host)&&loopbackAddress(req.socket?.remoteAddress))||Boolean(config.broadcastToken&&equal(req.query.token||req.get('x-broadcast-token'),config.broadcastToken))||sessionIdentity(req)?.role==='admin'||basicAuthorized(req);
   const requireAuth=(req,res,next)=>{
     if(authorized(req))return next();
     const message=config.broadcastToken?'방송 화면 접근 토큰이 올바르지 않습니다.':'외부 방송 화면은 기본적으로 비활성화되어 있습니다. BROADCAST_TOKEN을 24자 이상으로 설정해 주세요.';
