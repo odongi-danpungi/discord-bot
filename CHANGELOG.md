@@ -1,3 +1,10 @@
+## v5.1.3 — Participant operations and form login
+
+- Add HTTPS form login with bounded HttpOnly sessions, login CSRF challenge, rate limiting, logout, expiry and credential-change invalidation; retain Basic auth compatibility.
+- Add integrated Queue ready checks and private participant responses, preserving existing participant self-service.
+- Add revision-checked, persistent, single-use undo for the last Queue reorder (5 minutes).
+- Add isolated browser-only practice workflow and hierarchical navigation links.
+
 ## v5.1.2 — Reference dashboard layout
 
 - Wide broadcast/bot connection bar, left bot summary and Queue, central operating notices, and right live activity feed.

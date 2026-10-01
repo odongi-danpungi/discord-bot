@@ -1,4 +1,6 @@
 import { installCommunityRoutes } from './community-routes.js';
+import { createDashboardSessions } from './dashboard-session.js';
+import { installOperationTools } from './operation-tools.js';
 import { fairSelect } from './community.js';
 import { createViewerRouter,createViewerAuth } from './viewer.js';
 import { createBroadcastRouter } from './broadcast.js';
@@ -209,7 +211,10 @@ export function createApp({config,store,operations,recovery,discord,discordPolic
     const ready=!draining,emergency=emergencyState();
     res.status(ready?200:503).json({status:ready?'ok':'draining',ready,emergencyLocked:Boolean(emergency.locked),version:APP_VERSION});
   });
-  app.use('/viewer',createViewerRouter({config,store,operations,viewerAuth,broadcastOps,participationQueue,participationCalls,emergencyState}));
+  const participantOperationGuard=()=>{if(draining||emergencyState().locked||['staging','applying','rolling-back','restart-required','rollback-restart-required'].includes(releaseCenter?.snapshot?.()?.status))throw Object.assign(Error('운영 잠금 또는 재시작 대기 중입니다.'),{status:423,statusCode:423});};
+  app.use('/viewer',createViewerRouter({config,store,operations,viewerAuth,broadcastOps,participationQueue,participationCalls,emergencyState,readyCheckGuard:participantOperationGuard}));
+  const dashboardSessions=createDashboardSessions({config});
+  app.use('/auth',dashboardSessions.router);
   app.get('/naver/callback',async(req,res)=>{
     res.set({'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; form-action 'none'; frame-ancestors 'none'"});
     try{
@@ -227,10 +232,11 @@ export function createApp({config,store,operations,recovery,discord,discordPolic
     if(config.demo){req.dashboardIdentity={role:'admin',user:config.dashboardUser||'admin',capabilities:['*']};return next();}
     const stamp=failed.get(req.ip),now=Date.now();
     if(stamp&&stamp.until>now&&stamp.count>=15)return res.status(429).json({error:'로그인 시도가 많습니다. 1분 뒤 다시 시도해 주세요.'});
-    const auth=req.get('authorization')||'',identity=authenticateDashboardBasic(auth,config);
+    const auth=req.get('authorization')||'',identity=dashboardSessions.identity(req)||authenticateDashboardBasic(auth,config);
     if(!identity){
       if(auth){if(failed.size>1000)failed.clear();failed.set(req.ip,{count:stamp&&stamp.until>now?stamp.count+1:1,until:now+60000});}
-      res.set('WWW-Authenticate','Basic realm="DaengDaeng Dashboard", charset="UTF-8"');return res.status(401).json({error:'대시보드 로그인이 필요합니다.'});
+      if(req.method==='GET'&&!req.path.startsWith('/api')&&!auth)return res.redirect(303,'/auth/login');
+      if(auth)res.set('WWW-Authenticate','Basic realm="DaengDaeng Dashboard", charset="UTF-8"');return res.status(401).json({error:'대시보드 로그인이 필요합니다.',loginUrl:'/auth/login'});
     }
     failed.delete(req.ip);req.dashboardIdentity=identity;next();
   });
@@ -277,6 +283,8 @@ export function createApp({config,store,operations,recovery,discord,discordPolic
     const status=releaseCenter?.snapshot?.()?.status;
     if(draining||emergencyState().locked||['staging','applying','rolling-back','restart-required','rollback-restart-required'].includes(status))throw Object.assign(Error('운영 잠금 또는 재시작 대기 중입니다.'),{statusCode:423});
   }});
+  app.use('/api/operation-tools',(req,_res,next)=>{try{if(req.method!=='GET')participantOperationGuard();next();}catch(e){next(e);}});
+  installOperationTools({app,operations,participationQueue});
   app.use(express.static(fileURLToPath(new URL('../public/',import.meta.url)),{etag:false}));
   app.get('/api/access',(req,res)=>res.json(publicDashboardAccess(req.dashboardIdentity)));
   app.get('/api/snapshot',async(req,res)=>res.json(await snapshot(true,req.dashboardIdentity)));
@@ -652,6 +660,6 @@ export function createApp({config,store,operations,recovery,discord,discordPolic
   let backgroundStopped=false;
   const stopBackground=()=>{if(backgroundStopped)return;backgroundStopped=true;clearInterval(productionMonitorTimer);clearInterval(capacityTimer);clearInterval(backupTimer);clearInterval(policyMonitorTimer);clearInterval(naverMonitorTimer);clearInterval(chzzkLiveTimer);clearInterval(incidentTimer);soak.close();broadcast.close();for(const res of [...streams]){try{streamClosers.get(res)?.();res.end()}catch{}}streams.clear();streamClosers.clear();streamIdentities.clear();};
   const beginShutdown=(reason='shutdown')=>{if(draining)return;draining=true;runtime.recordIncident({severity:'info',source:'system',code:'graceful_shutdown',summary:'안전 종료 시작',detail:String(reason),persist:false});stopBackground();};
-  const close=()=>{draining=true;stopBackground();apiIdempotency.clear();unsubscribeOperations();unsubscribeStore();unsubscribeRecovery();unsubscribeBroadcastOps();unsubscribePolicy();unsubscribeIncident();unsubscribeNaverParticipation();unsubscribeChzzkLive();unsubscribeParticipationQueue();};
+  const close=()=>{draining=true;stopBackground();dashboardSessions.clear();apiIdempotency.clear();unsubscribeOperations();unsubscribeStore();unsubscribeRecovery();unsubscribeBroadcastOps();unsubscribePolicy();unsubscribeIncident();unsubscribeNaverParticipation();unsubscribeChzzkLive();unsubscribeParticipationQueue();};
   return {app,tick,close,beginShutdown};
 }
