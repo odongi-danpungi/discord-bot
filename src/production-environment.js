@@ -81,7 +81,12 @@ export function buildProductionEnvironmentValidation({config={},now=Date.now()}=
     add(checks,{id:'chzzk-monitor',group:'chzzk',label:'CHZZK Monitor',status:config.chzzkMonitorEnabled?'pass':'warn',detail:config.chzzkMonitorEnabled?'방송 감지 활성화':'Client 설정됨 · Monitor 비활성',action:'자동 방송 시작/종료 감지를 사용하려면 CHZZK_MONITOR_ENABLED=true로 설정하세요.',required:false});
   }else add(checks,{id:'chzzk-client',group:'chzzk',label:'CHZZK 연동',status:'warn',detail:'CHZZK Open API 연동 미설정',action:'방송 자동 감지를 사용할 때 Client/Channel 설정을 추가하세요.',required:false});
 
-  const comparable=[['DASHBOARD_PASSWORD',config.dashboardPassword],['DASHBOARD_OPERATOR_PASSWORD',config.dashboardOperatorPassword],['BROADCAST_TOKEN',config.broadcastToken],['NAVER_CLIENT_SECRET',config.naverClientSecret],['NAVER_TOKEN_KEY',config.naverTokenKey],['CHZZK_CLIENT_SECRET',config.chzzkClientSecret]].filter(([,value])=>String(value||'').length>=12);
+  if(config.chzzkVerifyEnabled){
+    const keyOk=validNaverTokenKey(config.chzzkTokenKey),roleOk=/^\d{17,20}$/.test(config.chzzkVerifyRoleId||'')&&config.chzzkVerifyRoleId!==config.guildId;
+    add(checks,{id:'chzzk-verification-key',group:'chzzk',label:'CHZZK 인증 토큰 암호화',status:keyOk?'pass':'fail',detail:keyOk?'32바이트 암호화 키 형식 확인됨':'인증 토큰 저장 키가 필요합니다.',action:'CHZZK_TOKEN_KEY는 다른 Secret과 별개로 생성하고 재배포 후 유지하세요.',required:true});
+    add(checks,{id:'chzzk-verification-role',group:'chzzk',label:'CHZZK 인증 전용 역할',status:roleOk?'pass':'fail',detail:roleOk?'역할 ID 형식 확인됨 · 실제 권한/순서는 적용 시 검사':'인증 전용 역할 ID를 확인하세요.',action:'봇 아래에 서버 권한 없는 역할을 만들고 CHZZK_VERIFY_ROLE_ID를 등록하세요.',required:true});
+  }
+  const comparable=[['DASHBOARD_PASSWORD',config.dashboardPassword],['DASHBOARD_OPERATOR_PASSWORD',config.dashboardOperatorPassword],['BROADCAST_TOKEN',config.broadcastToken],['NAVER_CLIENT_SECRET',config.naverClientSecret],['NAVER_TOKEN_KEY',config.naverTokenKey],['CHZZK_CLIENT_SECRET',config.chzzkClientSecret],['CHZZK_TOKEN_KEY',config.chzzkTokenKey]].filter(([,value])=>String(value||'').length>=12);
   const reused=[];for(let i=0;i<comparable.length;i++)for(let j=i+1;j<comparable.length;j++)if(comparable[i][1]===comparable[j][1])reused.push(`${comparable[i][0]} / ${comparable[j][0]}`);
   add(checks,{id:'secret-reuse',group:'core',label:'Secret 재사용',status:reused.length?'fail':'pass',detail:reused.length?`서로 다른 자격 증명 ${reused.length}쌍이 같은 값을 사용합니다.`:'검사 대상 Secret 간 동일 값 없음',action:'Dashboard/Broadcast/Naver/CHZZK 비밀값은 각각 독립된 랜덤값을 사용하세요.',required:production});
 

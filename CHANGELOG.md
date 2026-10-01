@@ -1,3 +1,13 @@
+## v5.1.4 — CHZZK follower verification
+
+- Discord 팔로워 인증 패널, 본인 전용 일회용 링크, CHZZK OAuth 로그인/동의 및 내 연동 상태 재확인.
+- 방송 채널 소유자 별도 동의, 팔로워 조회의 상한·공유 캐시·429 대기, 미확정 상태의 역할 부여 차단.
+- 계정 중복 차단, atomic 저장, 방송 OAuth 토큰 AES-GCM 암호화, 역할 권한/순서 확인, 닉네임 실패 구분.
+- 관리자 Dashboard에 채널 연결·인증 패널 게시 페이지 추가. 기본 비활성, 실제 인증과 배포 검증은 별도 필요.
+- 재인증과 토큰 갱신의 동시 저장 충돌, 닉네임 설정 변경 후 오래된 인증 상태, 재발급된 링크의 진행 중 Callback을 보완.
+- 인증 패널 게시를 저장까지 직렬화하고 Discord 메시지 수정 직전에 운영 잠금을 재확인.
+- CHZZK 인증 저장소 복구를 시작 감사·Dashboard·Runtime Health에 반영하고 전체 ZIP에 Railway 설정·CI·안내 문서를 포함.
+
 ## v5.1.3 — Participant operations and form login
 
 - Add HTTPS form login with bounded HttpOnly sessions, login CSRF challenge, rate limiting, logout, expiry and credential-change invalidation; retain Basic auth compatibility.

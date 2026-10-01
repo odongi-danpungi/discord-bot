@@ -1,4 +1,6 @@
-# 댕댕봇 v5.1.0 — 통합 기준본
+# 댕댕봇 v5.1.4 — 통합 방송 운영 · CHZZK 팔로워 인증
+
+Discord 인증 패널에서 본인 전용 링크로 CHZZK에 동의한 뒤 팔로워 확인·인증 역할 부여·선택적 닉네임 동기화를 진행합니다. 기능은 기본 비활성이며 [인증 설정 및 실제 검증 절차](docs/chzzk-follower-verification.md)를 먼저 확인하세요. 관리자 페이지는 `/chzzk-verification.html`입니다.
 
 v4.17.5 전체 기능을 보존하고 v4.17.6 운영 모니터링 및 v4.18.0 커뮤니티·계층형 대시보드를 통합했습니다. GitHub의 이전 v5.0 skeleton보다 실제 기능이 완성된 코드가 기준입니다. 데이터 스키마는 v2입니다.
 
@@ -1640,6 +1642,12 @@ v3.7에서 추가된 다음 회귀 테스트도 유지됩니다.
 - `GET /api/connector-verification`은 설정/런타임 기반의 완전한 읽기 전용 보고서입니다. 실제 외부 연결 검증은 관리자 전용 `POST /api/connector-verification/probe`로 분리되어 기존 CSRF/Idempotency 보호를 적용합니다.
 - 실제 연결 검증은 Discord diagnostics, Naver profile(연결된 경우), CHZZK channel lookup, `/healthz` 요청만 수행하며 외부 서비스 상태를 변경하지 않습니다. CHZZK는 API 성공뿐 아니라 설정된 대상 채널이 실제로 반환되는지까지 확인합니다.
 
+
+### v5.1.4 CHZZK 팔로워 인증
+
+관리자 Dashboard의 **CHZZK · 계정 연동 · 팔로워 인증**에서 방송 채널 소유자 동의와 Discord 인증 패널 게시를 진행합니다. 참가자는 본인에게만 보이는 링크로 CHZZK에 로그인하고, 방송 채널 팔로워임이 확인된 경우 인증 전용 역할을 받습니다. 닉네임 동기화는 선택적이며 실패를 따로 표시합니다. 기본 비활성이고 실제 OAuth·팔로워 조회·역할 적용은 운영 인증 정보로 별도 검증해야 합니다.
+
+환경변수, 최소 권한, 저장/백업 및 실제 검증 절차: [CHZZK 팔로워 인증 안내](docs/chzzk-follower-verification.md).
 
 ### v5.1.3 운영 도구
 

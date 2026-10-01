@@ -1,4 +1,5 @@
 import { handleCommunityInteraction } from './community-discord.js';
+import { handleChzzkVerification } from './chzzk-verification-discord.js';
 import { communityFor } from './community.js';
 import { guideCard, acknowledgeRules } from './guide.js';
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, TextInputBuilder, TextInputStyle, ModalBuilder, PermissionFlagsBits, Events, MessageFlags } from 'discord.js';
@@ -12,7 +13,7 @@ function field(id,label,placeholder,value='',required=false,max=100){
   if(value)input.setValue(value.slice(0,max));return new ActionRowBuilder().addComponents(input);
 }
 const row=(id,label,style=ButtonStyle.Primary)=>new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(id).setLabel(label).setStyle(style));
-export function installInteractions({client,config,store,operations,discord,viewerAuth,participationQueue=null,participationCalls=null,emergencyState=()=>({locked:false})}){
+export function installInteractions({client,config,store,operations,discord,viewerAuth,chzzkVerification=null,participationQueue=null,participationCalls=null,emergencyState=()=>({locked:false})}){
   const drafts=new Map();let syncTimer;
   const queueSync=()=>{clearTimeout(syncTimer);syncTimer=setTimeout(()=>discord.sync('sync').catch(()=>{}),900);syncTimer.unref();};
   const prune=setInterval(()=>{for(const [key,value] of drafts)if(value.expiresAt<Date.now())drafts.delete(key)},60000);prune.unref();
@@ -23,6 +24,7 @@ export function installInteractions({client,config,store,operations,discord,view
       const current=()=>store.read().find(r=>r.guildId===config.guildId&&r.discordId===userId);
       const emergency=emergencyState?.()||{};const readOnlyInteraction=(interaction.isButton()&&['avatar_access','profile_view','reservation_view','community:home','community:guide','community:history','community:tickets','community:subscriptions'].includes(interaction.customId))||(interaction.isButton()&&interaction.customId.startsWith('guide:')&&!interaction.customId.startsWith('guide:ack'));
       if(emergency.locked&&!readOnlyInteraction){const content='방송 운영이 긴급 잠금 상태입니다. 진행자가 잠금을 해제한 뒤 다시 시도해 주세요.';if(interaction.deferred&&!interaction.replied)return interaction.editReply({content}).catch(()=>{});return interaction.reply({content,...ephemeral});}
+      if(await handleChzzkVerification(interaction,chzzkVerification))return;
       if((interaction.isButton()||interaction.isModalSubmit())&&interaction.customId?.startsWith('community:')){
         const service=communityFor({operations,config,discord});
         if(await handleCommunityInteraction(interaction,{operations,config,discord,service,store,viewerAuth,participationQueue,participationCalls}))return;
