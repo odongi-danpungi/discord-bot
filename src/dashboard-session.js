@@ -16,8 +16,8 @@ export function createDashboardSessions({config,now=Date.now}={}){
  const identity=req=>{prune();const s=sessions.get(hash(cookie(req,'dd_admin')));if(!s||s.fingerprint!==fingerprint())return null;return s.identity;};
  const router=express.Router();
  router.use((req,res,next)=>{res.set({'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"});if(config.host==='127.0.0.1'&&!['localhost','127.0.0.1'].includes(req.hostname))return res.sendStatus(403);next();});
- router.get('/login',(_req,res)=>res.sendFile(fileURLToPath(new URL('../public/login.html',import.meta.url))));
- for(const file of ['login.js','login.css'])router.get('/'+file,(_req,res)=>res.sendFile(fileURLToPath(new URL('../public/'+file,import.meta.url))));
+ router.get('/login',(_req,res)=>res.sendFile('login.html',{root:fileURLToPath(new URL('../public/',import.meta.url))}));
+ for(const file of ['login.js','login.css'])router.get('/'+file,(_req,res)=>res.sendFile(file,{root:fileURLToPath(new URL('../public/',import.meta.url))}));
  router.get('/context',(req,res)=>{prune();if(!transport(req))return res.status(403).json({error:'HTTPS 주소로 접속해 주세요.'});if(challenges.size>=1000)return res.sendStatus(429);const value=token();challenges.set(hash(value),{expires:now()+300000});setCookie(req,res,'dd_login',value,300);const s=sessions.get(hash(cookie(req,'dd_admin'))),auth=identity(req);res.json({challenge:value,authenticated:Boolean(auth),csrf:auth?s?.csrf:null,redirect:auth?.role==='operator'?'/mobile-control.html':'/'});});
  router.use(express.json({limit:'8kb'}));
  router.post('/login',(req,res)=>{
