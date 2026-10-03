@@ -1,6 +1,6 @@
 {
   "name": "discord-game-roster-bot",
-  "version": "5.1.3",
+  "version": "5.1.5",
   "private": true,
   "description": "Discord registration bot with admin dashboard and official Naver Cafe integration",
   "type": "module",

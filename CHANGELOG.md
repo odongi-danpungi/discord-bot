@@ -1,3 +1,22 @@
+## v5.1.5 — 서버별 CHZZK 인증 자동 준비
+
+- 서버 입장·재시작 시 권한 없는 인증 역할을 자동 생성하고 서버별로 저장·재사용합니다. 역할 ID 수동 입력은 선택 사항입니다.
+- `/치지직인증` 전역 명령을 서버 설치 범위에 추가하고 OAuth 요청과 인증 결과를 서버별로 구분합니다.
+- 기존 Queue/게임/네이버 기능의 기본 서버 경계와 기존 인증 패널을 유지합니다. 인증 대상 방송 채널은 모든 서버에서 공통입니다.
+- 관리자 대시보드에 자동 준비 서버 수와 최소 권한 인증 봇 초대 링크를 추가했습니다.
+- 역할 생성의 미확정 결과를 영속 저장해 비정상 종료 후 중복 생성을 차단하며, 권한 상승/이름만 같은 역할 재사용을 거부합니다.
+- 롤백 시 v5.1.4는 역할 ID 필수이므로 기본 서버 자동 생성 역할 ID를 CHZZK_VERIFY_ROLE_ID에 지정하거나 인증 기능을 비활성화해야 합니다.
+
+## v5.1.4 — CHZZK follower verification
+
+- Discord 팔로워 인증 패널, 본인 전용 일회용 링크, CHZZK OAuth 로그인/동의 및 내 연동 상태 재확인.
+- 방송 채널 소유자 별도 동의, 팔로워 조회의 상한·공유 캐시·429 대기, 미확정 상태의 역할 부여 차단.
+- 계정 중복 차단, atomic 저장, 방송 OAuth 토큰 AES-GCM 암호화, 역할 권한/순서 확인, 닉네임 실패 구분.
+- 관리자 Dashboard에 채널 연결·인증 패널 게시 페이지 추가. 기본 비활성, 실제 인증과 배포 검증은 별도 필요.
+- 재인증과 토큰 갱신의 동시 저장 충돌, 닉네임 설정 변경 후 오래된 인증 상태, 재발급된 링크의 진행 중 Callback을 보완.
+- 인증 패널 게시를 저장까지 직렬화하고 Discord 메시지 수정 직전에 운영 잠금을 재확인.
+- CHZZK 인증 저장소 복구를 시작 감사·Dashboard·Runtime Health에 반영하고 전체 ZIP에 Railway 설정·CI·안내 문서를 포함.
+
 ## v5.1.3 — Participant operations and form login
 
 - Add HTTPS form login with bounded HttpOnly sessions, login CSRF challenge, rate limiting, logout, expiry and credential-change invalidation; retain Basic auth compatibility.

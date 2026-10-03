@@ -1,0 +1,6 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>댕댕봇 · CHZZK 팔로워 인증</title><link rel="stylesheet" href="/chzzk-verification.css"></head>
+<body><main><a href="/">← 대시보드</a><h1>CHZZK 팔로워 인증</h1><p>CHZZK → 계정 연동 → 팔로워 인증</p>
+<section><h2>1. 연결 상태</h2><p id="status" role="status">불러오는 중…</p><dl id="details"></dl><button id="refresh">새로고침</button></section>
+<section><h2>2. 방송 채널 연결</h2><p>방송 채널 소유자 계정으로 로그인하고 유저 정보 조회·채널 팔로워 조회에 동의하세요. 참가자의 동의와 별도로 한 번 연결합니다.</p><button id="owner">방송 채널 연결 시작</button><a id="ownerLink" hidden rel="noreferrer" target="_blank">CHZZK에서 방송 채널 동의 진행</a></section>
+<section><h2>3. Discord 인증 패널</h2><p>지정한 채널에 치지직 계정 인증·내 연동 상태 버튼을 게시합니다. 반복 실행하면 같은 패널을 갱신합니다.</p><label for="channel">Discord 채널 ID</label><input id="channel" inputmode="numeric" maxlength="20" autocomplete="off"><button id="panel">인증 패널 게시 / 갱신</button></section>
+<section><h2>설정 안내</h2><p>인증 전용 역할은 봇 역할보다 아래에 두세요. 역할 관리·닉네임 관리 권한을 사용하며 Administrator는 필요하지 않습니다.</p><p>역할과 채널 설정·Client Secret·암호화 키는 Railway 환경변수에서 관리합니다. 비밀값을 이 화면에 입력하지 마세요.</p><p>신규 팔로우는 자동 반영 시간을 보장하지 않습니다. 2분 간격으로 내 연동 상태에서 재확인할 수 있습니다. 스캔 한도·API 오류는 인증 대기로 처리합니다.</p></section></main><script type="module" src="/chzzk-verification-ui.js"></script></body></html>

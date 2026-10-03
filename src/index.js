@@ -1,4 +1,7 @@
+import { installVerificationGuildSetup } from './chzzk-guild-setup.js';
 import { createViewerAuth } from './viewer.js';
+import { ChzzkVerification, ChzzkVerificationStore } from './chzzk-verification.js';
+import { installChzzkVerificationDiscord } from './chzzk-verification-discord.js';
 import 'dotenv/config';
 import { Client, Events, GatewayIntentBits, PermissionFlagsBits, REST, Routes } from 'discord.js';
 import { RegistrationStore } from './store.js';
@@ -34,6 +37,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 let client,server,timer,cleanupInteractions,runtime,runtimeHealth,backupManager,releaseCenter,startupPreflight,startupEnvironmentValidation,processLock,operationsRef,participationCalls;
+let cleanupVerificationGuilds;
 let persistentStores=[],shuttingDown=false,fatalHandling=false;
 
 async function flushPersistentStores(){
@@ -51,8 +55,10 @@ async function main(){
   const persistenceObserver=event=>runtimeHealth.recordPersistence(event);
   const store=new RegistrationStore(config.dataFile).setObserver(persistenceObserver),operations=new OperationsStore(config.operationsFile).setObserver(persistenceObserver),recovery=new RecoveryStore(config.recoveryFile).setObserver(persistenceObserver),discordPolicy=new DiscordPolicyStore(config.discordPolicyFile).setObserver(persistenceObserver),incidentWorkflow=new IncidentWorkflowStore(config.incidentWorkflowFile).setObserver(persistenceObserver),idempotencyStore=new PersistentIdempotencyStore(config.idempotencyFile).setObserver(persistenceObserver),naverMonitorStore=new NaverMonitorStore(config.naverMonitorFile,{enabled:config.naverMonitorEnabled,query:config.naverMonitorQuery,cafeUrl:config.naverMonitorCafeUrl,intervalMinutes:config.naverMonitorIntervalMinutes,discordAlerts:config.naverMonitorDiscordAlerts}).setObserver(persistenceObserver),naverParticipationStore=new NaverParticipationStore(config.naverParticipationFile).setObserver(persistenceObserver),participationQueueStore=new ParticipationQueueStore(config.participationQueueFile).setObserver(persistenceObserver),broadcastOpsStore=new BroadcastOpsStore(config.broadcastOpsFile).setObserver(persistenceObserver),chzzkLiveStore=new ChzzkLiveStore(config.chzzkLiveFile,{enabled:config.chzzkMonitorEnabled,channelId:config.chzzkChannelId,intervalMinutes:config.chzzkMonitorIntervalMinutes,discordAlerts:config.chzzkMonitorDiscordAlerts,maxPages:config.chzzkLiveScanMaxPages}).setObserver(persistenceObserver);
   const naverAuthStore=config.naverRedirectUri&&config.naverTokenKey?new NaverAuthStore(config.naverAuthFile,config.naverTokenKey).setObserver(persistenceObserver):null;
+  const chzzkAuthStore=config.chzzkVerifyEnabled?new ChzzkVerificationStore(config.chzzkVerificationFile,config.chzzkTokenKey).setObserver(persistenceObserver):null;
   persistentStores=[store,operations,recovery,discordPolicy,incidentWorkflow,idempotencyStore,naverMonitorStore,naverParticipationStore,participationQueueStore,broadcastOpsStore,chzzkLiveStore,...(naverAuthStore?[naverAuthStore]:[])];operationsRef=operations;
   await store.init();await operations.init();await recovery.init();await discordPolicy.init();await incidentWorkflow.init();await idempotencyStore.init();await naverMonitorStore.init();await naverParticipationStore.init();await participationQueueStore.init();await broadcastOpsStore.init();await chzzkLiveStore.init();if(naverAuthStore)await naverAuthStore.init();
+  if(chzzkAuthStore){persistentStores.push(chzzkAuthStore);await chzzkAuthStore.init();}
   const naverMonitorPending=await naverMonitorStore.recoverPending();
   const naverParticipationPending=await naverParticipationStore.recoverPending();
   const chzzkLivePending=await chzzkLiveStore.recoverPending();
@@ -132,8 +138,21 @@ async function main(){
     ]});
     console.log('Discord bot ready: '+client.user.username);
   }
+  if (config.chzzkVerifyEnabled && !config.demo) {
+    // Upsert only this command; never overwrite other global commands.
+    await new REST({version:'10'}).setToken(config.token).post(Routes.applicationCommands(config.clientId), {body:{
+      name:'치지직인증', description:'치지직 팔로워 인증을 시작합니다', type:1, contexts:[0], integration_types:[0]
+    }});
+  }
   const startupEmergency=recovery.emergencyState();participationCalls=new ParticipationCallService({queue:participationQueueStore,discord,timeoutSeconds:config.participationCallTimeoutSeconds,audit:event=>recovery.audit({...event,actor:'system'}),reporter:event=>runtimeHealth.recordDiscord(event),paused:startupEmergency.locked,pausedAt:startupEmergency.lockedAt});
-  if(!config.demo)cleanupInteractions=installInteractions({client,config,store,operations,discord,viewerAuth,participationQueue:participationQueueStore,participationCalls,emergencyState:()=>recovery.emergencyState()});
+  let chzzkVerification = null;
+  if (chzzkAuthStore) {
+    installChzzkVerificationDiscord(DiscordService);
+    chzzkVerification = new ChzzkVerification({ config, store: chzzkAuthStore, discord, guard: () => {
+      if (shuttingDown || recovery.emergencyState().locked) throw Object.assign(Error('인증 작업이 운영 잠금 상태입니다.'), { status: 423 });
+    } });
+  }
+  if(!config.demo)cleanupInteractions=installInteractions({client,config,store,operations,discord,viewerAuth,chzzkVerification,participationQueue:participationQueueStore,participationCalls,emergencyState:()=>recovery.emergencyState()});
   await participationCalls.start();
   const naverMonitor=new NaverCafeMonitor({store:naverMonitorStore,naver,discord,reporter:event=>runtimeHealth.recordApi({method:'NAVER',path:`naver:${event.operation||'monitor'}`,status:event.ok?200:(Number(event.status)||502),durationMs:Number(event.durationMs)||0}),audit:event=>recovery.audit({...event,actor:'system'})});
   const chzzkLiveMonitor=new ChzzkLiveMonitor({store:chzzkLiveStore,chzzk,discord,reporter:event=>runtimeHealth.recordApi({method:'CHZZK',path:`chzzk:${event.operation||'live-scan'}`,status:event.ok?(Number(event.status)||200):(Number(event.status)||502),durationMs:Number(event.durationMs)||0}),audit:event=>recovery.audit({...event,actor:'system'})});
@@ -150,7 +169,7 @@ async function main(){
     if(postUpdateCheck.status!=='pass')console.log(`업데이트 후 자동 점검: ${postUpdateCheck.status} (경고 ${warn}, 오류 ${fail}) · 대시보드 복구·감사 센터를 확인해 주세요.`);
     else console.log(`업데이트 후 자동 점검 완료: ${APP_VERSION} / schema v${DATA_SCHEMA_VERSION}`);
   }
-  runtime=createApp({config,store,operations,recovery,discord,discordPolicy,incidentWorkflow,idempotencyStore,naver,naverMonitor,naverParticipation:naverParticipationStore,chzzkLiveMonitor,participationQueue:participationQueueStore,participationCalls,broadcastOps:broadcastOpsStore,viewerAuth,instanceId,runtimeHealth,backupManager,releaseCenter,startupPreflight,startupEnvironmentValidation});
+  runtime=createApp({config,store,operations,recovery,discord,discordPolicy,incidentWorkflow,idempotencyStore,naver,naverMonitor,naverParticipation:naverParticipationStore,chzzkLiveMonitor,chzzkVerification,participationQueue:participationQueueStore,participationCalls,broadcastOps:broadcastOpsStore,viewerAuth,instanceId,runtimeHealth,backupManager,releaseCenter,startupPreflight,startupEnvironmentValidation});
   await new Promise((resolve,reject)=>{server=runtime.app.listen(config.port,config.host,resolve);server.once('error',reject);});
   if(previousCrash){
     try{await runtime.tick(Date.now());await recovery.audit({category:'system',action:'crash_catchup_tick',summary:'비정상 종료 후 예약 타이머 1회 즉시 재평가',actor:'system'});}
@@ -163,6 +182,7 @@ async function main(){
   if(['restart-required','rollback-restart-required'].includes(releaseCenter.snapshot().status)){try{const smoke=await releaseCenter.smoke({operationsReadable:true,dataReadable:true});await recovery.audit({category:'system',action:'release_smoke_auto',summary:`배포 후 자동 Smoke Test · ${smoke.status.toUpperCase()}`,actor:'system',details:{version:APP_VERSION}});console.log(`Release Smoke Test: ${smoke.status.toUpperCase()}`);}catch(error){runtimeHealth.recordIncident({severity:'error',source:'system',code:'release_smoke_failure',summary:'배포 후 Smoke Test 실행 실패',detail:error?.message});}}
   if(config.demo)console.log('연습 모드입니다. Discord에 연결하거나 메시지를 보내지 않습니다.');
   if(store.recovered||operations.recovered||recovery.recovered||discordPolicy.recovered||incidentWorkflow.recovered||idempotencyStore.recovered||naverMonitorStore.recovered||naverParticipationStore.recovered||participationQueueStore.recovered||broadcastOpsStore.recovered||chzzkLiveStore.recovered||naverAuthStore?.recovered)console.log('데이터 파일 무결성 복구가 수행됐습니다. 대시보드의 복구·감사 센터에서 상태를 확인해 주세요.');
+  if(chzzkVerification && !config.demo) cleanupVerificationGuilds=installVerificationGuildSetup(client,chzzkVerification,discordReporter);
   timer=setInterval(()=>runtime.tick().catch(error=>{runtimeHealth.recordIncident({severity:'warn',source:'scheduler',code:'tick_unhandled',summary:'자동 마감 타이머 예외',detail:error?.message});console.error('자동 마감 상태를 확인해 주세요.');}),3000);timer.unref();
 }
 async function closeHttpServer(){
@@ -187,6 +207,7 @@ async function shutdown(signal='shutdown',{preserveMarker=false,startupFailure=f
   }catch(error){clean=false;console.error('프로세스 잠금 상태를 갱신하지 못했습니다:',error.code||error.message);}
   runtime?.beginShutdown?.(signal);participationCalls?.stop?.();cleanupInteractions?.();
   try{if(!await closeHttpServer())clean=false;}catch(error){clean=false;console.error('HTTP 종료 중 오류가 발생했습니다:',error.message);}
+  if(cleanupVerificationGuilds)await cleanupVerificationGuilds();
   runtime?.close?.();client?.destroy();
   try{await flushPersistentStores();}catch(error){clean=false;console.error('종료 전 데이터 flush에 실패했습니다:',error.code||error.message);}
   runtimeHealth?.close?.();

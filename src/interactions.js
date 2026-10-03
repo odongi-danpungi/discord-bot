@@ -1,4 +1,5 @@
 import { handleCommunityInteraction } from './community-discord.js';
+import { handleChzzkVerification } from './chzzk-verification-discord.js';
 import { communityFor } from './community.js';
 import { guideCard, acknowledgeRules } from './guide.js';
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, TextInputBuilder, TextInputStyle, ModalBuilder, PermissionFlagsBits, Events, MessageFlags } from 'discord.js';
@@ -12,12 +13,16 @@ function field(id,label,placeholder,value='',required=false,max=100){
   if(value)input.setValue(value.slice(0,max));return new ActionRowBuilder().addComponents(input);
 }
 const row=(id,label,style=ButtonStyle.Primary)=>new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(id).setLabel(label).setStyle(style));
-export function installInteractions({client,config,store,operations,discord,viewerAuth,participationQueue=null,participationCalls=null,emergencyState=()=>({locked:false})}){
+export function installInteractions({client,config,store,operations,discord,viewerAuth,chzzkVerification=null,participationQueue=null,participationCalls=null,emergencyState=()=>({locked:false})}){
   const drafts=new Map();let syncTimer;
   const queueSync=()=>{clearTimeout(syncTimer);syncTimer=setTimeout(()=>discord.sync('sync').catch(()=>{}),900);syncTimer.unref();};
   const prune=setInterval(()=>{for(const [key,value] of drafts)if(value.expiresAt<Date.now())drafts.delete(key)},60000);prune.unref();
   client.on(Events.InteractionCreate,async interaction=>{
     try{
+      if ((interaction.isButton() && ['chzzk:link','chzzk:status'].includes(interaction.customId)) || (interaction.isChatInputCommand?.() && interaction.commandName === '치지직인증')) {
+        if (emergencyState?.().locked) return interaction.reply({ content: '방송 운영이 긴급 잠금 상태입니다.', ...ephemeral });
+        if (await handleChzzkVerification(interaction,chzzkVerification)) return;
+      }
       if(interaction.guildId!==config.guildId)return;
       const userId=interaction.user.id,key=`${config.guildId}:${userId}`;
       const current=()=>store.read().find(r=>r.guildId===config.guildId&&r.discordId===userId);
