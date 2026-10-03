@@ -116,7 +116,7 @@ test('malformed upstream data does not grant roles and owner consent is required
 });
 test('participant interaction is ephemeral and status identity comes from Discord user', async t => {
   const f = await fixture(t), replies = [];
-  const interaction = { isButton: () => true, customId: 'chzzk:link', user: { id: uid }, deferReply: async d => replies.push(d), editReply: async d => replies.push(d) };
+  const interaction = { guildId: config.guildId, isButton: () => true, customId: 'chzzk:link', user: { id: uid }, deferReply: async d => replies.push(d), editReply: async d => replies.push(d) };
   assert.equal(await handleChzzkVerification(interaction, f.service), true); assert.equal(replies[0].flags, 64);
   assert.match(replies[1].components[0].components[0].url, /^https:\/\/bot\.example\.com\/oauth/);
 });

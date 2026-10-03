@@ -11,7 +11,11 @@ async function refresh() {
   const summary = await api('/api/chzzk/verification');
   $('status').textContent = !summary.enabled ? '인증 기능 미설정 · Railway에서 CHZZK_VERIFY_ENABLED와 필수 환경변수를 설정하세요.' : summary.ownerConnected ? '방송 채널 인증 정보 저장됨 · 실제 팔로워 조회는 참가자 인증 시 확인합니다.' : '참가자 인증 전에 방송 채널 연결이 필요합니다.';
   $('details').replaceChildren();
-  for (const [label, value] of [['인증 완료', summary.verifiedCount || 0], ['계정 연결', summary.linkedCount || 0], ['닉네임 동기화', summary.nicknameSync ? '사용' : '사용 안 함'], ['등록할 Callback URL', summary.callbackUrl || 'PUBLIC_BASE_URL + /oauth/chzzk/callback']]) {
+  if (summary.installUrl) {
+    const dt = document.createElement('dt'), dd = document.createElement('dd'), link = document.createElement('a');
+    dt.textContent = '서버 추가'; link.textContent = '인증 역할 자동 설정으로 봇 초대'; link.href = summary.installUrl; link.target = '_blank'; link.rel = 'noopener noreferrer'; dd.append(link); $('details').append(dt, dd);
+  }
+  for (const [label, value] of [['자동 준비된 서버', summary.guildCount || 0], ['인증 시작', '/치지직인증 · 각 서버에서 실행'], ['인증 완료', summary.verifiedCount || 0], ['계정 연결', summary.linkedCount || 0], ['닉네임 동기화', summary.nicknameSync ? '사용' : '사용 안 함'], ['등록할 Callback URL', summary.callbackUrl || 'PUBLIC_BASE_URL + /oauth/chzzk/callback']]) {
     const dt = document.createElement('dt'), dd = document.createElement('dd'); dt.textContent = label; dd.textContent = String(value); $('details').append(dt, dd);
   }
 }

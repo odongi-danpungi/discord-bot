@@ -19,12 +19,15 @@ export function installInteractions({client,config,store,operations,discord,view
   const prune=setInterval(()=>{for(const [key,value] of drafts)if(value.expiresAt<Date.now())drafts.delete(key)},60000);prune.unref();
   client.on(Events.InteractionCreate,async interaction=>{
     try{
+      if ((interaction.isButton() && ['chzzk:link','chzzk:status'].includes(interaction.customId)) || (interaction.isChatInputCommand?.() && interaction.commandName === '치지직인증')) {
+        if (emergencyState?.().locked) return interaction.reply({ content: '방송 운영이 긴급 잠금 상태입니다.', ...ephemeral });
+        if (await handleChzzkVerification(interaction,chzzkVerification)) return;
+      }
       if(interaction.guildId!==config.guildId)return;
       const userId=interaction.user.id,key=`${config.guildId}:${userId}`;
       const current=()=>store.read().find(r=>r.guildId===config.guildId&&r.discordId===userId);
       const emergency=emergencyState?.()||{};const readOnlyInteraction=(interaction.isButton()&&['avatar_access','profile_view','reservation_view','community:home','community:guide','community:history','community:tickets','community:subscriptions'].includes(interaction.customId))||(interaction.isButton()&&interaction.customId.startsWith('guide:')&&!interaction.customId.startsWith('guide:ack'));
       if(emergency.locked&&!readOnlyInteraction){const content='방송 운영이 긴급 잠금 상태입니다. 진행자가 잠금을 해제한 뒤 다시 시도해 주세요.';if(interaction.deferred&&!interaction.replied)return interaction.editReply({content}).catch(()=>{});return interaction.reply({content,...ephemeral});}
-      if(await handleChzzkVerification(interaction,chzzkVerification))return;
       if((interaction.isButton()||interaction.isModalSubmit())&&interaction.customId?.startsWith('community:')){
         const service=communityFor({operations,config,discord});
         if(await handleCommunityInteraction(interaction,{operations,config,discord,service,store,viewerAuth,participationQueue,participationCalls}))return;

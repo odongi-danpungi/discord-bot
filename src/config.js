@@ -33,7 +33,7 @@ export async function loadConfig(env=process.env,args=process.argv.slice(2)) {
   });
   if (config.chzzkVerifyEnabled) {
     if (!config.chzzkClientId || !config.chzzkClientSecret || !/^[a-f0-9]{32}$/i.test(config.chzzkChannelId)) throw Error('CHZZK 인증의 Client ID·Secret·Channel ID가 필요합니다.');
-    if (!/^\d{17,20}$/.test(config.chzzkVerifyRoleId) || config.chzzkVerifyRoleId === config.guildId) throw Error('CHZZK_VERIFY_ROLE_ID는 인증 전용 역할 ID여야 합니다.');
+    if (config.chzzkVerifyRoleId && (!/^\d{17,20}$/.test(config.chzzkVerifyRoleId) || config.chzzkVerifyRoleId === config.guildId)) throw Error('CHZZK_VERIFY_ROLE_ID는 인증 전용 역할 ID여야 합니다.');
     const bytes = /^[a-f0-9]{64}$/i.test(config.chzzkTokenKey) ? Buffer.from(config.chzzkTokenKey, 'hex') : Buffer.from(config.chzzkTokenKey, 'base64');
     if (bytes.length !== 32) throw Error('CHZZK_TOKEN_KEY는 32바이트 HEX 또는 Base64 키여야 합니다.');
     let base;

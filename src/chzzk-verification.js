@@ -1,4 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes, createHash } from 'node:crypto';
+import { ensureVerificationGuild } from './chzzk-guild-setup.js';
 import { JsonStore } from './json-store.js';
 
 const hash = value => createHash('sha256').update(String(value)).digest('hex');
@@ -6,11 +7,13 @@ const fail = (message, status = 400) => Object.assign(Error(message), { status, 
 const snowflake = value => /^\d{17,20}$/.test(value || '');
 const channelId = value => /^[a-f0-9]{32}$/i.test(value || '');
 const cleanName = value => String(value || '').replace(/[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/g, '').trim().slice(0, 32);
+const validChecks = checks => checks === undefined || (checks && typeof checks === 'object' && !Array.isArray(checks) && Object.keys(checks).length <= 10000 && Object.entries(checks).every(([id, c]) => snowflake(id) && c && snowflake(c.roleId) && channelId(c.targetChannelId) && typeof c.status === 'string' && Number.isFinite(c.checkedAt) && typeof c.checkedName === 'string' && c.checkedName.length <= 32 && typeof c.nicknameSync === 'boolean'));
 const initial = () => ({ version: 1, owner: null, users: [], panel: null });
 export class ChzzkVerificationStore extends JsonStore {
   constructor(file, key) {
     super(file, initial(), state => state?.version === 1 && Array.isArray(state.users) && state.users.length <= 10000 &&
-      state.users.every(u => snowflake(u.userId) && channelId(u.channelId) && typeof u.name === 'string' && u.name.length <= 32) &&
+      (state.guilds === undefined || (Array.isArray(state.guilds) && state.guilds.length <= 10000 && state.guilds.every(g => snowflake(g.guildId) && (g.roleId === '' || snowflake(g.roleId)) && typeof g.pending === 'boolean') && new Set(state.guilds.map(g => g.guildId)).size === state.guilds.length)) &&
+      state.users.every(u => validChecks(u.guildChecks) && snowflake(u.userId) && channelId(u.channelId) && typeof u.name === 'string' && u.name.length <= 32) &&
       new Set(state.users.map(u => u.userId)).size === state.users.length && new Set(state.users.map(u => u.channelId)).size === state.users.length &&
       (state.owner === null || ['iv', 'tag', 'data'].every(k => typeof state.owner[k] === 'string')), { maxBytes: 8 * 1024 * 1024 });
     this.key = /^[a-f0-9]{64}$/i.test(key || '') ? Buffer.from(key, 'hex') : Buffer.from(key || '', 'base64');
@@ -55,8 +58,25 @@ export class ChzzkVerification {
     this.tickets = new Map(); this.states = new Map(); this.attempts = new Map(); this.generations = new Map();
     this.inflight = new Map(); this.userQueues = new Map();
   }
-  currentCheck(user) {
-    return user.roleId === this.config.chzzkVerifyRoleId && user.targetChannelId === this.config.chzzkChannelId &&
+  ensureGuild(guildId = this.config.guildId) { return ensureVerificationGuild(this, guildId); }
+  roleFor(guildId = this.config.guildId) {
+    return this.store.read().guilds?.find(g => g.guildId === guildId && !g.pending)?.roleId || (guildId === this.config.guildId ? this.config.chzzkVerifyRoleId : '');
+  }
+  checkedUser(user, guildId) {
+    if (!user || guildId === this.config.guildId) return user;
+    const check = user.guildChecks?.[guildId];
+    return { ...user, status: check?.status || 'pending', checkedAt: check?.checkedAt || 0, roleId: check?.roleId || '',
+      targetChannelId: check?.targetChannelId, checkedName: check?.checkedName, nicknameSync: check?.nicknameSync, nicknameSynced: Boolean(check?.nicknameSynced) };
+  }
+  async saveCheck(user, guildId, options) {
+    if (guildId === this.config.guildId) return this.store.saveUser(user, options);
+    const { status, checkedAt, roleId, targetChannelId, checkedName, nicknameSync, nicknameSynced } = user;
+    const current = this.store.read().users.find(u => u.userId === user.userId);
+    const guildChecks = { ...current.guildChecks, [guildId]: { status, checkedAt, roleId, targetChannelId, checkedName, nicknameSync, nicknameSynced } };
+    return this.store.saveUser({ ...current, guildChecks }, options);
+  }
+  currentCheck(user, guildId = this.config.guildId) {
+    return Boolean(this.roleFor(guildId)) && user.roleId === this.roleFor(guildId) && user.targetChannelId === this.config.chzzkChannelId &&
       user.checkedName === user.name && user.nicknameSync === Boolean(this.config.chzzkVerifyNickname);
   }
   assertCurrent(item) {
@@ -75,19 +95,29 @@ export class ChzzkVerification {
   }
   summary() {
     const state = this.store.read();
-    return { enabled: true, channelId: this.config.chzzkChannelId, roleId: this.config.chzzkVerifyRoleId,
+    return { enabled: true, channelId: this.config.chzzkChannelId, roleId: this.roleFor(), automaticRoles: !this.config.chzzkVerifyRoleId, guildCount: this.store.read().guilds?.length || 0,
       nicknameSync: this.config.chzzkVerifyNickname, ownerConnected: Boolean(state.owner),
       linkedCount: state.users.length, verifiedCount: state.users.filter(u => u.status === 'verified' && this.currentCheck(u)).length,
-      callbackUrl: this.callbackUrl(), panel: state.panel, followerScanLimit: 50 };
+      callbackUrl: this.callbackUrl(), installUrl: this.installUrl(), panel: state.panel, followerScanLimit: 50 };
+  }
+  installUrl() {
+    if (!snowflake(this.config.clientId)) return '';
+    const url = new URL('https://discord.com/oauth2/authorize');
+    url.searchParams.set('client_id', this.config.clientId);
+    url.searchParams.set('scope', 'bot applications.commands');
+    url.searchParams.set('permissions', this.config.chzzkVerifyNickname ? '402653184' : '268435456');
+    url.searchParams.set('integration_type', '0');
+    return url.href;
   }
   callbackUrl() { return new URL('/oauth/chzzk/callback', this.config.publicBaseUrl).href; }
   prune() {
     const now = this.now();
     for (const map of [this.tickets, this.states, this.attempts, this.generations]) for (const [key, value] of map) if (value.expiresAt <= now) map.delete(key);
   }
-  begin(kind, userId = '') {
+  begin(kind, userId = '', guildId = this.config.guildId) {
     this.guard(); this.prune();
     if (kind !== 'owner' && !snowflake(userId)) throw fail('Discord 계정을 확인하세요.');
+    if (kind !== 'owner' && !snowflake(guildId)) throw fail('Discord 서버에서 인증을 시작하세요.');
     const key = kind === 'owner' ? 'owner' : userId, attempt = this.attempts.get(key) || { count: 0, expiresAt: this.now() + 600000 };
     if (attempt.count >= 5 || this.tickets.size + this.states.size >= 2000) throw fail('인증 요청이 많습니다. 잠시 후 다시 시도하세요.', 429);
     attempt.count++; this.attempts.set(key, attempt);
@@ -96,7 +126,7 @@ export class ChzzkVerification {
     // Reissuing invalidates this person's earlier links, including browser-bound states.
     for (const map of [this.tickets, this.states]) for (const [id, item] of map) if (item.kind === kind && item.userId === userId) map.delete(id);
     const ticket = randomBytes(32).toString('base64url');
-    this.tickets.set(hash(ticket), { kind, userId, generation, expiresAt });
+    this.tickets.set(hash(ticket), { kind, userId, guildId, generation, expiresAt });
     const url = new URL('/oauth/chzzk/start', this.config.publicBaseUrl); url.searchParams.set('ticket', ticket);
     return { url: url.href, expiresIn: 600 };
   }
@@ -154,8 +184,8 @@ export class ChzzkVerification {
     return this.withUser(item.userId, async () => {
       this.assertCurrent(item);
       await this.store.saveUser({ userId: item.userId, channelId: me.channelId, name: cleanName(me.channelName), status: 'pending', linkedAt: this.now(),
-        checkedAt: 0, checkedName: null, nicknameSync: null, nicknameSynced: false }, { guard: () => this.assertCurrent(item) });
-      return this.verifyOnce(item.userId, () => this.assertCurrent(item));
+        checkedAt: 0, checkedName: null, nicknameSync: null, nicknameSynced: false, guildChecks: {} }, { guard: () => this.assertCurrent(item) });
+      return this.verifyOnce(item.userId, () => this.assertCurrent(item), item.guildId || this.config.guildId);
     });
   }
   async ownerToken() {
@@ -196,37 +226,41 @@ export class ChzzkVerification {
     })();
     try { return await this.followerScan; } finally { this.followerScan = null; }
   }
-  status(userId) {
-    const u = this.store.read().users.find(u => u.userId === userId);
-    return u ? { status: this.currentCheck(u) ? u.status : 'pending', name: u.name, checkedAt: u.checkedAt || 0, nicknameSynced: this.currentCheck(u) && Boolean(u.nicknameSynced) } : { status: 'unlinked' };
+  status(userId, guildId = this.config.guildId) {
+    const u = this.checkedUser(this.store.read().users.find(u => u.userId === userId), guildId);
+    return u ? { status: this.currentCheck(u, guildId) ? u.status : 'pending', name: u.name, checkedAt: u.checkedAt || 0, nicknameSynced: this.currentCheck(u, guildId) && Boolean(u.nicknameSynced) } : { status: 'unlinked' };
   }
-  async verify(userId) {
-    if (this.inflight.has(userId)) return this.inflight.get(userId);
-    const task = this.withUser(userId, () => this.verifyOnce(userId)); this.inflight.set(userId, task);
-    try { return await task; } finally { this.inflight.delete(userId); }
+  async verify(userId, guildId = this.config.guildId) {
+    const key = `${guildId}:${userId}`;
+    if (this.inflight.has(key)) return this.inflight.get(key);
+    const task = this.withUser(userId, () => this.verifyOnce(userId, this.guard, guildId)); this.inflight.set(key, task);
+    try { return await task; } finally { this.inflight.delete(key); }
   }
-  async verifyOnce(userId, guard = this.guard) {
+  async verifyOnce(userId, guard = this.guard, guildId = this.config.guildId) {
     guard();
-    const previous = this.store.read().users.find(u => u.userId === userId);
-    const user = previous && { ...previous, roleId: this.config.chzzkVerifyRoleId, targetChannelId: this.config.chzzkChannelId,
+    if (!snowflake(guildId)) throw fail('Discord 서버를 확인하세요.');
+    if (this.discord?.client) await this.ensureGuild(guildId);
+    guard();
+    const previous = this.checkedUser(this.store.read().users.find(u => u.userId === userId), guildId);
+    const user = previous && { ...previous, roleId: this.roleFor(guildId), targetChannelId: this.config.chzzkChannelId,
       checkedName: previous.name, nicknameSync: Boolean(this.config.chzzkVerifyNickname) };
     if (!user) return { status: 'unlinked' };
-    if (this.currentCheck(previous) && this.now() - (user.checkedAt || 0) < 120000) return this.status(userId);
+    if (this.currentCheck(previous, guildId) && this.now() - (user.checkedAt || 0) < 120000) return this.status(userId, guildId);
     const followers = await this.followers(); guard();
     if (!followers.ids.has(user.channelId)) {
-      await this.store.saveUser({ ...user, status: followers.complete ? 'not_following' : 'pending_scan', checkedAt: this.now() }, { guard });
-      return this.status(userId);
+      await this.saveCheck({ ...user, status: followers.complete ? 'not_following' : 'pending_scan', checkedAt: this.now() }, guildId, { guard });
+      return this.status(userId, guildId);
     }
     // Persist intent before Discord writes. Retries reconcile existing role/nickname.
-    await this.store.saveUser({ ...user, status: 'applying', checkedAt: this.now() }, { guard });
+    await this.saveCheck({ ...user, status: 'applying', checkedAt: this.now() }, guildId, { guard });
     try {
-      const result = await this.discord.applyChzzkVerification({ userId, roleId: this.config.chzzkVerifyRoleId,
+      const result = await this.discord.applyChzzkVerification({ userId, guildId, roleId: this.roleFor(guildId),
         name: user.name, nickname: this.config.chzzkVerifyNickname, guard });
-      await this.store.saveUser({ ...user, status: result.nicknameFailed ? 'partial' : 'verified', checkedAt: this.now(), nicknameSynced: Boolean(result.nicknameSynced) });
+      await this.saveCheck({ ...user, status: result.nicknameFailed ? 'partial' : 'verified', checkedAt: this.now(), nicknameSynced: Boolean(result.nicknameSynced) }, guildId);
     } catch {
-      await this.store.saveUser({ ...user, status: 'apply_failed', checkedAt: this.now() });
+      await this.saveCheck({ ...user, status: 'apply_failed', checkedAt: this.now() }, guildId);
     }
-    return this.status(userId);
+    return this.status(userId, guildId);
   }
   async publishPanel(channel) {
     this.guard(); if (!snowflake(channel)) throw fail('Discord 채널 ID를 확인하세요.');

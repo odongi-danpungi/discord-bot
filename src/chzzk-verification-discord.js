@@ -37,9 +37,9 @@ export function installChzzkVerificationDiscord(DiscordService) {
       guard(); const message = await channel.send(panel); return { channelId: channel.id, id: message.id };
     });
   };
-  DiscordService.prototype.applyChzzkVerification = function({ userId, roleId, name, nickname, guard }) {
+  DiscordService.prototype.applyChzzkVerification = function({ userId, guildId = this.guildId, roleId, name, nickname, guard }) {
     return this.serial('chzzk-verification-apply', async () => {
-      const guild = await this.client.guilds.fetch(this.guildId), role = await guild.roles.fetch(roleId),
+      const guild = await this.client.guilds.fetch(guildId), role = await guild.roles.fetch(roleId),
         member = await guild.members.fetch({ user: userId, force: true }), me = await guild.members.fetchMe();
       if (!role || role.id === guild.id || role.managed || role.permissions.bitfield !== 0n ||
         role.comparePositionTo(me.roles.highest) >= 0 || !me.permissions.has(PermissionFlagsBits.ManageRoles) || !member.manageable) {
@@ -58,15 +58,19 @@ export function installChzzkVerificationDiscord(DiscordService) {
   };
 }
 export async function handleChzzkVerification(interaction, service) {
-  if (!interaction.isButton() || !['chzzk:link', 'chzzk:status'].includes(interaction.customId)) return false;
+  const command = interaction.isChatInputCommand?.() && interaction.commandName === '치지직인증';
+  if (!command && (!interaction.isButton() || !['chzzk:link', 'chzzk:status'].includes(interaction.customId))) return false;
   await interaction.deferReply({ flags: 64 });
   if (!service) { await interaction.editReply('운영자가 CHZZK 인증 설정을 먼저 완료해야 합니다.'); return true; }
-  if (interaction.customId === 'chzzk:link') {
-    const result = service.begin('participant', interaction.user.id);
+  const guildId = interaction.guildId;
+  if (!guildId) { await interaction.editReply('Discord 서버에서 인증을 시작하세요.'); return true; }
+  if (service.discord?.client) await service.ensureGuild(guildId);
+  if (command || interaction.customId === 'chzzk:link') {
+    const result = service.begin('participant', interaction.user.id, guildId);
     await interaction.editReply({ content: '치지직 계정 연동을 시작합니다. 아래 버튼에서 로그인·동의를 진행해 주세요.\n10분 이내 1회 사용 가능 · 본인 전용 링크이므로 다른 사람에게 전달하지 마세요.',
       components: [{ type: 1, components: [{ type: 2, style: 5, label: '치지직에서 인증 진행', url: result.url }] }], allowedMentions: { parse: [] } });
   } else {
-    const own = await service.verify(interaction.user.id);
+    const own = await service.verify(interaction.user.id, guildId);
     await interaction.editReply({ content: verificationMessages[own.status] || '연동 확인 대기입니다.', allowedMentions: { parse: [] } });
   }
   return true;

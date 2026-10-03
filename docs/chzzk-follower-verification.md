@@ -5,11 +5,21 @@ Discord 인증 패널 → 본인에게만 보이는 10분 링크 → CHZZK 로�
 ## 운영 설정
 
 1. CHZZK 개발자 센터에 앱을 등록하고 **유저 정보 조회**, **채널 팔로워 조회** 범위를 승인받습니다. Callback URL은 `PUBLIC_BASE_URL`의 origin에 `/oauth/chzzk/callback`을 붙인 주소와 정확히 일치해야 합니다. 참가자 자신의 팔로워 목록을 조회하지 않으며 방송 채널 소유자의 별도 동의를 사용합니다.
-2. Railway에 `CHZZK_CLIENT_ID`, `CHZZK_CLIENT_SECRET`, `CHZZK_CHANNEL_ID`, `PUBLIC_BASE_URL`, `CHZZK_VERIFY_ENABLED=true`, `CHZZK_VERIFY_ROLE_ID`, `CHZZK_TOKEN_KEY`를 설정합니다. `CHZZK_VERIFY_NICKNAME_SYNC=false`이면 닉네임을 변경하지 않습니다.
+2. Railway에 `CHZZK_CLIENT_ID`, `CHZZK_CLIENT_SECRET`, `CHZZK_CHANNEL_ID`, `PUBLIC_BASE_URL`, `CHZZK_VERIFY_ENABLED=true`, `CHZZK_TOKEN_KEY`를 설정합니다. `CHZZK_VERIFY_NICKNAME_SYNC=false`이면 닉네임을 변경하지 않습니다.
 3. `CHZZK_TOKEN_KEY`는 별도로 생성한 32바이트 무작위 키입니다. 서버에서 `node -e "process.stdout.write(require('node:crypto').randomBytes(32).toString('hex'))"`로 만들고 Secret 저장소에 직접 보관하세요. 키와 실제 토큰을 채팅·Git·로그에 남기지 않습니다.
-4. 인증 전용 역할의 서버 권한을 비우고 봇 역할보다 아래로 배치합니다. 이 역할에 허용한 채널 접근은 인증 성공 시 함께 부여될 수 있으므로 관리자 채널 접근은 허용하지 마세요. 봇에는 역할 관리, 선택적으로 닉네임 관리, 패널 채널의 보기·메시지 전송·임베드·기록 읽기만 필요합니다. Administrator 및 새 Privileged Intent는 요구하지 않습니다.
+4. 봇 초대 시 **역할 관리** 권한을 승인하면 서버 입장/재시작 시 서버마다 권한 없는 **댕댕봇 인증** 역할을 자동 생성하고 ID를 저장합니다. `CHZZK_VERIFY_ROLE_ID`는 비워 두어도 됩니다. 기존 기본 서버 역할을 계속 사용할 때만 이 변수를 지정합니다. 다른 서버에는 해당 ID가 적용되지 않습니다. 이 역할에 허용한 채널 접근은 인증 성공 시 함께 부여될 수 있으므로 관리자 채널 접근은 허용하지 마세요. 봇에는 역할 관리, 선택적으로 닉네임 관리, 패널 채널의 보기·메시지 전송·임베드·기록 읽기만 필요합니다. Administrator 및 새 Privileged Intent는 요구하지 않습니다.
 5. 관리자 Dashboard → **CHZZK · 계정 연동 · 팔로워 인증** → **방송 채널 연결 시작**에서 방송 채널 소유자로 로그인합니다. 다른 채널로 로그인하면 거부됩니다.
-6. 패널을 게시할 Discord 채널 ID를 입력하고 게시 버튼을 누릅니다. 참가자는 패널의 **치지직 계정 인증**, **내 연동 상태** 버튼을 사용합니다. `/연동` 게임 정보 등록 기능은 그대로 유지됩니다.
+6. 각 서버 참가자는 **`/치지직인증`** 명령으로 바로 본인 전용 인증 링크를 받을 수 있습니다. 서버 설치용 전역 명령이므로 다른 서버에서 별도 설정 명령을 실행할 필요가 없습니다. 기본 서버에 안내 패널을 추가하고 싶으면 대시보드에서 Discord 채널 ID를 입력하고 게시 버튼을 누릅니다. 참가자는 패널의 **치지직 계정 인증**, **내 연동 상태** 버튼을 사용합니다. `/연동` 게임 정보 등록 기능은 그대로 유지됩니다.
+
+## 서버 추가 시 별도 설정 없이 사용
+
+- 모든 서버가 운영자가 한 번 지정·동의한 **동일한 CHZZK 방송 채널**의 팔로워를 인증합니다. 서버마다 서로 다른 방송 채널을 운영하는 제품은 아닙니다.
+- 새 초대 링크는 `bot`, `applications.commands` 범위와 `ManageRoles` 권한이 필요합니다. 닉네임 동기화를 켤 때만 `ManageNicknames`도 승인합니다. 대시보드의 이 기능 전용 초대 링크를 사용하면 됩니다.
+- 등록된 역할 ID를 재사용하며, 이름만 같은 임의의 기존 역할을 인증 역할로 채택하지 않습니다. 자동 역할이 삭제된 경우 정상적인 삭제 응답을 확인한 뒤 재생성합니다. 권한이 추가되거나 봇 위로 이동한 역할은 수정/승격하지 않고 차단합니다.
+- 새 서버가 들어올 때 자동 준비하고, 권한 부족으로 실패했다면 권한을 보완한 뒤 `/치지직인증`을 실행하면 다시 준비합니다. Administrator, MessageContent, GuildMembers 인텐트는 필요하지 않습니다.
+- 역할 생성 중 응답 단절/비정상 종료로 성공 여부가 불명확하면 `guilds[].pending=true`로 차단합니다. 운영자는 봇을 중지하고 인증 파일을 백업한 다음 Discord에서 실제 생성 결과를 확인하여 해당 서버의 `roleId`와 `pending=false`를 복구해야 합니다. 생성되지 않았음이 확실할 때만 빈 `roleId`와 `pending=false`로 바꾸고 재시작합니다. 토큰/사용자 레코드는 수정하지 않습니다.
+- Queue, Naver 운영, 기존 `/setting`·`/연동`은 기존 기본 서버 범위를 유지합니다. 다른 서버에는 CHZZK 인증 기능만 열립니다.
+- Discord는 회원이 초대 권한과 봇 권한을 승인하는 과정을 생략할 수 없습니다. 기존 봇의 권한이 부족한 서버는 최초 한 번 권한 보완이 필요합니다.
 
 ## 처리와 제한
 
@@ -33,6 +43,7 @@ Discord 인증 패널 → 본인에게만 보이는 10분 링크 → CHZZK 로�
 4. 동일 CHZZK 계정의 다른 Discord 연결 거부. 같은 참가자 동시 클릭 시 단일 적용.
 5. 봇 역할 순서/역할 관리 권한 부족, 닉네임 권한 부족의 실패 상태 확인.
 6. 긴급 잠금 후 Callback에도 역할 쓰기 차단. 서버 재시작 후 연결 기록·암호화 방송 토큰 복구, 미완료 링크 무효화.
-7. 갱신 토큰 회전 및 401/429, 새 팔로우 재확인. 실제 Token·Secret은 테스트 보고서에 포함하지 않습니다.
+7. 두 서버에 초대하여 역할 ID가 자동 생성되고 분리되는지, 재시작/재초대 시 중복되지 않는지 확인합니다. 같은 참가자를 두 서버에서 인증하여 해당 서버에만 역할이 부여되는지 확인합니다.
+8. 갱신 토큰 회전 및 401/429, 새 팔로우 재확인. 실제 Token·Secret은 테스트 보고서에 포함하지 않습니다.
 
 공식 명세: [CHZZK Authorization](https://chzzk.gitbook.io/chzzk/chzzk-api/authorization), [User](https://chzzk.gitbook.io/chzzk/chzzk-api/user), [Channel](https://chzzk.gitbook.io/chzzk/chzzk-api/channel), [Discord Guild member/role](https://docs.discord.com/developers/resources/guild).

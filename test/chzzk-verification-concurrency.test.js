@@ -7,7 +7,7 @@ import path from 'node:path';
 import { ChzzkVerification, ChzzkVerificationStore } from '../src/chzzk-verification.js';
 
 const uid = '111111111111111111', cid = 'a'.repeat(32), ownerId = 'b'.repeat(32);
-const config = { chzzkChannelId: ownerId, chzzkVerifyRoleId: '444444444444444444', chzzkVerifyNickname: true,
+const config = { guildId: '333333333333333333', chzzkChannelId: ownerId, chzzkVerifyRoleId: '444444444444444444', chzzkVerifyNickname: true,
   publicBaseUrl: 'https://bot.example.com', chzzkClientId: 'example-client', chzzkClientSecret: 'example-secret' };
 function deferred() { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; }
 async function fixture(t) {

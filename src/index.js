@@ -1,3 +1,4 @@
+import { installVerificationGuildSetup } from './chzzk-guild-setup.js';
 import { createViewerAuth } from './viewer.js';
 import { ChzzkVerification, ChzzkVerificationStore } from './chzzk-verification.js';
 import { installChzzkVerificationDiscord } from './chzzk-verification-discord.js';
@@ -36,6 +37,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 let client,server,timer,cleanupInteractions,runtime,runtimeHealth,backupManager,releaseCenter,startupPreflight,startupEnvironmentValidation,processLock,operationsRef,participationCalls;
+let cleanupVerificationGuilds;
 let persistentStores=[],shuttingDown=false,fatalHandling=false;
 
 async function flushPersistentStores(){
@@ -136,6 +138,12 @@ async function main(){
     ]});
     console.log('Discord bot ready: '+client.user.username);
   }
+  if (config.chzzkVerifyEnabled && !config.demo) {
+    // Upsert only this command; never overwrite other global commands.
+    await new REST({version:'10'}).setToken(config.token).post(Routes.applicationCommands(config.clientId), {body:{
+      name:'치지직인증', description:'치지직 팔로워 인증을 시작합니다', type:1, contexts:[0], integration_types:[0]
+    }});
+  }
   const startupEmergency=recovery.emergencyState();participationCalls=new ParticipationCallService({queue:participationQueueStore,discord,timeoutSeconds:config.participationCallTimeoutSeconds,audit:event=>recovery.audit({...event,actor:'system'}),reporter:event=>runtimeHealth.recordDiscord(event),paused:startupEmergency.locked,pausedAt:startupEmergency.lockedAt});
   let chzzkVerification = null;
   if (chzzkAuthStore) {
@@ -174,6 +182,7 @@ async function main(){
   if(['restart-required','rollback-restart-required'].includes(releaseCenter.snapshot().status)){try{const smoke=await releaseCenter.smoke({operationsReadable:true,dataReadable:true});await recovery.audit({category:'system',action:'release_smoke_auto',summary:`배포 후 자동 Smoke Test · ${smoke.status.toUpperCase()}`,actor:'system',details:{version:APP_VERSION}});console.log(`Release Smoke Test: ${smoke.status.toUpperCase()}`);}catch(error){runtimeHealth.recordIncident({severity:'error',source:'system',code:'release_smoke_failure',summary:'배포 후 Smoke Test 실행 실패',detail:error?.message});}}
   if(config.demo)console.log('연습 모드입니다. Discord에 연결하거나 메시지를 보내지 않습니다.');
   if(store.recovered||operations.recovered||recovery.recovered||discordPolicy.recovered||incidentWorkflow.recovered||idempotencyStore.recovered||naverMonitorStore.recovered||naverParticipationStore.recovered||participationQueueStore.recovered||broadcastOpsStore.recovered||chzzkLiveStore.recovered||naverAuthStore?.recovered)console.log('데이터 파일 무결성 복구가 수행됐습니다. 대시보드의 복구·감사 센터에서 상태를 확인해 주세요.');
+  if(chzzkVerification && !config.demo) cleanupVerificationGuilds=installVerificationGuildSetup(client,chzzkVerification,discordReporter);
   timer=setInterval(()=>runtime.tick().catch(error=>{runtimeHealth.recordIncident({severity:'warn',source:'scheduler',code:'tick_unhandled',summary:'자동 마감 타이머 예외',detail:error?.message});console.error('자동 마감 상태를 확인해 주세요.');}),3000);timer.unref();
 }
 async function closeHttpServer(){
@@ -198,6 +207,7 @@ async function shutdown(signal='shutdown',{preserveMarker=false,startupFailure=f
   }catch(error){clean=false;console.error('프로세스 잠금 상태를 갱신하지 못했습니다:',error.code||error.message);}
   runtime?.beginShutdown?.(signal);participationCalls?.stop?.();cleanupInteractions?.();
   try{if(!await closeHttpServer())clean=false;}catch(error){clean=false;console.error('HTTP 종료 중 오류가 발생했습니다:',error.message);}
+  if(cleanupVerificationGuilds)await cleanupVerificationGuilds();
   runtime?.close?.();client?.destroy();
   try{await flushPersistentStores();}catch(error){clean=false;console.error('종료 전 데이터 flush에 실패했습니다:',error.code||error.message);}
   runtimeHealth?.close?.();
