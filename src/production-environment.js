@@ -77,7 +77,8 @@ export function buildProductionEnvironmentValidation({config={},now=Date.now()}=
   if(chzzkConfigured){
     const clientOk=Boolean(config.chzzkClientId)&&secretCheck(config.chzzkClientSecret,{required:true})==='pass',channelOk=/^[0-9a-fA-F]{32}$/.test(String(config.chzzkChannelId||''));
     add(checks,{id:'chzzk-client',group:'chzzk',label:'CHZZK Client 인증',status:clientOk?'pass':'fail',detail:clientOk?'Client ID/Secret 설정됨':'Client ID/Secret 누락 또는 placeholder 확인 필요',action:'CHZZK Developers의 Client ID/Secret을 Secret Manager에 설정하세요.',required:true});
-    add(checks,{id:'chzzk-channel',group:'chzzk',label:'CHZZK Channel ID',status:channelOk?'pass':'fail',detail:channelOk?'32자리 Channel ID 형식 확인됨':'Channel ID 형식 확인 필요',action:'방송 채널의 32자리 CHZZK_CHANNEL_ID를 확인하세요.',required:true});
+    const autoChannel=Boolean(config.chzzkVerifyEnabled&&!config.chzzkMonitorEnabled&&!config.chzzkChannelId);
+    add(checks,{id:'chzzk-channel',group:'chzzk',label:'CHZZK Channel ID',status:channelOk?'pass':autoChannel?'warn':'fail',detail:channelOk?'32자리 Channel ID 형식 확인됨':autoChannel?'팔로워 인증 대상은 운영자 동의 시 자동 저장 · 실제 연결 확인 필요':'Channel ID 형식 확인 필요',action:autoChannel?'관리자 대시보드에서 공통 방송 채널을 한 번 연결하세요.':'방송 감지에 사용할 32자리 CHZZK_CHANNEL_ID를 확인하세요.',required:!autoChannel});
     add(checks,{id:'chzzk-monitor',group:'chzzk',label:'CHZZK Monitor',status:config.chzzkMonitorEnabled?'pass':'warn',detail:config.chzzkMonitorEnabled?'방송 감지 활성화':'Client 설정됨 · Monitor 비활성',action:'자동 방송 시작/종료 감지를 사용하려면 CHZZK_MONITOR_ENABLED=true로 설정하세요.',required:false});
   }else add(checks,{id:'chzzk-client',group:'chzzk',label:'CHZZK 연동',status:'warn',detail:'CHZZK Open API 연동 미설정',action:'방송 자동 감지를 사용할 때 Client/Channel 설정을 추가하세요.',required:false});
 

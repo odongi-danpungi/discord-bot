@@ -59,6 +59,11 @@ export class ChzzkVerification {
     this.inflight = new Map(); this.userQueues = new Map();
   }
   ensureGuild(guildId = this.config.guildId) { return ensureVerificationGuild(this, guildId); }
+  targetChannelId() {
+    // The broadcaster's consent establishes the common target for every guild.
+    // Keep the environment value only as a pre-connection/legacy fallback.
+    return (this.store.ownerToken()?.channelId || this.config.chzzkChannelId || '').toLowerCase();
+  }
   roleFor(guildId = this.config.guildId) {
     return this.store.read().guilds?.find(g => g.guildId === guildId && !g.pending)?.roleId || (guildId === this.config.guildId ? this.config.chzzkVerifyRoleId : '');
   }
@@ -76,7 +81,7 @@ export class ChzzkVerification {
     return this.store.saveUser({ ...current, guildChecks }, options);
   }
   currentCheck(user, guildId = this.config.guildId) {
-    return Boolean(this.roleFor(guildId)) && user.roleId === this.roleFor(guildId) && user.targetChannelId === this.config.chzzkChannelId &&
+    return Boolean(this.roleFor(guildId)) && user.roleId === this.roleFor(guildId) && user.targetChannelId === this.targetChannelId() &&
       user.checkedName === user.name && user.nicknameSync === Boolean(this.config.chzzkVerifyNickname);
   }
   assertCurrent(item) {
@@ -95,7 +100,10 @@ export class ChzzkVerification {
   }
   summary() {
     const state = this.store.read();
-    return { enabled: true, channelId: this.config.chzzkChannelId, roleId: this.roleFor(), automaticRoles: !this.config.chzzkVerifyRoleId, guildCount: this.store.read().guilds?.length || 0,
+    const owner = this.store.ownerToken();
+    return { enabled: true, channelId: this.targetChannelId(), channelName: cleanName(owner?.channelName || ''), mode: 'shared-broadcaster',
+      roleId: this.roleFor(), automaticRoles: !this.config.chzzkVerifyRoleId, guildCount: state.guilds?.filter(g => !g.pending && g.roleId).length || 0,
+      joinedGuildCount: this.discord?.client?.guilds?.cache?.size || 0,
       nicknameSync: this.config.chzzkVerifyNickname, ownerConnected: Boolean(state.owner),
       linkedCount: state.users.length, verifiedCount: state.users.filter(u => u.status === 'verified' && this.currentCheck(u)).length,
       callbackUrl: this.callbackUrl(), installUrl: this.installUrl(), panel: state.panel, followerScanLimit: 50 };
@@ -116,6 +124,7 @@ export class ChzzkVerification {
   }
   begin(kind, userId = '', guildId = this.config.guildId) {
     this.guard(); this.prune();
+    if (!['owner', 'participant'].includes(kind)) throw fail('인증 유형을 확인하세요.');
     if (kind !== 'owner' && !snowflake(userId)) throw fail('Discord 계정을 확인하세요.');
     if (kind !== 'owner' && !snowflake(guildId)) throw fail('Discord 서버에서 인증을 시작하세요.');
     const key = kind === 'owner' ? 'owner' : userId, attempt = this.attempts.get(key) || { count: 0, expiresAt: this.now() + 600000 };
@@ -175,9 +184,11 @@ export class ChzzkVerification {
     if (!channelId(me.channelId) || !cleanName(me.channelName)) throw fail('CHZZK 계정 정보를 확인할 수 없습니다.', 502);
     this.assertCurrent(item);
     if (item.kind === 'owner') {
-      if (me.channelId !== this.config.chzzkChannelId) throw fail('설정된 방송 채널 계정으로 로그인해 주세요.', 403);
+      const current = this.store.ownerToken();
+      // Do not silently retarget existing follower badges to another broadcaster.
+      if (current && current.channelId.toLowerCase() !== me.channelId.toLowerCase()) throw Object.assign(fail('이미 연결된 방송 채널 계정으로 로그인해 주세요. 다른 채널로 변경하려면 기존 인증 역할을 먼저 검토해야 합니다.', 409), { reason: 'OWNER_CHANNEL_MISMATCH' });
       await this.store.saveOwner({ accessToken: token.accessToken, refreshToken: token.refreshToken,
-        expiresAt: this.now() + Number(token.expiresIn) * 1000, channelId: me.channelId }, { guard: () => this.assertCurrent(item) });
+        expiresAt: this.now() + Number(token.expiresIn) * 1000, channelId: me.channelId.toLowerCase(), channelName: cleanName(me.channelName) }, { guard: () => this.assertCurrent(item) });
       this.followerCache = null; return { status: 'owner_connected' };
     }
     // Participant OAuth tokens are never persisted; only the verified identity is kept.
@@ -190,7 +201,7 @@ export class ChzzkVerification {
   }
   async ownerToken() {
     const expectedOwner = this.store.read().owner, token = this.store.ownerToken();
-    if (!token || token.channelId !== this.config.chzzkChannelId) throw fail('운영자가 방송 채널을 먼저 연결해야 합니다.', 503);
+    if (!token || token.channelId.toLowerCase() !== this.targetChannelId()) throw fail('운영자가 방송 채널을 먼저 연결해야 합니다.', 503);
     if (token.expiresAt > this.now() + 60000) return token.accessToken;
     if (this.ownerRefresh) return this.ownerRefresh;
     if (!token.refreshToken) throw fail('방송 채널 동의를 다시 진행하세요.', 503);
@@ -204,7 +215,7 @@ export class ChzzkVerification {
       if (saved !== false) return next.accessToken;
       // A newer owner consent won while this refresh was in flight. Never restore its old grant.
       const current = this.store.ownerToken();
-      if (!current || current.channelId !== this.config.chzzkChannelId || current.expiresAt <= this.now() + 60000) throw fail('방송 채널 인증이 변경됐습니다. 다시 확인하세요.', 503);
+      if (!current || current.channelId.toLowerCase() !== this.targetChannelId() || current.expiresAt <= this.now() + 60000) throw fail('방송 채널 인증이 변경됐습니다. 다시 확인하세요.', 503);
       return current.accessToken;
     })();
     try { return await this.ownerRefresh; } finally { this.ownerRefresh = null; }
@@ -242,7 +253,7 @@ export class ChzzkVerification {
     if (this.discord?.client) await this.ensureGuild(guildId);
     guard();
     const previous = this.checkedUser(this.store.read().users.find(u => u.userId === userId), guildId);
-    const user = previous && { ...previous, roleId: this.roleFor(guildId), targetChannelId: this.config.chzzkChannelId,
+    const user = previous && { ...previous, roleId: this.roleFor(guildId), targetChannelId: this.targetChannelId(),
       checkedName: previous.name, nicknameSync: Boolean(this.config.chzzkVerifyNickname) };
     if (!user) return { status: 'unlinked' };
     if (this.currentCheck(previous, guildId) && this.now() - (user.checkedAt || 0) < 120000) return this.status(userId, guildId);
@@ -267,7 +278,7 @@ export class ChzzkVerification {
     // Include the reference read and commit in the same queue as the Discord write.
     return this.withUser('panel', async () => {
       this.guard();
-      if (this.store.ownerToken()?.channelId !== this.config.chzzkChannelId) throw fail('방송 채널을 먼저 연결한 후 인증 패널을 게시하세요.', 503);
+      if (!this.store.ownerToken()) throw fail('방송 채널을 먼저 연결한 후 인증 패널을 게시하세요.', 503);
       const ref = await this.discord.publishChzzkVerification({ channelId: channel, ref: this.store.read().panel,
         nickname: this.config.chzzkVerifyNickname, guard: this.guard });
       await this.store.update(s => { s.panel = ref; }); return ref;

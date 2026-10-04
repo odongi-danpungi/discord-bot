@@ -32,7 +32,7 @@ export async function loadConfig(env=process.env,args=process.argv.slice(2)) {
     chzzkVerificationFile: value('CHZZK_VERIFICATION_FILE') || path.join(path.dirname(config.dataFile), 'chzzk-verification.json')
   });
   if (config.chzzkVerifyEnabled) {
-    if (!config.chzzkClientId || !config.chzzkClientSecret || !/^[a-f0-9]{32}$/i.test(config.chzzkChannelId)) throw Error('CHZZK 인증의 Client ID·Secret·Channel ID가 필요합니다.');
+    if (!config.chzzkClientId || !config.chzzkClientSecret) throw Error('CHZZK 인증의 Client ID·Secret이 필요합니다.');
     if (config.chzzkVerifyRoleId && (!/^\d{17,20}$/.test(config.chzzkVerifyRoleId) || config.chzzkVerifyRoleId === config.guildId)) throw Error('CHZZK_VERIFY_ROLE_ID는 인증 전용 역할 ID여야 합니다.');
     const bytes = /^[a-f0-9]{64}$/i.test(config.chzzkTokenKey) ? Buffer.from(config.chzzkTokenKey, 'hex') : Buffer.from(config.chzzkTokenKey, 'base64');
     if (bytes.length !== 32) throw Error('CHZZK_TOKEN_KEY는 32바이트 HEX 또는 Base64 키여야 합니다.');
@@ -47,7 +47,7 @@ export async function loadConfig(env=process.env,args=process.argv.slice(2)) {
   const chzzkAny=Boolean(config.chzzkClientId||config.chzzkClientSecret||config.chzzkChannelId||config.chzzkMonitorEnabled);
   if(chzzkAny){
     if(!config.chzzkClientId||!config.chzzkClientSecret)throw Error('치지직 방송 감지를 사용하려면 CHZZK_CLIENT_ID와 CHZZK_CLIENT_SECRET이 모두 필요합니다.');
-    if(!/^[0-9a-fA-F]{32}$/.test(config.chzzkChannelId||''))throw Error('CHZZK_CHANNEL_ID는 32자리 치지직 채널 ID여야 합니다.');
+    if((config.chzzkChannelId||config.chzzkMonitorEnabled||!config.chzzkVerifyEnabled)&&!/^[0-9a-fA-F]{32}$/.test(config.chzzkChannelId||''))throw Error('CHZZK_CHANNEL_ID는 32자리 치지직 채널 ID여야 합니다.');
   }
   const naverAny=Boolean(config.naverClientId||config.naverClientSecret||config.naverRedirectUri||config.naverCafeId||config.naverMenuId||config.naverMemoMenuId||config.naverTokenKey||config.naverMonitorEnabled||config.naverMonitorQuery||config.naverMonitorCafeUrl);
   if(naverAny){
