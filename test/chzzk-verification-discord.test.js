@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PermissionFlagsBits } from 'discord.js';
-import { buildChzzkVerificationPanel, installChzzkVerificationDiscord, verificationPanel } from '../src/chzzk-verification-discord.js';
+import { buildChzzkVerificationPanel, handleChzzkVerification, installChzzkVerificationDiscord, verificationPanel } from '../src/chzzk-verification-discord.js';
 
 const guildId = '111111111111111111', roleId = '222222222222222222', userId = '333333333333333333', channelId = '444444444444444444';
 function fixture() {
@@ -63,8 +63,7 @@ test('role application rejects unsafe roles, hierarchy and missing permissions b
     managed: f => { f.role.managed = true; },
     everyone: f => { f.role.id = guildId; },
     hierarchy: f => { f.role.comparePositionTo = () => 0; },
-    permission: f => { f.permissions.delete(PermissionFlagsBits.ManageRoles); },
-    member: f => { f.member.manageable = false; }
+    permission: f => { f.permissions.delete(PermissionFlagsBits.ManageRoles); }
   };
   for (const [name, change] of Object.entries(cases)) await t.test(name, async () => {
     const f = fixture(); change(f); await assert.rejects(f.apply(), /역할/); assert.equal(f.writes.length, 0);
@@ -79,6 +78,39 @@ test('already-applied role and nickname produce no duplicate Discord writes', as
 test('disabled nickname synchronization requires no ManageNicknames permission', async () => {
   const f = fixture(); f.permissions.delete(PermissionFlagsBits.ManageNicknames);
   assert.deepEqual(await f.apply({ nickname: false }), { nicknameSynced: false }); assert.deepEqual(f.writes, [['role', roleId]]);
+});
+
+test('a member above the bot can receive a lower safe role with nickname synchronization disabled', async () => {
+  const f = fixture(); f.member.manageable = false; f.permissions.delete(PermissionFlagsBits.ManageNicknames);
+  assert.deepEqual(await f.apply({ nickname: false }), { nicknameSynced: false });
+  assert.deepEqual(f.writes, [['role', roleId]]);
+});
+
+test('nickname hierarchy failure preserves the safe role without attempting nickname mutation', async () => {
+  const f = fixture(); f.member.manageable = false;
+  assert.deepEqual(await f.apply(), { nicknameFailed: true, nicknameSynced: false });
+  assert.deepEqual(f.writes, [['role', roleId]]);
+});
+
+test('slash response offers a private status recheck bound to the clicking user and guild', async () => {
+  const replies = [], checks = [];
+  const service = {
+    begin: () => ({ url: 'https://bot.example.com/oauth/chzzk/start?ticket=synthetic' }),
+    verify: async (...args) => { checks.push(args); return { status: 'not_following' }; }
+  };
+  const interaction = { guildId, user: { id: userId }, commandName: '치지직인증',
+    isChatInputCommand: () => true, isButton: () => false,
+    deferReply: async value => replies.push(value), editReply: async value => replies.push(value) };
+  await handleChzzkVerification(interaction, service);
+  const button = replies[1].components.flatMap(row => row.components).find(b => b.custom_id === 'chzzk:status');
+  assert.ok(button); assert.equal(button.label, '내 연동 상태');
+  assert.deepEqual(replies[0], { flags: 64 });
+  await handleChzzkVerification({ ...interaction, customId: button.custom_id,
+    isChatInputCommand: () => false, isButton: () => true }, service);
+  assert.deepEqual(checks, [[userId, guildId]]);
+  assert.deepEqual(replies[2], { flags: 64 });
+  assert.match(replies[3].content, /팔로우가 아직 확인되지/);
+  assert.deepEqual(replies[3].allowedMentions, { parse: [] });
 });
 
 test('nickname failure preserves partial role success and a new lock prevents nickname writes', async () => {
