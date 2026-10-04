@@ -58,12 +58,19 @@ test('follower OAuth completes using broadcaster token and stores no participant
   assert.equal(JSON.stringify(f.service.summary()).includes(uid), false);
   await assert.rejects(f.service.callback({ ...b, code: 'participant' }), /만료/);
 });
-test('broadcaster OAuth rejects wrong channel and accepts matching owner', async t => {
+test('initial broadcaster consent discovers the common channel; later consent cannot silently retarget badges', async t => {
   const f = await fixture(t); let b = browser(f.service, '', 'owner');
-  await assert.rejects(f.service.callback({ ...b, code: 'participant' }), /방송 채널/);
-  assert.equal(f.store.read().owner, null);
-  b = browser(f.service, '', 'owner'); assert.equal((await f.service.callback({ ...b, code: 'owner' })).status, 'owner_connected');
+  f.service.config.chzzkChannelId = 'c'.repeat(32); // Stale monitor/legacy setting must not block first consent.
+  assert.equal((await f.service.callback({ ...b, code: 'owner' })).status, 'owner_connected');
   assert.equal(f.store.ownerToken().channelId, ownerId);
+  assert.equal(f.service.summary().channelId, ownerId);
+  assert.equal(f.service.summary().channelName, '가상 참가자');
+  assert.equal(f.service.config.chzzkChannelId, 'c'.repeat(32)); // Broadcast monitoring remains independent.
+  b = browser(f.service, '', 'owner');
+  await assert.rejects(f.service.callback({ ...b, code: 'participant' }), e => e.status === 409 && e.reason === 'OWNER_CHANNEL_MISMATCH');
+  assert.equal(f.store.ownerToken().channelId, ownerId);
+  b = browser(f.service, '', 'owner');
+  assert.equal((await f.service.callback({ ...b, code: 'owner' })).status, 'owner_connected');
 });
 test('denied consent and operational lock never issue API or Discord writes', async t => {
   const f = await fixture(t), b = browser(f.service);

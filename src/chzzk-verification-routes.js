@@ -22,9 +22,14 @@ export function installChzzkOAuthRoutes(app, service, guard) {
       const cookie = match ? decodeURIComponent(match.slice('__Secure-chzzk-oauth='.length)) : '';
       res.clearCookie('__Secure-chzzk-oauth', { httpOnly: true, secure: true, sameSite: 'lax', path: '/oauth/chzzk/callback' });
       const result = await service.callback({ state: req.query.state, cookie, code: req.query.code, denied: Boolean(req.query.error) });
-      const message = result.status === 'owner_connected' ? '방송 채널이 연결됐습니다. 관리자 대시보드에서 상태를 확인하세요.' : verificationMessages[result.status];
+      const message = result.status === 'owner_connected' ? '공통 방송 채널이 자동 설정됐습니다. 봇을 초대한 모든 Discord 서버에서 같은 채널의 팔로워를 인증합니다. 관리자 대시보드에서 채널을 확인하세요.' : verificationMessages[result.status];
       return page(res, result.status === 'verified' ? '치지직 팔로워 인증 완료' : '치지직 계정 연동 결과', message || '연동 확인 대기입니다.');
-    } catch (e) { return page(res, '인증 완료되지 않음', '동의 취소·링크 만료·계정 중복 또는 연결 설정을 확인하고 인증을 다시 시작하세요.', e.status || 400); }
+    } catch (e) {
+      const message = e.reason === 'OWNER_CHANNEL_MISMATCH'
+        ? '이미 연결된 공통 방송 채널과 다른 계정입니다. 기존 방송 채널 계정으로 로그인해 주세요. 인증 역할 보호를 위해 채널을 자동 변경하지 않았습니다.'
+        : '동의 취소·링크 만료·계정 중복 또는 연결 설정을 확인하고 인증을 다시 시작하세요.';
+      return page(res, '인증 완료되지 않음', message, e.status || 400);
+    }
   });
 }
 export function installChzzkVerificationAdminRoutes(app, service, guard) {
