@@ -42,7 +42,7 @@ export function installChzzkVerificationDiscord(DiscordService) {
       const guild = await this.client.guilds.fetch(guildId), role = await guild.roles.fetch(roleId),
         member = await guild.members.fetch({ user: userId, force: true }), me = await guild.members.fetchMe();
       if (!role || role.id === guild.id || role.managed || role.permissions.bitfield !== 0n ||
-        role.comparePositionTo(me.roles.highest) >= 0 || !me.permissions.has(PermissionFlagsBits.ManageRoles) || !member.manageable) {
+        role.comparePositionTo(me.roles.highest) >= 0 || !me.permissions.has(PermissionFlagsBits.ManageRoles)) {
         throw Error('권한 없는 인증 전용 역할과 봇의 역할 순서를 확인하세요.');
       }
       // Explicitly reject elevated roles; this feature only grants a follower badge/access role.
@@ -50,6 +50,8 @@ export function installChzzkVerificationDiscord(DiscordService) {
       if (!nickname) return { nicknameSynced: false };
       try {
         guard();
+        // Member hierarchy restricts nickname edits; granting a safe lower role uses the role hierarchy above.
+        if (!member.manageable) throw Error('닉네임 변경 대상의 역할 순서 확인 필요');
         if (!me.permissions.has(PermissionFlagsBits.ManageNicknames)) throw Error('닉네임 변경 권한 없음');
         if (member.nickname !== name) await member.setNickname(name, '사용자가 동의한 CHZZK 채널명 동기화');
         return { nicknameSynced: true };
@@ -68,7 +70,10 @@ export async function handleChzzkVerification(interaction, service) {
   if (command || interaction.customId === 'chzzk:link') {
     const result = service.begin('participant', interaction.user.id, guildId);
     await interaction.editReply({ content: '치지직 계정 연동을 시작합니다. 아래 버튼에서 로그인·동의를 진행해 주세요.\n10분 이내 1회 사용 가능 · 본인 전용 링크이므로 다른 사람에게 전달하지 마세요.',
-      components: [{ type: 1, components: [{ type: 2, style: 5, label: '치지직에서 인증 진행', url: result.url }] }], allowedMentions: { parse: [] } });
+      components: [{ type: 1, components: [
+        { type: 2, style: 5, label: '치지직에서 인증 진행', url: result.url },
+        { type: 2, style: 2, custom_id: 'chzzk:status', label: '내 연동 상태' }
+      ] }], allowedMentions: { parse: [] } });
   } else {
     const own = await service.verify(interaction.user.id, guildId);
     await interaction.editReply({ content: verificationMessages[own.status] || '연동 확인 대기입니다.', allowedMentions: { parse: [] } });
