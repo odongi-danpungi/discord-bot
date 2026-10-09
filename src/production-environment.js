@@ -38,6 +38,12 @@ export function buildProductionEnvironmentValidation({config={},now=Date.now()}=
   const idsOk=/^\d{17,20}$/.test(String(config.clientId||''))&&/^\d{17,20}$/.test(String(config.guildId||''));
   add(checks,{id:'discord-ids',group:'discord',label:'Discord Application/Guild IDs',status:idsOk?'pass':production?'fail':'warn',detail:idsOk?'Application ID와 Guild ID 형식 확인됨':'DISCORD_CLIENT_ID / DISCORD_GUILD_ID 형식 확인 필요',action:'Discord Developer Portal과 대상 서버에서 ID를 다시 확인하세요.',required:production});
 
+  if(config.multiWorkspaceEnabled){
+    const secretOk=secretCheck(config.discordClientSecret,{required:true,min:12})==='pass';
+    add(checks,{id:'workspace-login',group:'discord',label:'사용자 Discord 로그인',status:secretOk?'pass':'fail',detail:secretOk?'OAuth Client Secret 기본 정책 확인됨 · 실제 로그인은 별도 검증 필요':'사용자 로그인용 Client Secret 누락·placeholder·길이 정책 확인 필요',action:'DISCORD_CLIENT_SECRET과 PUBLIC_BASE_URL + /portal/auth/callback을 Discord OAuth2에 설정하세요.',required:true});
+    const originOk=validHttpsUrl(config.publicBaseUrl,{path:'/'});
+    add(checks,{id:'workspace-origin',group:'network',label:'사용자 서비스 HTTPS origin',status:originOk?'pass':'fail',detail:originOk?'공유 콜백용 루트 HTTPS 주소 확인됨':'사용자 서비스는 쿼리·인증정보 없는 루트 HTTPS 주소가 필요합니다.',action:'실제 배포 도메인을 PUBLIC_BASE_URL로 지정하세요.',required:true});
+  }
   const adminSecret=secretCheck(config.dashboardPassword,{required:production,min:12});
   const adminStrong=adminSecret==='pass'&&String(config.dashboardPassword).length>=16;
   add(checks,{id:'dashboard-password',group:'access',label:'Dashboard 관리자 비밀번호',status:adminSecret!=='pass'?(production?'fail':'warn'):adminStrong?'pass':'warn',detail:adminSecret!=='pass'?'비밀번호 누락·placeholder·길이 정책을 확인하세요.':adminStrong?'16자 이상 고유 비밀번호 설정됨':'최소 정책은 충족하지만 16자 이상을 권장합니다.',action:'다른 서비스와 재사용하지 않은 16자 이상 비밀번호를 사용하세요.',required:production});
@@ -87,7 +93,7 @@ export function buildProductionEnvironmentValidation({config={},now=Date.now()}=
     add(checks,{id:'chzzk-verification-key',group:'chzzk',label:'CHZZK 인증 토큰 암호화',status:keyOk?'pass':'fail',detail:keyOk?'32바이트 암호화 키 형식 확인됨':'인증 토큰 저장 키가 필요합니다.',action:'CHZZK_TOKEN_KEY는 다른 Secret과 별개로 생성하고 재배포 후 유지하세요.',required:true});
     add(checks,{id:'chzzk-verification-role',group:'chzzk',label:'CHZZK 인증 전용 역할',status:roleOk?'pass':'fail',detail:roleOk?(config.chzzkVerifyRoleId?'역할 ID 형식 확인됨 · 실제 권한/순서는 적용 시 검사':'서버별 인증 역할 자동 생성 · Discord 역할 관리 권한 필요'):'인증 전용 역할 ID를 확인하세요.',action:'봇에 역할 관리 권한을 허용하세요. CHZZK_VERIFY_ROLE_ID는 기존 기본 서버 역할 지정 시에만 사용합니다.',required:true});
   }
-  const comparable=[['DASHBOARD_PASSWORD',config.dashboardPassword],['DASHBOARD_OPERATOR_PASSWORD',config.dashboardOperatorPassword],['BROADCAST_TOKEN',config.broadcastToken],['NAVER_CLIENT_SECRET',config.naverClientSecret],['NAVER_TOKEN_KEY',config.naverTokenKey],['CHZZK_CLIENT_SECRET',config.chzzkClientSecret],['CHZZK_TOKEN_KEY',config.chzzkTokenKey]].filter(([,value])=>String(value||'').length>=12);
+  const comparable=[['DISCORD_CLIENT_SECRET',config.discordClientSecret],['DASHBOARD_PASSWORD',config.dashboardPassword],['DASHBOARD_OPERATOR_PASSWORD',config.dashboardOperatorPassword],['BROADCAST_TOKEN',config.broadcastToken],['NAVER_CLIENT_SECRET',config.naverClientSecret],['NAVER_TOKEN_KEY',config.naverTokenKey],['CHZZK_CLIENT_SECRET',config.chzzkClientSecret],['CHZZK_TOKEN_KEY',config.chzzkTokenKey]].filter(([,value])=>String(value||'').length>=12);
   const reused=[];for(let i=0;i<comparable.length;i++)for(let j=i+1;j<comparable.length;j++)if(comparable[i][1]===comparable[j][1])reused.push(`${comparable[i][0]} / ${comparable[j][0]}`);
   add(checks,{id:'secret-reuse',group:'core',label:'Secret 재사용',status:reused.length?'fail':'pass',detail:reused.length?`서로 다른 자격 증명 ${reused.length}쌍이 같은 값을 사용합니다.`:'검사 대상 Secret 간 동일 값 없음',action:'Dashboard/Broadcast/Naver/CHZZK 비밀값은 각각 독립된 랜덤값을 사용하세요.',required:production});
 

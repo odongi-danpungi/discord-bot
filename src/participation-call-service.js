@@ -9,9 +9,10 @@ function httpError(message,status=400,code='participation_call_error'){
 function safeReason(value){return String(value||'manual').trim().slice(0,80)||'manual';}
 
 export class ParticipationCallService {
-  constructor({queue,discord,timeoutSeconds=60,audit=null,reporter=null,paused=false,pausedAt=0}={}){
+  constructor({queue,discord,timeoutSeconds=60,audit=null,reporter=null,paused=false,pausedAt=0,guard=()=>{}}={}){
     if(!queue)throw Error('ParticipationCallService requires a queue store.');
     if(!discord)throw Error('ParticipationCallService requires a Discord service.');
+    this.guard=guard;
     this.queueStore=queue;
     this.discord=discord;
     this.timeoutSeconds=Math.max(15,Math.min(300,Number(timeoutSeconds)||60));
@@ -33,7 +34,7 @@ export class ParticipationCallService {
     const raw=this.queueStore.read(),called=raw.entries.filter(entry=>entry.status==='called').sort((a,b)=>a.position-b.position||a.sequence-b.sequence),current=called[0]||null;
     return {timeoutSeconds:this.timeoutSeconds,current:current?this.publicCall(current):null,calledCount:called.length,paused:this.paused,pausedAt:this.pausedAt};
   }
-  ensureActive(){if(this.paused)throw httpError('방송 운영이 긴급 잠금 상태입니다. 관리자가 잠금을 해제한 뒤 다시 시도해 주세요.',423,'participation_call_paused');}
+  ensureActive(){this.guard();if(this.paused)throw httpError('방송 운영이 긴급 잠금 상태입니다. 관리자가 잠금을 해제한 뒤 다시 시도해 주세요.',423,'participation_call_paused');}
   pause(reason='emergency-lock',{at=Date.now()}={}){return this.serial(async()=>{if(this.paused)return this.state();this.paused=true;this.pausedAt=Math.max(0,Number(at)||Date.now());this.pauseReason=safeReason(reason);this.clearTimer();const current=this.queueStore.read().entries.find(entry=>entry.status==='called');if(current)await this.record('participation_call_pause',current,{reason:this.pauseReason});return this.state();});}
   resume(reason='emergency-unlock',{at=Date.now()}={}){return this.serial(async()=>{if(!this.paused)return this.state();const now=Math.max(0,Number(at)||Date.now()),elapsed=Math.max(0,now-this.pausedAt),current=this.queueStore.read().entries.find(entry=>entry.status==='called');if(current&&elapsed)await this.queueStore.extendCallDeadline(current.id,{token:current.callToken,deltaMs:elapsed,reason:safeReason(reason)});this.paused=false;this.pausedAt=0;this.pauseReason='';const refreshed=this.queueStore.read().entries.find(entry=>entry.status==='called');if(refreshed)this.schedule(refreshed);if(refreshed)await this.record('participation_call_resume',refreshed,{pausedMs:elapsed,reason:safeReason(reason)});return this.state();});}
   publicCall(entry){
@@ -57,6 +58,7 @@ export class ParticipationCallService {
       }
       const current=this.queueStore.read().entries.find(entry=>entry.status==='called');
       if(!current)return {recovered:false,current:null,paused:this.paused};
+      try{this.guard();}catch{this.paused=true;this.pausedAt=Date.now();this.pauseReason='workspace-guard';}
       if(this.paused){await this.record('participation_call_pause_recovery',current,{pausedAt:this.pausedAt});return {recovered:true,current:this.publicCall(current),paused:true};}
       if(!Number.isFinite(Number(current.callDeadline))||Number(current.callDeadline)<=Date.now()){
         const expired=await this.queueStore.expireCall(current.id,{token:current.callToken,now:Date.now(),reason:'restart-timeout'});
@@ -76,6 +78,7 @@ export class ParticipationCallService {
   });}
   async callNext({reason='dashboard'}={}){this.ensureActive();return this.serial(()=>this.callNextUnlocked({reason}));}
   async callNextUnlocked({reason='dashboard',allowEmpty=false}={}){
+    this.ensureActive();
     const current=this.queueStore.read().entries.find(entry=>entry.status==='called');
     if(current)return {entry:this.publicCall(current),alreadyCalled:true};
     const next=this.queueStore.read().entries.filter(entry=>entry.status==='waiting').sort((a,b)=>a.position-b.position||a.sequence-b.sequence)[0];
@@ -84,6 +87,7 @@ export class ParticipationCallService {
   }
   async callEntry(id,{reason='dashboard',recall=false}={}){this.ensureActive();return this.serial(()=>this.callEntryUnlocked(id,{reason,recall}));}
   async callEntryUnlocked(id,{reason='dashboard',recall=false}={}){
+    this.ensureActive();
     if(this.closed)throw httpError('시참 호출 서비스가 종료 중입니다.',503,'participation_call_stopping');
     const raw=this.queueStore.read(),entry=raw.entries.find(item=>item.id===id);
     if(!entry)throw httpError('호출할 참가자를 찾지 못했습니다.',404,'participation_entry_missing');
@@ -130,6 +134,7 @@ export class ParticipationCallService {
     });
   }
   async expireAndAdvance(id,token){
+    this.guard();
     if(this.paused)return {entry:this.queueStore.read().entries.find(entry=>entry.id===id)||null,changed:false,paused:true};
     const result=await this.queueStore.expireCall(id,{token,now:Date.now(),reason:'timeout'});if(!result.changed)return result;
     await this.safeFinalize(result,'no_show');await this.record('participation_call_timeout',result.entry,{autoAdvance:true});this.report({operation:'participation-call-timeout',ok:true});
@@ -137,6 +142,6 @@ export class ParticipationCallService {
   }
   async safeFinalize(result,status){
     const ref=result?.messageRef||result?.previousMessage||null;if(!ref)return;
-    try{await this.discord.completeParticipationCall(ref,{entry:result.entry,status});}catch(error){this.report({operation:'participation-call-finalize',ok:false,error});}
+    try{this.guard();await this.discord.completeParticipationCall(ref,{entry:result.entry,status});}catch(error){this.report({operation:'participation-call-finalize',ok:false,error});}
   }
 }
