@@ -38,6 +38,7 @@ export function canDashboard(identity,capability){
 }
 
 export function publicDashboardAccess(identity){
+  if(identity?.role==='workspace')return {role:'workspace',user:String(identity.user),guildId:String(identity.guildId),capabilities:['live','queue','broadcast','discord','naver','community']};
   const role=identity?.role==='operator'?'operator':'admin';
   return {role,user:String(identity?.user||'admin'),capabilities:role==='admin'?[...DASHBOARD_OPERATOR_CAPABILITIES]:[...(identity?.capabilities||[])]};
 }

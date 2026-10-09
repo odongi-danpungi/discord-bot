@@ -1,7 +1,8 @@
 export class ChzzkLiveMonitor {
-  constructor({store,chzzk,discord,reporter=null,audit=null}={}){this.store=store;this.chzzk=chzzk;this.discord=discord;this.reporter=typeof reporter==='function'?reporter:()=>{};this.audit=typeof audit==='function'?audit:async()=>{};this.busy=false;}
+  constructor({store,chzzk,discord,reporter=null,audit=null,guard=()=>{}}={}){this.guard=guard;this.store=store;this.chzzk=chzzk;this.discord=discord;this.reporter=typeof reporter==='function'?reporter:()=>{};this.audit=typeof audit==='function'?audit:async()=>{};this.busy=false;}
   summary(){const base=this.store?.summary?.()||{settings:{enabled:false,channelId:'',intervalMinutes:2,discordAlerts:true,maxPages:50},state:{lastStatus:'idle'},currentLive:null,events:[]};return {...base,connector:this.chzzk?.status?.()||{configured:false}};}
   async run({force=false,now=Date.now()}={}){
+    this.guard();
     const before=this.summary(),settings=before.settings,state=before.state;if(!settings.enabled&&!force)return {skipped:'disabled',summary:before};
     if(!this.chzzk?.configured?.()||!settings.channelId){if(force)throw Object.assign(Error('치지직 방송 감지 설정을 먼저 완료해 주세요.'),{status:400});return {skipped:'unconfigured',summary:before};}
     if(!force&&state.nextRunAt&&now<state.nextRunAt)return {skipped:'not-due',summary:before};if(this.busy)return {skipped:'busy',summary:before};this.busy=true;const started=Date.now();
@@ -17,7 +18,7 @@ export class ChzzkLiveMonitor {
       if(event){
         if(settings.discordAlerts){
           const readiness=await this.discord?.chzzkLiveAlertReadiness?.();if(!readiness?.ready){await this.store.markEvent(event.id,{status:'failed',error:readiness?.message||'Discord 방송 알림 채널을 사용할 수 없습니다.'});}
-          else{try{const sent=await this.discord.chzzkLiveAlert(event);await this.store.markEvent(event.id,{status:'sent',discordMessageId:sent?.id||'',discordChannelId:sent?.channelId||''});}catch(error){await this.store.markEvent(event.id,{status:'failed',error:error?.message||'Discord 방송 알림 전송 실패'});}}
+          else{try{this.guard();const sent=await this.discord.chzzkLiveAlert(event);await this.store.markEvent(event.id,{status:'sent',discordMessageId:sent?.id||'',discordChannelId:sent?.channelId||''});}catch(error){await this.store.markEvent(event.id,{status:'failed',error:error?.message||'Discord 방송 알림 전송 실패'});}}
         }else await this.store.markEvent(event.id,{status:'suppressed',error:'Discord 방송 알림이 꺼져 있습니다.'});
         await this.audit({category:'broadcast',action:event.type==='start'?'chzzk_live_started':'chzzk_live_ended',summary:event.type==='start'?'치지직 방송 시작 감지':'치지직 방송 종료 감지',details:{channelId:settings.channelId,liveId:event.live?.liveId||null,title:event.live?.liveTitle||null}});
       }

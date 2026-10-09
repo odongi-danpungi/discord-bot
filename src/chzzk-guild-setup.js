@@ -7,6 +7,7 @@ const unavailable = message => Object.assign(Error(message), { status: 503 });
 // role name alone is not proof of ownership (it may grant private channel access).
 export async function ensureVerificationGuild(service, guildId) {
   if (!snowflake(guildId)) throw unavailable('Discord 서버에서 인증을 시작하세요.');
+  if(service.config.workspaceScoped && guildId!==service.config.guildId)throw unavailable('다른 방송의 인증 설정에 접근할 수 없습니다.');
   return service.withUser(`guild:${guildId}`, async () => {
     service.guard();
     const guild = await service.discord.client.guilds.fetch(guildId);
@@ -72,6 +73,7 @@ export function installVerificationGuildSetup(client, service, report = () => {}
   let stopped = false;
   let tail = Promise.resolve();
   const schedule = guild => {
+    if(service.config.workspaceScoped && guild.id!==service.config.guildId)return;
     tail = tail.then(async () => {
       if (stopped) return;
       try { await service.ensureGuild(guild.id); }

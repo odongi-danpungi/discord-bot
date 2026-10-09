@@ -12,10 +12,16 @@ export function createViewerAuth(){
  const prune=()=>{for(const map of [codes,sessions])for(const [key,v] of map)if(v.expires<Date.now())map.delete(key)};
  return {issue(userId){prune();if(codes.size>=1000)throw Error('잠시 후 다시 시도해 주세요.');for(const [k,v] of codes)if(v.userId===userId)codes.delete(k);const code=randomBytes(18).toString('base64url');codes.set(hash(code),{userId,expires:Date.now()+600000});return code},exchange(code){prune();const key=hash(String(code)),v=codes.get(key);if(!v)return null;codes.delete(key);for(const [k,s] of sessions)if(s.userId===v.userId)sessions.delete(k);if(sessions.size>=10000)return null;const token=randomBytes(32).toString('base64url'),session={userId:v.userId,csrf:randomBytes(24).toString('hex'),expires:Date.now()+43200000};sessions.set(hash(token),session);return {token,session}},get(token){prune();return sessions.get(hash(token||''))},logout(token){sessions.delete(hash(token||''))}};
 }
-export function createViewerRouter({config,store,operations,viewerAuth,broadcastOps=null,participationQueue=null,participationCalls=null,emergencyState=()=>({locked:false}),readyCheckGuard=()=>{}}){
+export function createViewerRouter({config,store,operations,viewerAuth,broadcastOps=null,participationQueue=null,participationCalls=null,emergencyState=()=>({locked:false}),readyCheckGuard=()=>{},workspaceViewerAuthenticate=null}){
  const router=express.Router(),attempts=new Map(),loginIdempotency=createIdempotencyGuard({ttlMs:2*60*1000,recentDuplicateMs:0,maxEntries:512}),sessionIdempotency=createIdempotencyGuard({ttlMs:2*60*1000,recentDuplicateMs:1000,maxEntries:1024});
  router.use((req,res,next)=>{res.set({'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Permissions-Policy':'camera=(), microphone=(), geolocation=()','Cross-Origin-Opener-Policy':'same-origin','Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"});if(config.host==='127.0.0.1'&&!['localhost','127.0.0.1'].includes((req.get('host')||'').split(':')[0]))return res.sendStatus(403);next()});
   router.use(express.json({limit:'8kb'}));
+ router.use('/api',(req,res,next)=>{
+   const identity=workspaceViewerAuthenticate?.(req);
+   if(identity&&['/login','/demo-login','/logout'].includes(req.path))return res.status(403).json({error:'사용자 홈에서 로그인·로그아웃하세요.'});
+   next();
+ });
+ const getSession=req=>workspaceViewerAuthenticate?.(req)||viewerAuth.get(viewerToken(req));
  router.get('/api/mode',(_req,res)=>res.json({demo:Boolean(config.demo)}));
  if(config.demo)router.post('/api/demo-login',loginIdempotency.middleware({scope:req=>`viewer-login:${req.ip||'local'}`}),(req,res)=>{
    if(!req.is('application/json')||req.get('Sec-Fetch-Site')==='cross-site')return res.sendStatus(403);
@@ -31,12 +37,12 @@ export function createViewerRouter({config,store,operations,viewerAuth,broadcast
  router.use('/api',(req,res,next)=>{
    if(req.method==='GET')return next();
    if(!req.is('application/json')||req.get('Sec-Fetch-Site')==='cross-site')return res.sendStatus(403);
-   const session=viewerAuth.get(viewerToken(req));
+   const session=getSession(req);
    if(session&&req.get('X-CSRF-Token')!==session.csrf)return res.sendStatus(403);
    next();
  });
  router.use('/api',sessionIdempotency.middleware({scope:req=>`viewer-session:${hash(viewerToken(req))}:${hash(req.get('X-CSRF-Token')||'')}`}));
- router.use('/api',(req,res,next)=>{const token=viewerToken(req),session=viewerAuth.get(token);if(!session)return res.status(401).json({error:'Discord에서 시청자 대시보드 로그인 코드를 다시 발급받아 주세요.'});req.viewer=session;req.viewerToken=token;if(req.method!=='GET'&&(!req.is('application/json')||req.get('X-CSRF-Token')!==session.csrf||req.get('Sec-Fetch-Site')==='cross-site'))return res.sendStatus(403);next()});
+ router.use('/api',(req,res,next)=>{const token=viewerToken(req),session=getSession(req);if(!session)return res.status(401).json({error:'Discord에서 시청자 대시보드 로그인 코드를 다시 발급받아 주세요.'});req.viewer=session;req.viewerToken=token;if(req.method!=='GET'&&(!req.is('application/json')||req.get('X-CSRF-Token')!==session.csrf||req.get('Sec-Fetch-Site')==='cross-site'))return res.sendStatus(403);next()});
  router.use('/api',(req,res,next)=>{if(req.method==='GET'||req.path==='/logout')return next();const emergency=emergencyState?.()||{};if(!emergency.locked)return next();return res.status(423).json({error:'방송 운영이 긴급 잠금 상태입니다. 잠금 해제 후 다시 시도해 주세요.',code:'EMERGENCY_LOCKED'});});
  const profile=id=>store.read().find(r=>r.guildId===config.guildId&&r.discordId===id);
  router.get('/api/me',(req,res)=>{const r=profile(req.viewer.userId);if(!r)return res.status(403).json({error:'먼저 /연동으로 게임 정보를 등록해 주세요.'});const saved=(operations.read().avatars||[]).find(a=>a.userId===r.discordId);res.json({name:r.chzzkName,userId:r.discordId,avatar:saved?.avatar||DEFAULT_AVATAR,revision:saved?.revision||0,csrf:req.viewer.csrf})});

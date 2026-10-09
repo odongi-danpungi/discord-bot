@@ -1,3 +1,9 @@
+# 최신 검토: v5.2.0 계정 분리 배포 후보
+
+현재 검토 결과는 [계정 분리 보고서](docs/workspace-review-v520.md)에 정리했습니다. 새 포털은 기본 비활성이고 실제 계정 OAuth·서버 분리·팔로워 역할 부여 및 Railway 활성화는 PENDING입니다. 아래 내용은 이전 버전의 검토 기록입니다.
+
+---
+
 # v4.17 Step 6 Review Report — Production Cutover Smoke & Stabilization Verification
 
 ## Version

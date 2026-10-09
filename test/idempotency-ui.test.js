@@ -14,7 +14,7 @@ test('dashboard, game studio and viewer mutation clients send idempotency keys',
 test('viewer session replay guard runs before session validation so logout retries can replay',async()=>{
   const source=await readFile(new URL('../src/viewer.js',import.meta.url),'utf8');
   const replay=source.indexOf("router.use('/api',sessionIdempotency.middleware");
-  const auth=source.indexOf("session=viewerAuth.get(token)");
+  const auth=source.indexOf("session=getSession(req);if(!session)");
   assert.ok(replay>=0&&auth>=0&&replay<auth,'viewer idempotency middleware must run before session validation');
   assert.match(source,/viewer-session:\$\{hash\(viewerToken\(req\)\)\}/);
 });

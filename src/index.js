@@ -1,3 +1,4 @@
+import { createWorkspacePlatform,workspaceIdentity,workspaceViewerIdentity } from './workspace-platform.js';
 import { installVerificationGuildSetup } from './chzzk-guild-setup.js';
 import { createViewerAuth } from './viewer.js';
 import { ChzzkVerification, ChzzkVerificationStore } from './chzzk-verification.js';
@@ -37,7 +38,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 let client,server,timer,cleanupInteractions,runtime,runtimeHealth,backupManager,releaseCenter,startupPreflight,startupEnvironmentValidation,processLock,operationsRef,participationCalls;
-let cleanupVerificationGuilds;
+let cleanupVerificationGuilds,workspacePlatform;
 let persistentStores=[],shuttingDown=false,fatalHandling=false;
 
 async function flushPersistentStores(){
@@ -136,6 +137,10 @@ async function main(){
       {name:'연동',description:'내 치지직·게임 정보를 등록하거나 수정합니다'},
       settingCommand
     ]});
+    if(config.multiWorkspaceEnabled){
+      const rest=new REST({version:'10'}).setToken(config.token);
+      for(const command of [{name:'연동',description:'내 치지직·게임 정보를 등록하거나 수정합니다'},settingCommand])await rest.post(Routes.applicationCommands(config.clientId),{body:{...command,contexts:[0],integration_types:[0]}});
+    }
     console.log('Discord bot ready: '+client.user.username);
   }
   if (config.chzzkVerifyEnabled && !config.demo) {
@@ -169,8 +174,13 @@ async function main(){
     if(postUpdateCheck.status!=='pass')console.log(`업데이트 후 자동 점검: ${postUpdateCheck.status} (경고 ${warn}, 오류 ${fail}) · 대시보드 복구·감사 센터를 확인해 주세요.`);
     else console.log(`업데이트 후 자동 점검 완료: ${APP_VERSION} / schema v${DATA_SCHEMA_VERSION}`);
   }
-  runtime=createApp({config,store,operations,recovery,discord,discordPolicy,incidentWorkflow,idempotencyStore,naver,naverMonitor,naverParticipation:naverParticipationStore,chzzkLiveMonitor,chzzkVerification,participationQueue:participationQueueStore,participationCalls,broadcastOps:broadcastOpsStore,viewerAuth,instanceId,runtimeHealth,backupManager,releaseCenter,startupPreflight,startupEnvironmentValidation});
-  await new Promise((resolve,reject)=>{server=runtime.app.listen(config.port,config.host,resolve);server.once('error',reject);});
+  if(config.multiWorkspaceEnabled)workspacePlatform=await createWorkspacePlatform({config,client});
+  const appContext={config,store,operations,recovery,discord,discordPolicy,incidentWorkflow,idempotencyStore,naver,naverMonitor,naverParticipation:naverParticipationStore,chzzkLiveMonitor,chzzkVerification,participationQueue:participationQueueStore,participationCalls,broadcastOps:broadcastOpsStore,viewerAuth,instanceId,runtimeHealth,backupManager,releaseCenter,startupPreflight,startupEnvironmentValidation,
+    workspaceAuthenticate:workspacePlatform?workspaceIdentity:null,workspaceViewerAuthenticate:workspacePlatform?workspaceViewerIdentity:null};
+  runtime=createApp(appContext);
+  if(workspacePlatform){workspacePlatform.registerLegacy({runtime,context:appContext});await workspacePlatform.start();workspacePlatform.app.use(runtime.app);}
+
+  await new Promise((resolve,reject)=>{server=(workspacePlatform?.app||runtime.app).listen(config.port,config.host,resolve);server.once('error',reject);});
   if(previousCrash){
     try{await runtime.tick(Date.now());await recovery.audit({category:'system',action:'crash_catchup_tick',summary:'비정상 종료 후 예약 타이머 1회 즉시 재평가',actor:'system'});}
     catch(error){runtimeHealth.recordIncident({severity:'warn',source:'scheduler',code:'crash_catchup_failure',summary:'비정상 종료 후 자동 타이머 재평가 실패',detail:error?.message});}
@@ -183,7 +193,7 @@ async function main(){
   if(config.demo)console.log('연습 모드입니다. Discord에 연결하거나 메시지를 보내지 않습니다.');
   if(store.recovered||operations.recovered||recovery.recovered||discordPolicy.recovered||incidentWorkflow.recovered||idempotencyStore.recovered||naverMonitorStore.recovered||naverParticipationStore.recovered||participationQueueStore.recovered||broadcastOpsStore.recovered||chzzkLiveStore.recovered||naverAuthStore?.recovered)console.log('데이터 파일 무결성 복구가 수행됐습니다. 대시보드의 복구·감사 센터에서 상태를 확인해 주세요.');
   if(chzzkVerification && !config.demo) cleanupVerificationGuilds=installVerificationGuildSetup(client,chzzkVerification,discordReporter);
-  timer=setInterval(()=>runtime.tick().catch(error=>{runtimeHealth.recordIncident({severity:'warn',source:'scheduler',code:'tick_unhandled',summary:'자동 마감 타이머 예외',detail:error?.message});console.error('자동 마감 상태를 확인해 주세요.');}),3000);timer.unref();
+  timer=setInterval(()=>Promise.all([runtime.tick(),workspacePlatform?.tick()]).catch(error=>{runtimeHealth.recordIncident({severity:'warn',source:'scheduler',code:'tick_unhandled',summary:'자동 마감 타이머 예외',detail:error?.message});console.error('자동 마감 상태를 확인해 주세요.');}),3000);timer.unref();
 }
 async function closeHttpServer(){
   if(!server)return true;
@@ -205,9 +215,10 @@ async function shutdown(signal='shutdown',{preserveMarker=false,startupFailure=f
   try{
     if(processLock?.owns)await processLock.update({phase:preserveMarker?'fatal':startupFailure?'startup-failed':'stopping',revision:Number(operationsRef?.read?.().revision)||0,signal:String(signal)});
   }catch(error){clean=false;console.error('프로세스 잠금 상태를 갱신하지 못했습니다:',error.code||error.message);}
-  runtime?.beginShutdown?.(signal);participationCalls?.stop?.();cleanupInteractions?.();
+  workspacePlatform?.beginShutdown();runtime?.beginShutdown?.(signal);participationCalls?.stop?.();cleanupInteractions?.();
   try{if(!await closeHttpServer())clean=false;}catch(error){clean=false;console.error('HTTP 종료 중 오류가 발생했습니다:',error.message);}
   if(cleanupVerificationGuilds)await cleanupVerificationGuilds();
+  try{await workspacePlatform?.close();}catch{clean=false;console.error('사용자 방송 공간 종료를 확인하세요.');}
   runtime?.close?.();client?.destroy();
   try{await flushPersistentStores();}catch(error){clean=false;console.error('종료 전 데이터 flush에 실패했습니다:',error.code||error.message);}
   runtimeHealth?.close?.();

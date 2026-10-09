@@ -2,9 +2,10 @@ function sameCafe(expected,actual){if(!expected)return true;try{const a=new URL(
 function errorDetails(error){return {message:String(error?.message||error||'알 수 없는 오류').slice(0,240),status:Number(error?.status)||0,upstreamStatus:Number(error?.upstreamStatus)||0,code:String(error?.code||'').slice(0,80)};}
 
 export class NaverCafeMonitor {
-  constructor({store,naver,discord,reporter=null,audit=null}={}){this.store=store;this.naver=naver;this.discord=discord;this.reporter=typeof reporter==='function'?reporter:()=>{};this.audit=typeof audit==='function'?audit:async()=>{};this.busy=false;}
+  constructor({store,naver,discord,reporter=null,audit=null,guard=()=>{}}={}){this.guard=guard;this.store=store;this.naver=naver;this.discord=discord;this.reporter=typeof reporter==='function'?reporter:()=>{};this.audit=typeof audit==='function'?audit:async()=>{};this.busy=false;}
   summary(){const base=this.store?.summary?.()||{settings:{enabled:false,query:'',cafeUrl:'',intervalMinutes:5,discordAlerts:true},state:{lastStatus:'idle'},events:[],seenCount:0};return {...base,connector:this.naver?.status?.()||null};}
   async run({force=false,now=Date.now()}={}){
+    this.guard();
     const before=this.summary(),settings=before.settings,state=before.state;
     if(!settings.enabled&&!force)return {skipped:'disabled',summary:before};
     if(!settings.query){if(force)throw Object.assign(Error('네이버 공개글 모니터 검색어를 먼저 설정해 주세요.'),{status:400});return {skipped:'unconfigured',summary:before};}
@@ -32,7 +33,7 @@ export class NaverCafeMonitor {
       }
       for(const event of [...events].reverse()){
         if(!settings.discordAlerts){await this.store.markEvent(event.id,{status:'suppressed',error:'Discord 알림이 꺼져 있습니다.'});continue;}
-        try{const sent=await this.discord.naverCafeAlert(event);await this.store.markEvent(event.id,{status:'sent',discordMessageId:sent?.id||'',discordChannelId:sent?.channelId||'',notifiedAt:Date.now()});notified++;}
+        try{this.guard();const sent=await this.discord.naverCafeAlert(event);await this.store.markEvent(event.id,{status:'sent',discordMessageId:sent?.id||'',discordChannelId:sent?.channelId||'',notifiedAt:Date.now()});notified++;}
         catch(error){failed++;await this.store.markEvent(event.id,{status:'failed',error:error?.message||'Discord 알림 전송 실패'});}
       }
       await this.store.noteRun({ok:failed===0,now,found:filtered.length,notified,error:failed?Error(`Discord 알림 ${failed}건 실패`):null});
@@ -50,6 +51,6 @@ export class NaverCafeMonitor {
       const readiness=await this.discord.naverCafeAlertReadiness();
       if(!readiness?.ready){const error=Object.assign(Error(readiness?.message||'Discord 알림 채널을 사용할 수 없습니다.'),{code:readiness?.code||'discord_unavailable'});await this.store.markEvent(event.id,{status:'failed',error:error.message});throw error;}
     }
-    try{const sent=await this.discord.naverCafeAlert(event);await this.store.markEvent(event.id,{status:'sent',discordMessageId:sent?.id||'',discordChannelId:sent?.channelId||'',notifiedAt:Date.now()});await this.audit({category:'naver',action:'monitor_retry',summary:'네이버 공개글 Discord 알림 수동 재전송',details:{eventId:event.id}});return {event:this.store.getEvent(event.id)};}catch(error){await this.store.markEvent(event.id,{status:'failed',error:error?.message||'Discord 알림 전송 실패'});throw error;}
+    try{this.guard();const sent=await this.discord.naverCafeAlert(event);await this.store.markEvent(event.id,{status:'sent',discordMessageId:sent?.id||'',discordChannelId:sent?.channelId||'',notifiedAt:Date.now()});await this.audit({category:'naver',action:'monitor_retry',summary:'네이버 공개글 Discord 알림 수동 재전송',details:{eventId:event.id}});return {event:this.store.getEvent(event.id)};}catch(error){await this.store.markEvent(event.id,{status:'failed',error:error?.message||'Discord 알림 전송 실패'});throw error;}
   }
 }

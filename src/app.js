@@ -1,6 +1,9 @@
 import { installCommunityRoutes } from './community-routes.js';
 import { installChzzkOAuthRoutes, installChzzkVerificationAdminRoutes } from './chzzk-verification-routes.js';
 import { createDashboardSessions } from './dashboard-session.js';
+import { workspaceRouteAllowed, workspacePublicSnapshot } from './workspace-policy.js';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { readFile } from 'node:fs/promises';
 import { installOperationTools } from './operation-tools.js';
 import { fairSelect } from './community.js';
 import { createViewerRouter,createViewerAuth } from './viewer.js';
@@ -38,8 +41,10 @@ import { createIdempotencyGuard } from './idempotency.js';
 import { authenticateDashboardBasic, canDashboard, dashboardCapabilityForRequest, operatorStaticAllowed, publicDashboardAccess, sanitizeOperatorCall, sanitizeOperatorQueueEntry, sanitizeOperatorSnapshot, sanitizeOperatorBroadcastOps, sanitizeOperatorNaverParticipation } from './dashboard-access.js';
 import { assertLiveControlFresh, createLiveControlMutationGate, readExpectedLiveRevisions } from './live-control-guard.js';
 const equal=(a,b)=>{const x=Buffer.from(a||''),y=Buffer.from(b||'');return x.length===y.length&&timingSafeEqual(x,y)};
-export function createApp({config,store,operations,recovery,discord,discordPolicy=null,incidentWorkflow=null,idempotencyStore=null,naver=null,naverMonitor=null,naverParticipation=null,chzzkLiveMonitor=null,chzzkVerification=null,participationQueue=null,participationCalls=null,broadcastOps=null,viewerAuth=createViewerAuth(),instanceId='',runtimeHealth=null,performanceCapacity=null,backupManager=null,releaseCenter=null,startupPreflight=null,startupEnvironmentValidation=null}) {
+export function createApp({config,store,operations,recovery,discord,discordPolicy=null,incidentWorkflow=null,idempotencyStore=null,naver=null,naverMonitor=null,naverParticipation=null,chzzkLiveMonitor=null,chzzkVerification=null,participationQueue=null,participationCalls=null,broadcastOps=null,viewerAuth=createViewerAuth(),instanceId='',runtimeHealth=null,performanceCapacity=null,backupManager=null,releaseCenter=null,startupPreflight=null,startupEnvironmentValidation=null,workspaceAuthenticate=null,workspaceViewerAuthenticate=null,workspaceOperationGuard=null}) {
   const app=express();if(Number(config.trustProxyHops)>0)app.set('trust proxy',Number(config.trustProxyHops));
+  const requestScope=new AsyncLocalStorage();
+  app.use((req,_res,next)=>requestScope.run(req,next));
   const dashboardSessions=createDashboardSessions({config});
   const csrf=randomBytes(24).toString('hex'),failed=new Map(),streams=new Set(),streamClosers=new Map(),streamIdentities=new Map(),approvalGuard=createApprovalGuard(),apiIdempotency=createIdempotencyGuard({persistentStore:idempotencyStore,ownerId:instanceId}),liveMutationGate=createLiveControlMutationGate(),dashboardStreamLimit=12;
   const runtime=runtimeHealth||{recordApi:()=>{},recordIncident:()=>{},recordSse:()=>{},recordTick:()=>{},snapshot:()=>({status:'pass',incidents:[]}),diagnosticBundle:()=>({format:'daengdaeng-runtime-diagnostics-v1'})};
@@ -159,10 +164,11 @@ export function createApp({config,store,operations,recovery,discord,discordPolic
     const current=operations.read(),runtimeState=runtimeSnapshot(),policySummary=policyStore.summary(),incidentSummary=incidentStore.summary(),queueSummary=participationQueue?.summary?.()||{entries:[],counts:{},activeCount:0,currentCall:null},callSummary=participationCalls?.state?.()||{timeoutSeconds:60,current:null,calledCount:0},chzzkSummary=chzzkLiveMonitor?.summary?.()||{settings:{enabled:false},state:{lastStatus:'idle',lastKnownLive:null,baselineReady:false},currentLive:null,connector:{configured:false}},naverSummary=naverParticipation?.summary?.()||{registrationOpen:false,counts:{queued:0}},naverStatus=naver?.status?.()||{connected:false};
     return buildBroadcastPreflight({state:current,records:store.read().filter(record=>record.guildId===config.guildId),participationQueue:queueSummary,participationCalls:callSummary,chzzkLive:chzzkSummary,broadcastOps:broadcastOpsSummary(),runtime:runtimeState,incidents:incidentSummary,emergency:emergencyState(),discord:discordDiagnostics,discordPolicy:policySummary,naver:naverStatus,naverParticipation:naverSummary,demo:config.demo,now:Date.now()});
   };
-  const snapshot=async(includeCsrf=true,identity={role:'admin',user:config.dashboardUser||'admin',capabilities:['*']})=>{
+  const snapshot=async(includeCsrf=true,identity=requestScope.getStore()?.dashboardIdentity||{role:'admin',user:config.dashboardUser||'admin',capabilities:['*']})=>{
     const current=operations.read();current.broadcastSettings=normalizeBroadcastSettings(current.broadcastSettings);current.broadcastPresets=normalizeBroadcastPresets(current.broadcastPresets);current.broadcastAutomation=normalizeBroadcastAutomation(current.broadcastAutomation,current.broadcastPresets);const policySummary=policyStore.summary(),incidentSummary=incidentStore.summary();
     const full={state:current,records:await records(),...(includeCsrf?{csrf}:{}),demo:config.demo,profile:config.profile,version:APP_VERSION,revision:Number(current.revision)||0,serverTime:Date.now(),access:publicDashboardAccess(identity),emergency:emergencyState(),policyMonitor:{baseline:Boolean(policySummary.baseline),settings:policySummary.monitor,state:policySummary.monitorState,maintenance:policySummary.maintenance,acknowledgement:policySummary.acknowledgement},incidentWorkflow:{status:incidentSummary.status,counts:incidentSummary.counts},participationQueue:participationQueue?.summary?.()||{entries:[],counts:{},activeCount:0,currentCall:null},participationCalls:participationCalls?.state?.()||{timeoutSeconds:60,current:null,calledCount:0},chzzkLive:chzzkLiveMonitor?.summary?.()||{settings:{enabled:false,channelId:'',intervalMinutes:2,discordAlerts:true,maxPages:50},state:{lastStatus:'idle',lastKnownLive:null,baselineReady:false},currentLive:null,events:[],connector:{configured:false}},broadcastOps:broadcastOpsSummary(),broadcastPreflight:broadcastPreflightSnapshot(),recovered:hasRecoveredStore()};
-    return identity?.role==='operator'?sanitizeOperatorSnapshot(full,identity):full;
+    if(identity?.role==='workspace'){try{participantOperationGuard();}catch{full.emergency={...full.emergency,locked:true};}}
+    return identity?.role==='workspace'?workspacePublicSnapshot(full,identity):identity?.role==='operator'?sanitizeOperatorSnapshot(full,identity):full;
   };
   const safeQueueResult=(req,result)=>{
     if(req?.dashboardIdentity?.role!=='operator'||!result||typeof result!=='object')return result;
@@ -214,14 +220,15 @@ export function createApp({config,store,operations,recovery,discord,discordPolic
     const ready=!draining,emergency=emergencyState();
     res.status(ready?200:503).json({status:ready?'ok':'draining',ready,emergencyLocked:Boolean(emergency.locked),version:APP_VERSION});
   });
-  const participantOperationGuard=()=>{if(draining||emergencyState().locked||['staging','applying','rolling-back','restart-required','rollback-restart-required'].includes(releaseCenter?.snapshot?.()?.status))throw Object.assign(Error('운영 잠금 또는 재시작 대기 중입니다.'),{status:423,statusCode:423});};
+  const participantOperationGuard=()=>{workspaceOperationGuard?.();if(draining||emergencyState().locked||['staging','applying','rolling-back','restart-required','rollback-restart-required'].includes(releaseCenter?.snapshot?.()?.status))throw Object.assign(Error('운영 잠금 또는 재시작 대기 중입니다.'),{status:423,statusCode:423});};
   installChzzkOAuthRoutes(app,chzzkVerification,participantOperationGuard);
-  app.use('/viewer',createViewerRouter({config,store,operations,viewerAuth,broadcastOps,participationQueue,participationCalls,emergencyState,readyCheckGuard:participantOperationGuard}));
+  app.use('/viewer',createViewerRouter({config,store,operations,viewerAuth,broadcastOps,participationQueue,participationCalls,emergencyState,readyCheckGuard:participantOperationGuard,workspaceViewerAuthenticate}));
   app.use('/auth',dashboardSessions.router);
   app.get('/naver/callback',async(req,res)=>{
     res.set({'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; form-action 'none'; frame-ancestors 'none'"});
     try{
       if(!naver)throw Object.assign(new Error('네이버 연동 모듈이 초기화되지 않았습니다.'),{status:503});
+      participantOperationGuard();
       if(req.query.error){naver.consumeState(req.query.state);throw Object.assign(new Error('네이버 로그인 동의가 완료되지 않았습니다. 대시보드에서 다시 연동해 주세요.'),{status:400});}
       await naver.exchangeCode({code:req.query.code,state:req.query.state});
       await safeAudit({category:'naver',action:'oauth_connect',summary:'네이버 계정 연동 완료'});
@@ -235,7 +242,7 @@ export function createApp({config,store,operations,recovery,discord,discordPolic
     if(config.demo){req.dashboardIdentity={role:'admin',user:config.dashboardUser||'admin',capabilities:['*']};return next();}
     const stamp=failed.get(req.ip),now=Date.now();
     if(stamp&&stamp.until>now&&stamp.count>=15)return res.status(429).json({error:'로그인 시도가 많습니다. 1분 뒤 다시 시도해 주세요.'});
-    const auth=req.get('authorization')||'',identity=dashboardSessions.identity(req)||authenticateDashboardBasic(auth,config);
+    const auth=req.get('authorization')||'',identity=workspaceAuthenticate?.(req)||dashboardSessions.identity(req)||authenticateDashboardBasic(auth,config);
     if(!identity){
       if(auth){if(failed.size>1000)failed.clear();failed.set(req.ip,{count:stamp&&stamp.until>now?stamp.count+1:1,until:now+60000});}
       if(req.method==='GET'&&!req.path.startsWith('/api')&&!auth)return res.redirect(303,'/auth/login');
@@ -244,6 +251,7 @@ export function createApp({config,store,operations,recovery,discord,discordPolic
     failed.delete(req.ip);req.dashboardIdentity=identity;next();
   });
   app.use((req,res,next)=>{
+    if(req.dashboardIdentity?.role==='workspace'&&!workspaceRouteAllowed(req.method,req.path))return res.status(403).json({error:'제작자 전용 기능이거나 지원하지 않는 작업입니다.'});
     if(req.dashboardIdentity?.role!=='operator'||req.path.startsWith('/api')||operatorStaticAllowed(req.path))return next();
     return res.status(403).json({error:'운영자 계정은 모바일 Live Control만 열 수 있습니다. 관리자 설정은 관리자 계정으로 접속해 주세요.'});
   });
@@ -258,7 +266,8 @@ export function createApp({config,store,operations,recovery,discord,discordPolic
   app.use(express.json({limit:'8mb'}));
   app.use('/api',(req,res,next)=>{
     if(req.method==='GET')return next();
-    if(!req.is('application/json')||!equal(req.get('X-CSRF-Token'),csrf)||req.get('Sec-Fetch-Site')==='cross-site')return res.status(403).json({error:'페이지를 새로고침한 뒤 대시보드에서 실행해 주세요.'});
+    try{workspaceOperationGuard?.();}catch(error){return next(error);}
+    if(!req.is('application/json')||!equal(req.get('X-CSRF-Token'),req.dashboardIdentity?.role==='workspace'?req.dashboardIdentity.csrf:csrf)||req.get('Sec-Fetch-Site')==='cross-site')return res.status(403).json({error:'페이지를 새로고침한 뒤 대시보드에서 실행해 주세요.'});
     if(req.body===null||Array.isArray(req.body)||typeof req.body!=='object')return res.status(400).json({error:'요청 형식이 올바르지 않습니다.'});
     next();
   });
@@ -289,6 +298,12 @@ export function createApp({config,store,operations,recovery,discord,discordPolic
   app.use('/api/operation-tools',(req,_res,next)=>{try{if(req.method!=='GET')participantOperationGuard();next();}catch(e){next(e);}});
   installChzzkVerificationAdminRoutes(app,chzzkVerification,participantOperationGuard);
   installOperationTools({app,operations,participationQueue});
+  app.get(['/', '/index.html'],async(req,res,next)=>{
+    if(!config.multiWorkspaceEnabled||req.dashboardIdentity?.role!=='admin')return next();
+    try{const html=await readFile(new URL('../public/index.html',import.meta.url),'utf8');
+      res.type('html').send(html.replace('<div class="header-actions">','<div class="header-actions"><a class="button secondary" href="/creator/">방송별 점검·복구</a><a class="button secondary" href="/portal/">사용자 홈</a>'));
+    }catch(error){next(error);}
+  });
   app.use(express.static(fileURLToPath(new URL('../public/',import.meta.url)),{etag:false}));
   app.get('/api/access',(req,res)=>res.json(publicDashboardAccess(req.dashboardIdentity)));
   app.get('/api/snapshot',async(req,res)=>res.json(await snapshot(true,req.dashboardIdentity)));
@@ -643,6 +658,7 @@ export function createApp({config,store,operations,recovery,discord,discordPolic
   async function tick(now=Date.now()){
     if(timerBusy||busy)return;timerBusy=true;const started=Date.now();
     try{
+      if(workspaceOperationGuard){try{workspaceOperationGuard();}catch{return;}}
       await syncRunbookAutomation(now).catch(error=>runtime.recordIncident({severity:'warn',source:'system',code:'runbook_phase_sync_failure',summary:'Runbook 자동 단계 감지 실패',detail:error?.message,persist:false}));
       if(emergencyState().locked){runtime.recordTick({ok:true,durationMs:Date.now()-started});return;}
       const current=operations.read(),s=current.session,automation=normalizeBroadcastAutomation(current.broadcastAutomation,normalizeBroadcastPresets(current.broadcastPresets));
@@ -665,5 +681,15 @@ export function createApp({config,store,operations,recovery,discord,discordPolic
   const stopBackground=()=>{if(backgroundStopped)return;backgroundStopped=true;clearInterval(productionMonitorTimer);clearInterval(capacityTimer);clearInterval(backupTimer);clearInterval(policyMonitorTimer);clearInterval(naverMonitorTimer);clearInterval(chzzkLiveTimer);clearInterval(incidentTimer);soak.close();broadcast.close();for(const res of [...streams]){try{streamClosers.get(res)?.();res.end()}catch{}}streams.clear();streamClosers.clear();streamIdentities.clear();};
   const beginShutdown=(reason='shutdown')=>{if(draining)return;draining=true;runtime.recordIncident({severity:'info',source:'system',code:'graceful_shutdown',summary:'안전 종료 시작',detail:String(reason),persist:false});stopBackground();};
   const close=()=>{draining=true;stopBackground();dashboardSessions.clear();apiIdempotency.clear();unsubscribeOperations();unsubscribeStore();unsubscribeRecovery();unsubscribeBroadcastOps();unsubscribePolicy();unsubscribeIncident();unsubscribeNaverParticipation();unsubscribeChzzkLive();unsubscribeParticipationQueue();};
-  return {app,tick,close,beginShutdown};
+  const creatorIdentity=req=>{
+    const session=dashboardSessions.identity(req);if(session)return session;
+    const authorization=req.get('authorization');if(!authorization)return null;
+    const stamp=failed.get(req.ip),now=Date.now();
+    if(stamp?.until>now&&stamp.count>=15)throw Object.assign(Error('로그인 시도가 많습니다. 1분 후 다시 시도하세요.'),{status:429});
+    const identity=authenticateDashboardBasic(authorization,config);
+    if(identity)failed.delete(req.ip);
+    else{for(const [key,value]of failed)if(value.until<=now)failed.delete(key);if(failed.size>=1000&&!failed.has(req.ip))throw Object.assign(Error('잠시 후 다시 로그인하세요.'),{status:429});failed.set(req.ip,{count:stamp?.until>now?stamp.count+1:1,until:now+60000});}
+    return identity;
+  };
+  return {app,tick,close,beginShutdown,operationGuard:participantOperationGuard,creatorIdentity};
 }

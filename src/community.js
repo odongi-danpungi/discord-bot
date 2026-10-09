@@ -25,6 +25,12 @@ export function fairSelect(state,eligible,count,now=Date.now(),rng=randomInt){
   return selected.map(u=>u.userId);
 }
 export function publicOrigin(config){try{const u=new URL(config.publicBaseUrl||config.viewerUrl);if(u.protocol!=='https:'||u.username||u.password)throw Error();return u.origin;}catch{throw fail('먼저 공개 HTTPS 주소를 설정해 주세요.');}}
+export function participantEntryUrl(config,sessionId){
+  const url=new URL(config.multiWorkspaceEnabled?'/portal/':'/viewer/',publicOrigin(config));
+  if(config.multiWorkspaceEnabled)url.searchParams.set('server',id(config.guildId));
+  if(sessionId)url.searchParams.set('session',String(sessionId));
+  return url.href;
+}
 export function communityView(operations,userId){
   const state=operations.read(),c=communityState(state),guide=guideState(state);
   if(!userId)return {...c,guide,session:state.session?{id:state.session.id,title:state.session.title,phase:state.session.phase,fairness:fairnessLabel(state.session.communityFairness||c.settings.fairness)}:null,archives:(state.sessionArchive||[]).map(s=>({id:s.id,title:s.title,endedAt:s.endedAt}))};
@@ -48,8 +54,9 @@ export class CommunityService {
     let title=text(body.title||'방송 안내',150),content=text(body.content||'',1200,false),sessionId=null;
     if(kind==='recruitment'){
       const s=state.session;if(!s||s.phase!=='open')throw fail('컨트롤 센터에서 모집을 먼저 열어 주세요.');
-      sessionId=s.id;title=s.title.slice(0,150);const url=`${publicOrigin(this.config)}/viewer/?session=${encodeURIComponent(s.id)}`;
-      content=`${content}\n${s.count}명 모집 · ${s.game==='er'?'이터널 리턴':s.mode==='aram'?'칼바람':'협곡'}\n${fairnessLabel(s.communityFairness||c.settings.fairness)}\n신청: ${url}\nDiscord에서 사용자 연동 후 일회용 코드로 로그인하세요. 카페 댓글은 자동 접수되지 않습니다.`.trim();
+      sessionId=s.id;title=s.title.slice(0,150);const url=participantEntryUrl(this.config,s.id);
+      const loginHelp=this.config.multiWorkspaceEnabled?'Discord 계정으로 로그인한 뒤 내 참가 상태에서 신청하세요.':'Discord에서 사용자 연동 후 일회용 코드로 로그인하세요.';
+      content=`${content}\n${s.count}명 모집 · ${s.game==='er'?'이터널 리턴':s.mode==='aram'?'칼바람':'협곡'}\n${fairnessLabel(s.communityFairness||c.settings.fairness)}\n신청: ${url}\n${loginHelp} 카페 댓글은 자동 접수되지 않습니다.`.trim();
     }
     if(kind==='recap'){
       const s=(state.sessionArchive||[]).find(s=>s.id===body.archiveId);if(!s)throw fail('종료된 회차를 선택하세요.');

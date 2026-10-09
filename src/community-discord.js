@@ -1,5 +1,5 @@
 import { PermissionFlagsBits } from 'discord.js';
-import { TOPICS, communityView } from './community.js';
+import { TOPICS, communityView, participantEntryUrl } from './community.js';
 import { buildParticipantSelfServiceState,performParticipantSelfServiceAction } from './participant-self-service.js';
 
 export const communityButtons=()=>[{type:1,components:[{type:2,style:1,custom_id:'community:home',label:'내 시참'},{type:2,style:2,custom_id:'community:guide',label:'규칙 · FAQ'},{type:2,style:2,custom_id:'community:subscriptions',label:'알림 구독'},{type:2,style:2,custom_id:'community:ticket',label:'운영자 문의'}]}];
@@ -40,8 +40,12 @@ export async function handleCommunityInteraction(interaction,ctx){
     content='게임별 알림 구독 · 아래 버튼을 누르면 알림 전용 역할을 추가하거나 해제합니다.';
     components=Object.entries(TOPICS).map(([topic,label])=>{const s=view.subscriptions.find(s=>s.topic===topic),on=s?.enabled&&s.status==='active';return {type:1,components:[button(`community:sub:${topic}:${s?.status&&s.status!=='active'?(s.enabled?'on':'off'):on?'off':'on'}`,`${label} ${s?.status&&s.status!=='active'?(s.enabled?'구독 재시도':'해제 재시도'):on?'해제':'구독'}`)]};});
   }else if(kind==='web'){
-    if(!profile)throw Error('먼저 /연동으로 게임 정보를 등록하세요.');const base=config.publicBaseUrl||config.viewerUrl;if(!base?.startsWith('https:'))throw Error('공개 HTTPS 주소 설정이 필요합니다.');const url=new URL('/viewer/',base).href;
-    content=`시청자 페이지: ${url}\n일회용 코드: ${viewerAuth.issue(userId)}\n10분 이내 사용하세요. 코드를 다른 사람에게 공유하지 마세요.`;
+    if(!profile)throw Error('먼저 /연동으로 게임 정보를 등록하세요.');const url=participantEntryUrl(config);
+    if(config.multiWorkspaceEnabled){
+      content=`내 참가 상태: ${url}\nDiscord 계정으로 로그인해 주세요.`;
+    }else{
+      content=`시청자 페이지: ${url}\n일회용 코드: ${viewerAuth.issue(userId)}\n10분 이내 사용하세요. 코드를 다른 사람에게 공유하지 마세요.`;
+    }
   }else if(kind==='history'){content=view.history.map(s=>`${s.title} · ${s.attended?'참가 확인':'신청 기록'}`).join('\n')||'최근 참가 기록이 없습니다.';}
   else if(kind==='tickets'){content=view.tickets.slice(0,5).map(t=>`${t.status==='closed'?'처리 완료':'접수'} · ${t.message.slice(0,100)}\n답변: ${t.answer||'답변 대기'}`).join('\n\n').slice(0,1900)||'등록된 문의가 없습니다.';}
   else{
@@ -51,7 +55,7 @@ export async function handleCommunityInteraction(interaction,ctx){
     const buttons=Object.entries(names).filter(([k])=>own.actions[k]).map(([k,label])=>button(`community:act:${map[k]||k}:${own.session?.id||'none'}`,label));
     for(let i=0;i<buttons.length;i+=5)components.push({type:1,components:buttons.slice(i,i+5)});
     const reservations=(operations.read().reservations||[]).filter(r=>r.userId===userId);if(reservations.length)components.push({type:1,components:reservations.slice(0,2).map(r=>button(`community:cancel:${r.game}`,`${r.game==='er'?'이터널 리턴':'롤'} 예약 취소`))});
-    components.push({type:1,components:[button('community:web','신청 페이지 · 로그인 코드'),button('community:history','내 참가 기록'),button('community:tickets','내 문의')]});
+    components.push({type:1,components:[button('community:web',config.multiWorkspaceEnabled?'내 참가 상태 · Discord 로그인':'신청 페이지 · 로그인 코드'),button('community:history','내 참가 기록'),button('community:tickets','내 문의')]});
   }
   await interaction.editReply({content,components,allowedMentions:{parse:[]}});return true;
 }

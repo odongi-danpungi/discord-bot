@@ -17,8 +17,9 @@ export function installInteractions({client,config,store,operations,discord,view
   const drafts=new Map();let syncTimer;
   const queueSync=()=>{clearTimeout(syncTimer);syncTimer=setTimeout(()=>discord.sync('sync').catch(()=>{}),900);syncTimer.unref();};
   const prune=setInterval(()=>{for(const [key,value] of drafts)if(value.expiresAt<Date.now())drafts.delete(key)},60000);prune.unref();
-  client.on(Events.InteractionCreate,async interaction=>{
+  const interactionHandler=async interaction=>{
     try{
+      if(config.workspaceScoped && interaction.guildId!==config.guildId)return;
       if ((interaction.isButton() && ['chzzk:link','chzzk:status'].includes(interaction.customId)) || (interaction.isChatInputCommand?.() && interaction.commandName === '치지직인증')) {
         if (emergencyState?.().locked) return interaction.reply({ content: '방송 운영이 긴급 잠금 상태입니다.', ...ephemeral });
         if (await handleChzzkVerification(interaction,chzzkVerification)) return;
@@ -39,6 +40,7 @@ export function installInteractions({client,config,store,operations,discord,view
       }
       if(interaction.isButton()&&interaction.customId==='avatar_access'){
         if(!current())return interaction.reply({content:'먼저 /연동으로 게임 정보를 등록해 주세요.',...ephemeral});
+        if(config.multiWorkspaceEnabled)return interaction.reply({content:`내 참가 상태: ${new URL('/portal/?server='+config.guildId,config.publicBaseUrl).href}\nDiscord 계정으로 로그인해 주세요.`,allowedMentions:{parse:[]},...ephemeral});
         const code=viewerAuth.issue(userId),url=config.viewerUrl||(config.publicBaseUrl?new URL('/viewer/',config.publicBaseUrl).href:`http://127.0.0.1:${config.port}/viewer/`);
         return interaction.reply({content:`시청자 대시보드: ${url}\n로그인 코드: \`${code}\`\n10분 이내 1회 사용 가능 · 다른 사람에게 공유하지 마세요.${config.viewerUrl||config.publicBaseUrl?'':'\n현재 운영자 PC 전용 주소입니다. 시청자 접속에는 운영자의 공개 HTTPS 주소 설정이 필요합니다.'}`,allowedMentions:{parse:[]},...ephemeral});
       }
@@ -120,6 +122,7 @@ export function installInteractions({client,config,store,operations,discord,view
       else if(interaction.replied)await interaction.followUp({content,...ephemeral}).catch(()=>{});
       else await interaction.reply({content,...ephemeral}).catch(()=>{});
     }
-  });
-  return ()=>{clearInterval(prune);clearTimeout(syncTimer);};
+  };
+  client.on(Events.InteractionCreate,interactionHandler);
+  return ()=>{clearInterval(prune);clearTimeout(syncTimer);client.off?.(Events.InteractionCreate,interactionHandler);};
 }

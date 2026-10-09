@@ -101,9 +101,9 @@ export class ChzzkVerification {
   summary() {
     const state = this.store.read();
     const owner = this.store.ownerToken();
-    return { enabled: true, channelId: this.targetChannelId(), channelName: cleanName(owner?.channelName || ''), mode: 'shared-broadcaster',
+    return { enabled: true, channelId: this.targetChannelId(), channelName: cleanName(owner?.channelName || ''), mode: this.config.workspaceScoped?'workspace-broadcaster':'shared-broadcaster',
       roleId: this.roleFor(), automaticRoles: !this.config.chzzkVerifyRoleId, guildCount: state.guilds?.filter(g => !g.pending && g.roleId).length || 0,
-      joinedGuildCount: this.discord?.client?.guilds?.cache?.size || 0,
+      joinedGuildCount: this.config.workspaceScoped?1:this.discord?.client?.guilds?.cache?.size || 0,
       nicknameSync: this.config.chzzkVerifyNickname, ownerConnected: Boolean(state.owner),
       linkedCount: state.users.length, verifiedCount: state.users.filter(u => u.status === 'verified' && this.currentCheck(u)).length,
       callbackUrl: this.callbackUrl(), installUrl: this.installUrl(), panel: state.panel, followerScanLimit: 50 };
