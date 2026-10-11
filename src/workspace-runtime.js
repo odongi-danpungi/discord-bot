@@ -76,7 +76,7 @@ export async function createWorkspaceRuntime({ baseConfig, entry, root, client, 
     installChzzkVerificationDiscord(DiscordService);
     const guard=()=>{operationGuard();if(recovery.emergencyState().locked)throw workspaceError('방송 운영이 일시 중지되었습니다.',423);};
     calls=new ParticipationCallService({queue,discord,guard,timeoutSeconds:config.participationCallTimeoutSeconds,audit:e=>recovery.audit(e),reporter,paused:recovery.emergencyState().locked});
-    const naver=new NaverService({config,authStore:naverAuth}),naverMonitor=new NaverCafeMonitor({store:naverMonitorStore,naver,discord,guard,audit:e=>recovery.audit(e)}),
+    const naver=new NaverService({config,authStore:naverAuth,guard:()=>{guard();runtime?.operationGuard();}}),naverMonitor=new NaverCafeMonitor({store:naverMonitorStore,naver,discord,guard,audit:e=>recovery.audit(e)}),
       chzzk=new ChzzkService({clientId:config.chzzkClientId,clientSecret:config.chzzkClientSecret}),
       chzzkLiveMonitor=new ChzzkLiveMonitor({store:liveStore,chzzk,discord,guard,audit:e=>recovery.audit(e)}),
       chzzkVerification=chzzkAuth?new ChzzkVerification({config,store:chzzkAuth,discord,guard:()=>{if(recovery.emergencyState().locked)throw workspaceError('방송 운영이 일시 중지되었습니다.',423);}}):null;

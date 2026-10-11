@@ -119,7 +119,7 @@ async function main(){
   }
   {const backup=await backupManager.ensureRecent({guildId:config.guildId,records:store.read().filter(r=>r.guildId===config.guildId),operations:operations.read()});if(backup.created)await recovery.audit({category:'system',action:'scheduled_backup',summary:`자동 배포 백업 생성 · ${backup.latest.file}`,actor:'system',details:{bytes:backup.latest.bytes}});}
   const viewerAuth=createViewerAuth();
-  const naver=new NaverService({config,authStore:naverAuthStore,reporter:event=>runtimeHealth.recordApi({method:'NAVER',path:`naver:${event.operation||'api'}`,status:event.ok?200:(Number(event.status)||502),durationMs:Number(event.durationMs)||0})});
+  const naver=new NaverService({config,authStore:naverAuthStore,guard:()=>{if(shuttingDown||recovery.emergencyState().locked)throw Object.assign(Error('인증 작업이 운영 잠금 상태입니다.'),{status:423});runtime?.operationGuard?.();},reporter:event=>runtimeHealth.recordApi({method:'NAVER',path:`naver:${event.operation||'api'}`,status:event.ok?200:(Number(event.status)||502),durationMs:Number(event.durationMs)||0})});
   const chzzk=new ChzzkService({clientId:config.chzzkClientId,clientSecret:config.chzzkClientSecret});
   let discord;
   const discordReporter=event=>runtimeHealth.recordDiscord(event);

@@ -67,25 +67,33 @@ export class NaverAuthStore extends JsonStore {
       updatedAt:Number(state.updatedAt || 0)
     };
   }
-  async saveToken(input) {
-    const previous = this.token();
+  assertExpectedToken(state, expectedToken) {
+    if (expectedToken !== undefined && JSON.stringify(state.token) !== JSON.stringify(expectedToken)) {
+      throw Object.assign(new Error('네이버 인증 정보가 변경되었습니다. 현재 연결 상태를 확인한 뒤 다시 시도해 주세요.'), { status:409, code:'NAVER_AUTH_CHANGED' });
+    }
+  }
+  async saveToken(input, { guard = () => {}, expectedToken, replaceExisting = false } = {}) {
     const accessToken = String(input?.accessToken || '').trim();
     if (!accessToken) throw new Error('네이버 access token이 없습니다.');
     const now = Date.now(), expiresIn = Math.max(0, Number(input?.expiresIn || 0));
-    const token = {
-      accessToken,
-      refreshToken:String(input?.refreshToken || previous?.refreshToken || '').trim(),
-      tokenType:String(input?.tokenType || 'bearer').toLowerCase(),
-      expiresAt:expiresIn ? now + expiresIn * 1000 : Number(input?.expiresAt || previous?.expiresAt || 0),
-      connectedAt:Number(previous?.connectedAt || now),
-      updatedAt:now
-    };
-    await this.update(state => { state.token = encryptToken(token, this.key); state.updatedAt = now; });
+    await this.update(state => {
+      guard(); this.assertExpectedToken(state, expectedToken);
+      const previous = !replaceExisting && state.token ? decryptToken(state.token, this.key) : null;
+      const token = {
+        accessToken,
+        refreshToken:String(input?.refreshToken || previous?.refreshToken || '').trim(),
+        tokenType:String(input?.tokenType || 'bearer').toLowerCase(),
+        expiresAt:expiresIn ? now + expiresIn * 1000 : Number(input?.expiresAt || previous?.expiresAt || 0),
+        connectedAt:Number(previous?.connectedAt || now),
+        updatedAt:now
+      };
+      state.token = encryptToken(token, this.key); state.updatedAt = now;
+    });
     return this.summary();
   }
-  async clear() {
+  async clear({ guard = () => {}, expectedToken } = {}) {
     const now = Date.now();
-    await this.update(state => { state.token = null; state.updatedAt = now; });
+    await this.update(state => { guard(); this.assertExpectedToken(state, expectedToken); state.token = null; state.updatedAt = now; });
     return this.summary();
   }
 }

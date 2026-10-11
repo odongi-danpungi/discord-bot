@@ -64,6 +64,32 @@ async function prepareParticipants(f){
   return {admin,participant,contexts};
 }
 
+test('operator readiness is scoped, read-only and excludes participant identities and OBS credentials',async t=>{
+  const f=await fixture(t),{admin,participant,contexts}=await prepareParticipants(f);
+  contexts[A].config.naverCafeId='123';contexts[A].config.naverMenuId='456';
+  const before=JSON.stringify(contexts[A].operations.read());
+  const result=await f.request('/w/'+A+'/readiness',admin);assert.equal(result.status,200);
+  const data=await result.json(),serialized=JSON.stringify(data);
+  assert.equal(data.evidence,'local');assert.equal(data.productionVerification,'pending');
+  assert.ok(data.checks.length>0);assert.equal(typeof data.handoff.text,'string');
+  for(const secret of [owner,person,A,B,contexts[A].config.broadcastToken,contexts[A].config.dashboardPassword])assert.equal(serialized.includes(secret),false);
+  assert.equal(JSON.stringify(contexts[A].operations.read()),before,'reading setup guidance must not modify operating state');
+  assert.equal((await f.request('/w/'+A+'/readiness',participant)).status,403);
+  assert.equal((await f.request('/w/'+A+'/readiness',{})).status,401);
+  assert.equal((await f.request('/w/'+A+'/readiness',admin,{})).status,404);
+  assert.equal(JSON.stringify(contexts[A].operations.read()),before);
+  f.deniedMembers.add(B+':'+owner);
+  assert.equal((await f.request('/w/'+B+'/readiness',admin)).status,403,'another server membership must be verified');
+});
+
+test('readiness remains available during a global operating lock and reports paused without leaking the lock reason',async t=>{
+  const f=await fixture(t),{admin}=await prepareParticipants(f);
+  f.platform.registerLegacy({context:{config:{}},runtime:{operationGuard:()=>{throw Object.assign(Error('private creator incident details'),{status:423});}}});
+  const response=await f.request('/w/'+A+'/readiness',admin);assert.equal(response.status,200);
+  const data=await response.json();assert.equal(data.paused,true);assert.equal(data.productionVerification,'pending');
+  assert.equal(JSON.stringify(data).includes('private creator incident details'),false);
+});
+
 test('participant views and mutations use the authenticated identity even when another user or workspace is supplied',async t=>{
   const f=await fixture(t),{admin,participant,contexts}=await prepareParticipants(f);
   const profile=await(await f.request('/w/'+A+'/viewer/api/me?userId='+owner+'&guildId='+B,participant)).json();

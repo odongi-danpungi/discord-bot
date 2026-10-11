@@ -9,6 +9,7 @@ import { Events, PermissionFlagsBits } from 'discord.js';
 import { WorkspaceStore } from './workspace-store.js';
 import { createWorkspaceLogin } from './workspace-login.js';
 import { createWorkspaceRuntime } from './workspace-runtime.js';
+import { buildWorkspaceReadiness } from './workspace-readiness.js';
 import { discordId, workspaceError, workspaceRouteAllowed } from './workspace-policy.js';
 import { DISCORD_RECOMMENDED_INSTALL_PERMISSIONS } from './discord-permission-audit.js';
 
@@ -160,8 +161,12 @@ export async function createWorkspacePlatform({config,client,fetchImpl=fetch,run
       if(await workspaceAsset(req,res,guildId))return;
       return target.runtime.app(req,res,next);
     }
-    const {auth,member}=await authorize(req,guildId,!(req.path==='/viewer'||req.path.startsWith('/viewer/')));
+    const {auth,member}=await authorize(req,guildId,!(req.path==='/viewer'||req.path.startsWith('/viewer/')),req.path==='/readiness');
     const target=await runtimeFor(guildId),ctx=target.context;
+    if(req.path==='/readiness'&&req.method==='GET'){
+      let paused=false;try{legacy?.runtime.operationGuard();target.runtime.operationGuard();}catch{paused=true;}
+      return res.json(buildWorkspaceReadiness({context:ctx,paused}));
+    }
     if(req.method!=='GET'){legacy?.runtime.operationGuard();login.checkMutation(req,auth);target.runtime.operationGuard();}
     if(req.path==='/settings'&&req.method==='GET')return res.json({settings:{naverCafeId:ctx.config.naverCafeId,naverMenuId:ctx.config.naverMenuId,naverMemoMenuId:ctx.config.naverMemoMenuId}});
     if(req.path==='/settings'&&req.method==='POST'){

@@ -38,7 +38,7 @@ function form(fields,submit,label='저장',confirmation=''){
 }
 function table(rows,columns){const t=el('table'),head=el('tr');for(const [,label]of columns)head.append(el('th',label));t.append(head);for(const row of rows||[]){const tr=el('tr');for(const [key]of columns)tr.append(el('td',String(row[key]??'—')));t.append(tr);}return t;}
 const menu=[
-  ['통합 운영',[['방송',['home','queue','open','round','ready','undo']],['방송 도구',['presets','schedule','poll','studio','obs','practice']],['방송 기록',['archive','timeline','stats','notifications']],['커뮤니티',['subscriptions','fairness','recruitment','my-panel','recap','publication','guide','tickets']]]],
+  ['통합 운영',[['방송',['home','queue','open','round','ready','undo']],['운영 준비',['onboarding','handoff']],['방송 도구',['presets','schedule','poll','studio','obs','practice']],['방송 기록',['archive','timeline','stats','notifications']],['커뮤니티',['subscriptions','fairness','recruitment','my-panel','recap','publication','guide','tickets']]]],
   ['네이버 카페',[['계정·게시판',['naver','cafe']],['카페 운영',['search','write','memo','monitor']]]],
   ['Discord',[['서버 운영',['discord','members']]]],
   ['CHZZK',[['방송 계정',['chzzk','live']],['팔로워 인증',['panel']]]]
@@ -46,6 +46,10 @@ const menu=[
 const titles={home:'운영 홈',queue:'통합 Queue',open:'참가 모집 시작',round:'경기 진행',ready:'경기 준비 확인',undo:'직전 순서 되돌리기',schedule:'방송 일정',poll:'방송 투표',community:'커뮤니티 운영',studio:'추첨·레이스',obs:'OBS 화면',archive:'방송 기록',practice:'운영 연습',naver:'네이버 계정 연결',cafe:'카페·게시판 설정',search:'카페 글 검색',write:'게시글 작성',memo:'칼바람 시참 접수',monitor:'새 글 알림',discord:'서버 채널 준비',members:'참가자 정보',chzzk:'방송 계정 연결',panel:'인증 안내 게시'};
 Object.assign(titles,{subscriptions:'알림 구독',fairness:'공정 선발',recruitment:'모집·공지 초안', 'my-panel':'내 시참 패널',recap:'방송 후기',publication:'게시 미리보기',guide:'규칙·FAQ',tickets:'참가자 문의',live:'방송 시작·종료 알림'});
 Object.assign(titles,{presets:'모집 프리셋',timeline:'방송 타임라인',stats:'방송 통계',notifications:'알림 설정'});
+Object.assign(titles,{onboarding:'운영 시작 안내',handoff:'운영 인수인계'});
+const knownPage=id=>typeof id==='string'&&menu.some(([,middle])=>middle.some(([,leaves])=>leaves.includes(id)));
+const safeText=(value,limit=600)=>typeof value==='string'?value.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g,'').slice(0,limit):'';
+const readinessStatuses={configured:'설정 완료',attention:'확인 필요',pending:'검증 대기',optional:'선택 사항'};
 function navigation(){
   $('menu').replaceChildren();if(workspace?.role==='participant'){const a=link('내 참가 상태',viewerUrl());$('menu').append(a);return;}
   for(const [group,middle]of menu){const d=el('details');d.append(el('summary',group));for(const [title,leaves]of middle){const m=el('details');m.append(el('summary',title));for(const id of leaves){const b=el('button',titles[id]);b.dataset.page=id;b.onclick=()=>{if(!busy)void page(id).catch(e=>{if(!e.stale)notice(e.message);});};m.append(b);}m.ontoggle=()=>{if(m.open)for(const sibling of d.children)if(sibling!==m&&sibling.tagName==='DETAILS')sibling.open=false;};d.append(m);}d.ontoggle=()=>{if(d.open)for(const sibling of $('menu').children)if(sibling!==d)sibling.open=false;};$('menu').append(d);}
@@ -65,7 +69,28 @@ async function page(id){
   const op=async(action,body={})=>{const state=snapshot||await snap();snapshot=await request('/api/operations/'+action,{requestId:crypto.randomUUID(),sessionId:state.state?.session?.id||null,...body});};
   const actions=(...buttons)=>{const a=el('div',undefined,'actions');a.append(...buttons);p.append(a);};
   if(id==='home'){
-    const data=await snap(),stats=el('div',undefined,'stats');for(const [label,value]of [['대기 참가자',data.participationQueue?.activeCount||0],['현재 회차',data.state?.session?.round||'—'],['방송 운영',data.paused?'일시 중지':'사용 가능']]){const c=el('div',label,'stat');c.append(el('strong',String(value)));stats.append(c);}p.append(stats,el('p','왼쪽 메뉴에서 사용할 기능 하나를 선택하세요.'));actions(button('Queue 보기',()=>page('queue')),button('경기 진행',()=>page('round'),'secondary'));
+    const data=await snap(),stats=el('div',undefined,'stats');for(const [label,value]of [['대기 참가자',data.participationQueue?.activeCount||0],['현재 회차',data.state?.session?.round||'—'],['방송 운영',data.paused?'일시 중지':'사용 가능']]){const c=el('div',label,'stat');c.append(el('strong',String(value)));stats.append(c);}p.append(stats,el('p','왼쪽 메뉴에서 사용할 기능 하나를 선택하세요.'));actions(button('Queue 보기',()=>page('queue')),button('경기 진행',()=>page('round'),'secondary'),button('운영 시작 안내',()=>page('onboarding'),'secondary'));
+  }else if(id==='onboarding'||id==='handoff'){
+    const data=await request('/readiness'),checked=new Date(data.checkedAt),hasTime=typeof data.checkedAt==='number'&&Number.isFinite(checked.getTime());
+    const evidence=el('div',undefined,'readiness-evidence');evidence.append(el('span','저장된 설정 기준','badge readiness-configured'),el('span','실제 연결 검증 대기','badge readiness-pending'));p.append(evidence,el('p',hasTime?'확인 시각 · '+checked.toLocaleString('ko-KR'):'확인 시각을 가져오지 못했습니다.','muted readiness-time'));
+    if(data.paused===true)p.append(el('p','현재 방송 운영이 일시 중지되어 있습니다. 운영 재개 상태를 확인해 주세요.','readiness-paused'));
+    if(id==='onboarding'){
+      p.append(el('p','아래 순서대로 운영 설정을 확인하세요. 설정 완료 표시만으로 실제 로그인·메시지 전송·팔로워 인증이 검증된 것은 아닙니다.','muted'));
+      const list=el('ol',undefined,'readiness-list');
+      for(const check of Array.isArray(data.checks)?data.checks.slice(0,30):[]){
+        if(!check||typeof check!=='object'||!Object.hasOwn(readinessStatuses,check.status))continue;
+        const item=el('li'),content=el('div',undefined,'readiness-check'),heading=el('div',undefined,'readiness-heading');heading.append(el('h2',safeText(check.title,120)||'운영 설정'),el('span',readinessStatuses[check.status],'badge readiness-'+check.status));content.append(heading,el('p',safeText(check.detail),'muted'));
+        if(knownPage(check.action?.page)){const target=check.action.page;content.append(button(safeText(check.action.label,60)||titles[target],async()=>{assertCurrent();await page(target);},'secondary'));}
+        item.append(content);list.append(item);
+      }
+      if(!list.children.length)p.append(el('p','운영 준비 항목을 가져오지 못했습니다. 새로고침해 주세요.','muted'));else p.append(list);
+      actions(button('설정 상태 새로고침',()=>page('onboarding'),'secondary'),button('운영 인수인계 보기',()=>page('handoff'),'secondary'));
+    }else{
+      p.append(el('p','다음 운영자에게 전달할 현재 설정 요약입니다. 실제 연결 검증이 끝난 항목과 남은 작업을 함께 확인하세요.','muted'));
+      const text=safeText(data.handoff?.text,24000),wrap=el('label','인수인계 요약'),summary=el('textarea',undefined,'handoff-text');summary.readOnly=true;summary.value=text;summary.setAttribute('aria-label','인수인계 요약');wrap.append(summary);p.append(wrap);
+      const copy=button('요약 복사',async()=>{assertCurrent();if(!navigator.clipboard?.writeText)throw Error('자동 복사를 사용할 수 없습니다. 요약을 선택해 직접 복사해 주세요.');try{await navigator.clipboard.writeText(text);}catch{throw Error('요약을 복사하지 못했습니다. 요약을 선택해 직접 복사해 주세요.');}assertCurrent();});
+      const download=button('요약 TXT 저장',async()=>{assertCurrent();const url=URL.createObjectURL(new Blob([text],{type:'text/plain;charset=utf-8'})),a=el('a');a.href=url;a.download='daengdaeng-handoff.txt';document.body.append(a);try{a.click();}finally{a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}},'secondary');copy.disabled=download.disabled=!text;actions(copy,download,button('요약 새로고침',()=>page('handoff'),'secondary'));
+    }
   }else if(id==='queue'){
     const data=await request('/api/participation-queue'),split=el('div',undefined,'split'),list=el('div',undefined,'list'),detail=el('div');
     detail.append(el('h2','참가자를 선택하세요'),el('p','목록을 선택하면 해당 참가자의 작업만 표시됩니다.','muted'));
@@ -132,7 +157,7 @@ async function selectServer(initialPage='home'){
   }
   history.replaceState(null,'','/portal/?server='+selected+(validEntry&&selected===entryServer?'&session='+encodeURIComponent(entrySession):''));navigation();
   if(workspace.role==='participant'){$('title').textContent='내 참가 상태';$('intro').textContent=workspace.name+' · 참가자';$('panel').replaceChildren(el('p','내 순번·호출 응답·예약·준비 상태를 확인하세요.'),link('내 참가 화면 열기',viewerUrl()));}
-  else await page(menu.some(([,middle])=>middle.some(([,leaves])=>leaves.includes(initialPage)))?initialPage:'home');
+  else await page(knownPage(initialPage)?initialPage:'home');
 }
 $('servers').onchange=()=>selectServer().catch(e=>notice(e.message));
 $('logout').onclick=()=>run(async()=>{await api('/portal/auth/logout',{});location.assign('/portal/');});
