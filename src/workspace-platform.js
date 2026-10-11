@@ -10,6 +10,7 @@ import { WorkspaceStore } from './workspace-store.js';
 import { createWorkspaceLogin } from './workspace-login.js';
 import { createWorkspaceRuntime } from './workspace-runtime.js';
 import { buildWorkspaceReadiness } from './workspace-readiness.js';
+import { saveWorkspaceCallSettings } from './workspace-call-settings.js';
 import { discordId, workspaceError, workspaceRouteAllowed } from './workspace-policy.js';
 import { DISCORD_RECOMMENDED_INSTALL_PERMISSIONS } from './discord-permission-audit.js';
 
@@ -77,7 +78,7 @@ export async function createWorkspacePlatform({config,client,fetchImpl=fetch,run
   app.use((req,res,next)=>{res.set({'Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'});next();});
   app.use('/portal/auth',login.router);
   app.get(['/portal','/portal/'],(_req,res)=>res.sendFile('portal.html',{root:publicDir}));
-  for(const file of ['portal.js','portal.css'])app.get('/portal/'+file,(_req,res)=>res.sendFile(file,{root:publicDir}));
+  for(const file of ['portal.js','portal.css','practice-model.js'])app.get('/portal/'+file,(_req,res)=>res.sendFile(file,{root:publicDir}));
   app.get('/portal/api/servers',(req,res)=>{
     const auth=login.session(req);if(!auth)return res.status(401).json({error:'Discord 로그인이 필요합니다.'});
     res.json({servers:auth.guilds.map(g=>({...g,botPresent:client.guilds.cache.has(g.id),prepared:g.id===config.guildId||Boolean(registry.find(g.id))})),
@@ -161,13 +162,22 @@ export async function createWorkspacePlatform({config,client,fetchImpl=fetch,run
       if(await workspaceAsset(req,res,guildId))return;
       return target.runtime.app(req,res,next);
     }
-    const {auth,member}=await authorize(req,guildId,!(req.path==='/viewer'||req.path.startsWith('/viewer/')),req.path==='/readiness');
+    const {auth,member}=await authorize(req,guildId,!(req.path==='/viewer'||req.path.startsWith('/viewer/')),['/readiness','/call-settings'].includes(req.path));
     const target=await runtimeFor(guildId),ctx=target.context;
     if(req.path==='/readiness'&&req.method==='GET'){
       let paused=false;try{legacy?.runtime.operationGuard();target.runtime.operationGuard();}catch{paused=true;}
       return res.json(buildWorkspaceReadiness({context:ctx,paused}));
     }
     if(req.method!=='GET'){legacy?.runtime.operationGuard();login.checkMutation(req,auth);target.runtime.operationGuard();}
+    if(req.path==='/call-settings'&&req.method==='GET'){
+      if(!ctx.callSettings)throw workspaceError('호출 설정을 준비하지 못했습니다. 잠시 후 다시 시도하세요.',503);
+      return res.json(ctx.callSettings.snapshot());
+    }
+    if(req.path==='/call-settings'&&req.method==='POST'){
+      const result=await saveWorkspaceCallSettings({store:ctx.callSettings,calls:ctx.participationCalls,input:req.body,
+        guard:()=>{legacy?.runtime.operationGuard();target.runtime.operationGuard();}});
+      return res.json(result);
+    }
     if(req.path==='/settings'&&req.method==='GET')return res.json({settings:{naverCafeId:ctx.config.naverCafeId,naverMenuId:ctx.config.naverMenuId,naverMemoMenuId:ctx.config.naverMemoMenuId}});
     if(req.path==='/settings'&&req.method==='POST'){
       const input=req.body;

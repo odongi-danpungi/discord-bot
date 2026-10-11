@@ -39,12 +39,20 @@ export function communityView(operations,userId){
 export class CommunityService {
   constructor({operations,config,discord,naver,guard=()=>{}}){Object.assign(this,{operations,config,discord,naver,guard});this.pending=new Set();}
   async mutate(fn,expected){await this.operations.update(state=>{const c=communityState(state);if(expected!==undefined&&expected!==c.revision)throw fail('다른 창에서 변경되었습니다. 새로고침 후 다시 시도해 주세요.',409);fn(c,state);c.revision++;state.community=c;});}
-  async settings(body){this.guard();await this.mutate(c=>{
+  async settings(body){this.guard();await this.mutate((c,state)=>{
+    this.guard();
     const f=body.fairness||{};for(const k of ['enabled','unplayedFirst','waitFirst'])if(typeof f[k]!=='boolean')throw fail('공정성 설정을 확인해 주세요.');
     for(const [k,max] of [['maxConsecutive',20],['newcomerSlots',50]])if(!Number.isInteger(f[k])||f[k]<0||f[k]>max)throw fail('공정성 숫자 범위를 확인해 주세요.');
     const roles={};for(const topic of Object.keys(TOPICS)){const value=body.roles?.[topic]||'';roles[topic]=value?id(value):'';if(roles[topic]===this.config.guildId)throw fail('@everyone 역할은 사용할 수 없습니다.');}
     const old=c.settings.roles||{};if(c.subscriptions.some(s=>(s.enabled||s.status!=='active')&&old[s.topic]!==roles[s.topic]))throw fail('구독 중이거나 적용 확인 중인 역할은 변경할 수 없습니다. 기존 구독을 해제한 후 변경하세요.');
     if(new Set(Object.values(roles).filter(Boolean)).size!==Object.values(roles).filter(Boolean).length)throw fail('주제별로 서로 다른 알림 전용 역할을 선택하세요.');
+    // Older active rounds predate the policy snapshot. Preserve the effective
+    // policy before replacing defaults so an ongoing draw never changes rules.
+    if(state.session&&state.session.phase!=='ended'&&state.session.communityFairness==null){
+      const previous=c.settings.fairness;
+      if(!previous||['enabled','unplayedFirst','waitFirst'].some(k=>typeof previous[k]!=='boolean')||[['maxConsecutive',20],['newcomerSlots',50]].some(([k,max])=>!Number.isInteger(previous[k])||previous[k]<0||previous[k]>max))throw fail('진행 중인 회차의 기존 공정성 설정을 확인해 주세요.',409);
+      state.session.communityFairness=structuredClone(previous);
+    }
     c.settings={channelId:body.channelId?id(body.channelId):'',roles,fairness:{enabled:f.enabled,unplayedFirst:f.unplayedFirst,waitFirst:f.waitFirst,maxConsecutive:f.maxConsecutive,newcomerSlots:f.newcomerSlots}};
   },body.revision);}
   async draft(body){this.guard();let saved;await this.mutate((c,state)=>{

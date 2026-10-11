@@ -13,6 +13,7 @@ import { NaverMonitorStore } from './naver-monitor-store.js';
 import { NaverParticipationStore } from './naver-participation-store.js';
 import { ParticipationQueueStore } from './participation-queue-store.js';
 import { ParticipationCallService } from './participation-call-service.js';
+import { WorkspaceCallSettingsStore } from './workspace-call-settings.js';
 import { BroadcastOpsStore } from './broadcast-ops-store.js';
 import { ChzzkLiveStore } from './chzzk-live-store.js';
 import { ChzzkService } from './chzzk-service.js';
@@ -56,7 +57,7 @@ export async function createWorkspaceRuntime({ baseConfig, entry, root, client, 
       recovery=create(RecoveryStore,config.recoveryFile),discordPolicy=create(DiscordPolicyStore,config.discordPolicyFile),
       incidentWorkflow=create(IncidentWorkflowStore,config.incidentWorkflowFile),idempotencyStore=create(PersistentIdempotencyStore,config.idempotencyFile),
       naverMonitorStore=create(NaverMonitorStore,config.naverMonitorFile,{}),naverParticipation=create(NaverParticipationStore,config.naverParticipationFile),
-      queue=create(ParticipationQueueStore,config.participationQueueFile),broadcastOps=create(BroadcastOpsStore,config.broadcastOpsFile),
+      queue=create(ParticipationQueueStore,config.participationQueueFile),callSettings=create(WorkspaceCallSettingsStore,config.operationsFile,config.participationCallTimeoutSeconds),broadcastOps=create(BroadcastOpsStore,config.broadcastOpsFile),
       liveStore=create(ChzzkLiveStore,config.chzzkLiveFile,{}),
       naverAuth=config.naverTokenKey&&config.naverRedirectUri?create(NaverAuthStore,config.naverAuthFile,config.naverTokenKey):null,
       chzzkAuth=config.chzzkVerifyEnabled?create(ChzzkVerificationStore,config.chzzkVerificationFile,config.chzzkTokenKey):null;
@@ -75,14 +76,14 @@ export async function createWorkspaceRuntime({ baseConfig, entry, root, client, 
     const reporter=e=>health.recordDiscord(e),discord=new DiscordService(client,config.guildId,operations,reporter),viewerAuth=createViewerAuth();
     installChzzkVerificationDiscord(DiscordService);
     const guard=()=>{operationGuard();if(recovery.emergencyState().locked)throw workspaceError('방송 운영이 일시 중지되었습니다.',423);};
-    calls=new ParticipationCallService({queue,discord,guard,timeoutSeconds:config.participationCallTimeoutSeconds,audit:e=>recovery.audit(e),reporter,paused:recovery.emergencyState().locked});
+    calls=new ParticipationCallService({queue,discord,guard,timeoutSeconds:callSettings.snapshot().settings.timeoutSeconds,audit:e=>recovery.audit(e),reporter,paused:recovery.emergencyState().locked});
     const naver=new NaverService({config,authStore:naverAuth,guard:()=>{guard();runtime?.operationGuard();}}),naverMonitor=new NaverCafeMonitor({store:naverMonitorStore,naver,discord,guard,audit:e=>recovery.audit(e)}),
       chzzk=new ChzzkService({clientId:config.chzzkClientId,clientSecret:config.chzzkClientSecret}),
       chzzkLiveMonitor=new ChzzkLiveMonitor({store:liveStore,chzzk,discord,guard,audit:e=>recovery.audit(e)}),
       chzzkVerification=chzzkAuth?new ChzzkVerification({config,store:chzzkAuth,discord,guard:()=>{if(recovery.emergencyState().locked)throw workspaceError('방송 운영이 일시 중지되었습니다.',423);}}):null;
     const backupManager=new BackupRetention({dir:config.backupDir,keepCount:config.backupKeepCount,maxAgeDays:config.backupMaxAgeDays,minimumIntervalHours:config.backupIntervalHours});await backupManager.init();await backupManager.ensureRecent({guildId:config.guildId,records,operations:operations.read()});
     const context={config,store,operations,recovery,discord,discordPolicy,incidentWorkflow,idempotencyStore,naver,naverMonitor,naverParticipation,
-      participationQueue:queue,participationCalls:calls,broadcastOps,chzzkLiveMonitor,chzzkVerification,viewerAuth,
+      participationQueue:queue,participationCalls:calls,callSettings,broadcastOps,chzzkLiveMonitor,chzzkVerification,viewerAuth,
       instanceId:lock.instanceId,runtimeHealth:health,backupManager,workspaceAuthenticate:authenticate,workspaceViewerAuthenticate:viewerAuthenticate,workspaceOperationGuard:operationGuard};
     runtime=createApp(context);
     const tick=runtime.tick;runtime.tick=async()=>{

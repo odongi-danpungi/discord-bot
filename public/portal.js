@@ -1,3 +1,4 @@
+import {newPractice,practiceAction} from './practice-model.js';
 const $=id=>document.getElementById(id);
 let session,workspace=null,selected='',generation=0,selectionGeneration=0,busy=false;
 const el=(tag,text,cls)=>{const node=document.createElement(tag);if(text!==undefined)node.textContent=text;if(cls)node.className=cls;return node;};
@@ -38,7 +39,7 @@ function form(fields,submit,label='저장',confirmation=''){
 }
 function table(rows,columns){const t=el('table'),head=el('tr');for(const [,label]of columns)head.append(el('th',label));t.append(head);for(const row of rows||[]){const tr=el('tr');for(const [key]of columns)tr.append(el('td',String(row[key]??'—')));t.append(tr);}return t;}
 const menu=[
-  ['통합 운영',[['방송',['home','queue','open','round','ready','undo']],['운영 준비',['onboarding','handoff']],['방송 도구',['presets','schedule','poll','studio','obs','practice']],['방송 기록',['archive','timeline','stats','notifications']],['커뮤니티',['subscriptions','fairness','recruitment','my-panel','recap','publication','guide','tickets']]]],
+  ['통합 운영',[['방송',['home','queue','open','round','ready','undo']],['운영 준비',['onboarding','handoff']],['참가 설정',['recruitment-rules','call-settings']],['방송 도구',['presets','schedule','poll','studio','obs','practice']],['방송 기록',['archive','timeline','stats','notifications']],['커뮤니티',['subscriptions','recruitment','my-panel','recap','publication','guide','tickets']]]],
   ['네이버 카페',[['계정·게시판',['naver','cafe']],['카페 운영',['search','write','memo','monitor']]]],
   ['Discord',[['서버 운영',['discord','members']]]],
   ['CHZZK',[['방송 계정',['chzzk','live']],['팔로워 인증',['panel']]]]
@@ -47,7 +48,8 @@ const titles={home:'운영 홈',queue:'통합 Queue',open:'참가 모집 시작'
 Object.assign(titles,{subscriptions:'알림 구독',fairness:'공정 선발',recruitment:'모집·공지 초안', 'my-panel':'내 시참 패널',recap:'방송 후기',publication:'게시 미리보기',guide:'규칙·FAQ',tickets:'참가자 문의',live:'방송 시작·종료 알림'});
 Object.assign(titles,{presets:'모집 프리셋',timeline:'방송 타임라인',stats:'방송 통계',notifications:'알림 설정'});
 Object.assign(titles,{onboarding:'운영 시작 안내',handoff:'운영 인수인계'});
-const knownPage=id=>typeof id==='string'&&menu.some(([,middle])=>middle.some(([,leaves])=>leaves.includes(id)));
+Object.assign(titles,{'recruitment-rules':'참가 선발 규칙','call-settings':'호출 응답 시간'});
+const knownPage=id=>id==='fairness'||typeof id==='string'&&menu.some(([,middle])=>middle.some(([,leaves])=>leaves.includes(id)));
 const safeText=(value,limit=600)=>typeof value==='string'?value.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g,'').slice(0,limit):'';
 const readinessStatuses={configured:'설정 완료',attention:'확인 필요',pending:'검증 대기',optional:'선택 사항'};
 function navigation(){
@@ -56,6 +58,7 @@ function navigation(){
 }
 async function page(id){
   if(!workspace||workspace.role!=='operator')return;
+  if(id==='fairness')id='recruitment-rules';
   closeMenu();
   const myGeneration=++generation,scope=base(),guildId=selected;let snapshot=null;
   const current=()=>myGeneration===generation&&selected===guildId;
@@ -91,6 +94,39 @@ async function page(id){
       const copy=button('요약 복사',async()=>{assertCurrent();if(!navigator.clipboard?.writeText)throw Error('자동 복사를 사용할 수 없습니다. 요약을 선택해 직접 복사해 주세요.');try{await navigator.clipboard.writeText(text);}catch{throw Error('요약을 복사하지 못했습니다. 요약을 선택해 직접 복사해 주세요.');}assertCurrent();});
       const download=button('요약 TXT 저장',async()=>{assertCurrent();const url=URL.createObjectURL(new Blob([text],{type:'text/plain;charset=utf-8'})),a=el('a');a.href=url;a.download='daengdaeng-handoff.txt';document.body.append(a);try{a.click();}finally{a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}},'secondary');copy.disabled=download.disabled=!text;actions(copy,download,button('요약 새로고침',()=>page('handoff'),'secondary'));
     }
+  }else if(id==='recruitment-rules'||id==='fairness'||id==='call-settings'){
+    const isFairness=id!=='call-settings',data=await request(isFairness?'/api/community':'/call-settings'),settings=data.settings||{},values=isFairness?settings.fairness||{}:settings;
+    const validRevision=Number.isSafeInteger(data.revision)&&data.revision>=0,validSettings=isFairness?typeof settings.channelId==='string'&&settings.roles&&typeof settings.roles==='object'&&!Array.isArray(settings.roles)&&['enabled','unplayedFirst','waitFirst'].every(key=>typeof values[key]==='boolean')&&Number.isInteger(values.maxConsecutive)&&values.maxConsecutive>=0&&values.maxConsecutive<=20&&Number.isInteger(values.newcomerSlots)&&values.newcomerSlots>=0&&values.newcomerSlots<=50:Number.isInteger(values.timeoutSeconds)&&values.timeoutSeconds>=15&&values.timeoutSeconds<=300;
+    if(!validRevision||!validSettings){const message='저장된 설정을 확인하지 못했습니다. 다시 불러온 뒤 저장해 주세요.';$('panel').replaceChildren(el('p',message),button('설정 다시 불러오기',()=>page(id),'secondary'));throw Error(message);}
+    p.append(el('p',isFairness?'다음에 여는 모집부터 적용됩니다. 현재 열린 회차의 선발 기준은 바뀌지 않습니다.':'다음 참가자 호출부터 적용됩니다. 이미 호출한 참가자의 응답 마감 시간은 유지됩니다.','settings-guidance'));
+    if(isFairness)p.append(el('p','공정 선발을 사용하면 추첨 시 우선순위를 적용합니다. 신규 참가자는 보관된 최근 최대 50회 참가 기록으로 판단합니다.','muted'));
+    const f=el('form',undefined,'form settings-form'),inputs={},message=el('p','', 'settings-feedback');message.setAttribute('role','status');let dirty=false;
+    const numeric=(key,label,value,min,max,help)=>{const input=field(f,key,label,value,'number');input.min=String(min);input.max=String(max);input.step='1';input.required=true;input.parentElement.append(el('span',help,'field-help'));inputs[key]=input;};
+    const checkbox=(key,label,value,help)=>{const wrap=el('label',undefined,'setting-toggle'),input=el('input');input.type='checkbox';input.name=key;input.checked=value===true;const text=el('span');text.append(el('strong',label),el('span',help,'field-help'));wrap.append(input,text);f.append(wrap);inputs[key]=input;};
+    if(isFairness){
+      checkbox('enabled','공정 선발 사용',values.enabled,'사용하지 않으면 기존 무작위 추첨을 유지합니다.');
+      checkbox('unplayedFirst','오늘 미참가자 우선',values.unplayedFirst,'한국 시간 기준으로 오늘 참여하지 않은 참가자를 우선합니다.');
+      checkbox('waitFirst','같은 우선순위에서는 접수 순서 우선',values.waitFirst,'먼저 접수한 참가자를 앞 순서로 선발합니다.');
+      numeric('maxConsecutive','연속 참가 제한',values.maxConsecutive??0,0,20,'0은 제한 없음 · 1~20회');
+      numeric('newcomerSlots','신규 참가자 우선 자리',values.newcomerSlots??0,0,50,'0은 별도 우선 자리 없음 · 최대 50자리');
+    }else numeric('timeoutSeconds','호출 응답 대기 시간 (초)',values.timeoutSeconds,15,300,'15~300초 사이의 정수로 입력하세요.');
+    const save=el('button','설정 저장');save.type='submit';f.append(save,message);f.oninput=()=>{dirty=true;};
+    f.onsubmit=event=>{event.preventDefault();if(busy)return;void run(async()=>{assertCurrent();const body=isFairness?{revision:data.revision,channelId:settings.channelId||'',roles:{...(settings.roles||{})},fairness:Object.fromEntries(Object.entries(inputs).map(([key,input])=>[key,input.type==='checkbox'?input.checked:Number(input.value)]))}:{revision:data.revision,timeoutSeconds:Number(inputs.timeoutSeconds.value)};
+      const limits=isFairness?[['maxConsecutive',0,20],['newcomerSlots',0,50]]:[['timeoutSeconds',15,300]],numbers=isFairness?body.fairness:body;
+      if(limits.some(([key,min,max])=>!Number.isInteger(numbers[key])||numbers[key]<min||numbers[key]>max))throw Error(isFairness?'참가 제한과 우선 자리의 입력 범위를 확인해 주세요.':'호출 응답 시간은 15~300초 사이의 정수로 입력해 주세요.');
+      save.disabled=true;message.textContent='저장 중…';try{await request(isFairness?'/api/community/settings':'/call-settings',body);await page(isFairness?'recruitment-rules':'call-settings');}catch(error){if(!error.stale)message.textContent=error.status===409?'다른 창에서 설정이 변경되었습니다. 입력 내용은 유지했습니다. 새 설정을 불러와 확인한 뒤 다시 저장해 주세요.':error.message;throw error;}finally{save.disabled=false;}
+    });};p.append(f);actions(button('새 설정 불러오기',async()=>{assertCurrent();if(dirty&&!confirm('입력한 내용을 최신 저장 설정으로 바꿀까요?'))return;await page(isFairness?'recruitment-rules':'call-settings');},'secondary'));
+  }else if(id==='practice'){
+    let practice=newPractice(),acting=false;
+    const steps=[['register','가상 접수','Discord 5명과 네이버 5명의 가상 참가자를 접수합니다.'],['call','호출','첫 참가자를 부르는 흐름을 연습합니다.'],['ready','준비','가상 참가자의 응답과 준비 완료를 확인합니다.'],['draw','추첨','10명 중 6명을 연습용 무작위 추첨으로 선발합니다.'],['teams','팀 배정','선발된 가상 참가자를 A/B 팀으로 나눕니다.'],['end','방송 종료','연습 회차를 종료합니다. 실제 방송은 종료하지 않습니다.']];
+    const phases=['접수 전','접수 완료','호출 완료','준비 완료','추첨 완료','팀 배정 완료','방송 종료'];
+    p.append(el('p','연습 전용 · 실제 운영에 반영되지 않습니다.','practice-banner'),el('p','이 화면의 가상 참가자만 사용합니다. Discord·네이버·CHZZK에 요청을 보내거나 실제 Queue를 변경하지 않습니다. 화면이나 서버를 바꾸면 연습 내용이 초기화됩니다.','muted'));
+    const progress=el('ol',undefined,'practice-progress'),content=el('div',undefined,'practice-stage'),feedback=el('p','', 'settings-feedback');feedback.setAttribute('role','status');
+    const render=()=>{const index=phases.indexOf(practice.phase);progress.replaceChildren();for(const [position,[,label]]of steps.entries()){const item=el('li',`${position+1}. ${label}`,position<index?'complete':position===index?'current':'');if(position===index)item.setAttribute('aria-current','step');progress.append(item);}content.replaceChildren();
+      if(index>=steps.length){content.append(el('h2','연습 완료'),el('p','접수부터 방송 종료까지 6단계를 완료했습니다. 초기화하면 처음부터 다시 연습할 수 있습니다.'));}
+      else{const [action,label,help]=steps[index];content.append(el('span',`${index+1} / ${steps.length} 단계`,'badge readiness-pending'),el('h2',label),el('p',help));const next=el('button',label+' 연습');next.type='button';next.dataset.practiceAction=action;next.onclick=()=>{if(acting||busy||!current()||phases.indexOf(practice.phase)!==index)return;acting=true;next.disabled=true;try{practice=practiceAction(practice,action);feedback.textContent=label+' 연습을 완료했습니다.';render();}catch(error){feedback.textContent=error.message;}finally{acting=false;}};content.append(next);}
+      if(practice.participants.length){const result=el('div',undefined,'practice-result');result.append(el('p',`가상 접수 ${practice.participants.length}명 · 준비 완료 ${practice.participants.filter(participant=>participant.ready).length}명 · 선발 ${practice.selection.length}명`));if(practice.teams.length)for(const [i,team]of practice.teams.entries())result.append(el('p',`팀 ${i?'B':'A'} · ${team.map(participant=>participant.name).join(', ')}`));content.append(result);}
+    };p.append(progress,content,feedback);const reset=el('button','연습 초기화','secondary');reset.type='button';reset.onclick=()=>{if(acting||busy||!current())return;practice=newPractice();feedback.textContent='연습을 처음부터 시작합니다.';render();};const resetActions=el('div',undefined,'actions');resetActions.append(reset);p.append(resetActions);render();
   }else if(id==='queue'){
     const data=await request('/api/participation-queue'),split=el('div',undefined,'split'),list=el('div',undefined,'list'),detail=el('div');
     detail.append(el('h2','참가자를 선택하세요'),el('p','목록을 선택하면 해당 참가자의 작업만 표시됩니다.','muted'));
@@ -103,8 +139,8 @@ async function page(id){
   }else if(id==='round'){
     const data=await snap(),s=data.state?.session;p.append(el('h2',s?.title||'진행 중인 모집이 없습니다.'),el('p',s?`${s.round}회차 · ${s.phase} · 신청 ${s.applicants?.length||0}명`:'참가 모집 시작 메뉴에서 모집을 열어 주세요.'));
     const a=el('div',undefined,'actions');for(const [action,label]of [['close','모집 마감'],['reopen','다시 모집'],['draw','랜덤 추첨'],['attendance','참석 확인 시작'],['replace','미응답자 교체'],['teams','팀 배정'],['reshuffle','팀 다시 배정'],['publish','Discord에 게시'],['end','방송 종료']])a.append(button(label,async()=>{if(!confirm(label+' 작업을 실행할까요?'))return;await op(action);await page('round');},action==='end'?'secondary':''));p.append(a);
-  }else if(['ready','undo','community','studio','practice','subscriptions','fairness','recruitment','my-panel','recap','publication','guide','tickets'].includes(id)){
-    const files={ready:'operation-tools.html?feature=ready',undo:'operation-tools.html?feature=undo',studio:'game-studio.html',practice:'practice.html'};p.append(el('p',id==='practice'?'가상 참가자로 연습하며 실제 방송 데이터에 반영하지 않습니다.':'현재 선택한 서버의 전용 화면에서 작업합니다.'),link(titles[id]+' 열기',scope+'/'+(files[id]||'community.html?feature='+encodeURIComponent(id))));
+  }else if(['ready','undo','community','studio','subscriptions','recruitment','my-panel','recap','publication','guide','tickets'].includes(id)){
+    const files={ready:'operation-tools.html?feature=ready',undo:'operation-tools.html?feature=undo',studio:'game-studio.html'};p.append(el('p','현재 선택한 서버의 전용 화면에서 작업합니다.'),link(titles[id]+' 열기',scope+'/'+(files[id]||'community.html?feature='+encodeURIComponent(id))));
   }else if(id==='discord'){
     p.append(el('p','이 서버에 모집·참가 안내 채널과 패널을 준비합니다. 봇에 필요한 채널·메시지 권한이 있어야 합니다.'));actions(button('서버 채널 준비',async()=>{if(confirm('현재 서버에 운영 채널과 안내 패널을 생성·갱신할까요?'))await op('setup');}));
   }else if(id==='members'){

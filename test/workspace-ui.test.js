@@ -3,14 +3,15 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { JSDOM, VirtualConsole } from 'jsdom';
 import { workspaceAsset } from '../src/workspace-assets.js';
+import { newPractice, practiceAction } from '../public/practice-model.js';
 const A='111111111111111111',B='222222222222222222';
 async function portal(t,fetcher,query=''){
   const html=await readFile(new URL('../public/portal.html',import.meta.url),'utf8'),source=await readFile(new URL('../public/portal.js',import.meta.url),'utf8');
   const errors=[],virtualConsole=new VirtualConsole();virtualConsole.on('jsdomError',error=>errors.push(error));
   const dom=new JSDOM(html,{url:'https://example.invalid/portal/'+query,runScripts:'outside-only',virtualConsole});
   t.after(async()=>{await new Promise(resolve=>setTimeout(resolve,20));for(const node of dom.window.document.querySelectorAll('details'))node.ontoggle=null;dom.window.close();assert.deepEqual(errors,[],'portal must not raise unhandled DOM errors');});
-  dom.window.fetch=fetcher;dom.window.confirm=()=>true;
-  await dom.window.eval('(async()=>{'+source+';globalThis.portalTest={page,selectServer};})()');return dom.window;
+  dom.window.fetch=fetcher;dom.window.confirm=()=>true;dom.window.newPractice=newPractice;dom.window.practiceAction=practiceAction;
+  await dom.window.eval('(async()=>{'+source.replace(/^import \{newPractice,practiceAction\} from '\.\/practice-model\.js';\r?\n/,'')+';globalThis.portalTest={page,selectServer};})()');return dom.window;
 }
 const response=data=>Promise.resolve({ok:true,json:async()=>structuredClone(data)});
 const defaults=url=>url==='/portal/auth/session'?{authenticated:true,user:{name:'가상 운영자'},csrf:'fixture-csrf'}:url==='/portal/api/servers'?{servers:[{id:A,name:'방송 A',botPresent:true},{id:B,name:'방송 B',botPresent:true}],installUrl:'https://discord.com/oauth2/authorize'}:url.startsWith('/portal/api/servers/')?{guildId:url.split('/').at(-1),name:'선택한 방송',role:'operator'}:url.endsWith('/api/snapshot')?{state:{session:null},participationQueue:{activeCount:0},paused:false}:{};
@@ -108,4 +109,73 @@ test('handoff copy failures explain manual copying and do not expose clipboard e
 test('participants cannot open operator readiness or handoff screens',async t=>{
   const calls=[],w=await portal(t,(url,options)=>{calls.push({url,options});return response(url==='/portal/api/servers/'+A?{guildId:A,name:'방송 A',role:'participant'}:defaults(url));},'?server='+A+'&page=onboarding');
   await w.portalTest.page('onboarding');await w.portalTest.page('handoff');assert.equal(w.document.getElementById('title').textContent,'내 참가 상태');assert.equal(w.document.querySelectorAll('[data-page]').length,0);assert.ok(!calls.some(c=>c.url.endsWith('/readiness')));assert.doesNotMatch(w.document.getElementById('panel').textContent,/운영 시작 안내|운영 인수인계/);
+});
+
+const communityFixture=()=>({revision:41,settings:{channelId:'333333333333333333',roles:{aram:'444444444444444444',live:'555555555555555555'},fairness:{enabled:false,unplayedFirst:true,waitFirst:false,maxConsecutive:0,newcomerSlots:0}},session:{phase:'open'}});
+const settle=async()=>{for(let i=0;i<4;i++)await new Promise(resolve=>setImmediate(resolve));};
+const submit=async(w,form)=>{form.dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));await settle();};
+test('native recruitment rules preserve hidden channel and role settings and use the loaded community revision',async t=>{
+  const calls=[],fixture=communityFixture(),w=await portal(t,(url,options)=>{calls.push({url,options});if(options.method==='POST')fixture.revision++;return response(url.endsWith('/api/community')?fixture:defaults(url));},'?server='+A+'&page=recruitment-rules');
+  assert.equal(w.document.getElementById('breadcrumb').textContent,'통합 운영 / 참가 설정 / 참가 선발 규칙');
+  assert.match(w.document.getElementById('panel').textContent,/다음에 여는 모집부터/);assert.match(w.document.getElementById('panel').textContent,/현재 열린 회차.*바뀌지/);
+  const f=w.document.querySelector('form');f.elements.enabled.checked=true;f.elements.unplayedFirst.checked=false;f.elements.waitFirst.checked=true;f.elements.maxConsecutive.value='2';f.elements.newcomerSlots.value='1';await submit(w,f);
+  const saved=calls.find(c=>c.url==='/w/'+A+'/api/community/settings');assert.ok(saved);const payload=JSON.parse(saved.options.body);
+  assert.deepEqual(payload,{revision:41,channelId:fixture.settings.channelId,roles:fixture.settings.roles,fairness:{enabled:true,unplayedFirst:false,waitFirst:true,maxConsecutive:2,newcomerSlots:1}});
+  assert.equal(saved.options.headers['X-CSRF-Token'],'fixture-csrf');assert.ok(!calls.some(c=>/\/operations\/|\/community\/(publish|panel)/.test(c.url)));
+  await submit(w,w.document.querySelector('form'));assert.equal(JSON.parse(calls.filter(c=>c.options.method==='POST').at(-1).options.body).revision,42,'a successful save reloads the fresh revision before the next edit');
+  assert.equal(w.document.querySelectorAll('[data-page="fairness"]').length,0);await w.portalTest.page('fairness');assert.equal(w.document.getElementById('title').textContent,'참가 선발 규칙','legacy fairness entry remains supported without a duplicate menu');
+});
+
+test('settings conflicts keep edited inputs and require an explicit refresh before replacement',async t=>{
+  const calls=[],fixture=communityFixture(),w=await portal(t,(url,options)=>{calls.push({url,options});if(options.method==='POST')return Promise.resolve({ok:false,status:409,json:async()=>({error:'다른 창에서 변경되었습니다.'})});return response(url.endsWith('/api/community')?fixture:defaults(url));},'?server='+A+'&page=recruitment-rules');
+  const f=w.document.querySelector('form');f.elements.enabled.checked=true;f.elements.maxConsecutive.value='3';f.elements.maxConsecutive.dispatchEvent(new w.Event('input',{bubbles:true}));await submit(w,f);
+  assert.equal(w.document.querySelector('form'),f);assert.equal(f.elements.maxConsecutive.value,'3');assert.equal(f.elements.enabled.checked,true);assert.equal(f.querySelector('button').disabled,false);assert.match(f.querySelector('.settings-feedback').textContent,/입력 내용은 유지/);
+  const refresh=[...w.document.querySelectorAll('#panel button')].find(b=>b.textContent==='새 설정 불러오기');w.confirm=()=>false;await refresh.onclick();assert.equal(w.document.querySelector('form'),f);w.confirm=()=>true;await refresh.onclick();assert.equal(w.document.querySelector('form').elements.maxConsecutive.value,'0');
+  assert.equal(calls.filter(c=>c.options.method==='POST').length,1);
+});
+
+test('late recruitment settings cannot replace the new server and detached forms cannot save to it',async t=>{
+  let resolveOld;const calls=[],fixture=communityFixture(),w=await portal(t,(url,options)=>{calls.push({url,options});return response(url.endsWith('/api/community')?fixture:defaults(url));},'?server='+A+'&page=recruitment-rules');
+  const oldForm=w.document.querySelector('form');w.document.getElementById('servers').value=B;await w.portalTest.selectServer();await submit(w,oldForm);assert.ok(calls.every(c=>c.options.method==='GET'));
+  w.fetch=(url,options)=>url==='/w/'+B+'/api/community'?new Promise(resolve=>{resolveOld=resolve;}):response(defaults(url));const delayed=w.portalTest.page('recruitment-rules');w.document.getElementById('servers').value=A;await w.portalTest.selectServer();resolveOld({ok:true,json:async()=>fixture});await assert.rejects(delayed,error=>error.stale===true);assert.equal(w.document.getElementById('title').textContent,'운영 홈');assert.equal(w.document.querySelector('.settings-form'),null);
+});
+
+test('call time validates integer bounds and saves only timeout and loaded revision for future calls',async t=>{
+  const calls=[],w=await portal(t,(url,options)=>{calls.push({url,options});return response(url.endsWith('/call-settings')?{settings:{timeoutSeconds:90},revision:17}:defaults(url));},'?server='+A+'&page=call-settings');
+  assert.match(w.document.getElementById('panel').textContent,/이미 호출한 참가자의 응답 마감 시간은 유지/);const f=w.document.querySelector('form'),input=f.elements.timeoutSeconds;assert.equal(input.min,'15');assert.equal(input.max,'300');
+  for(const invalid of ['14','301','15.5','']){input.value=invalid;await submit(w,f);assert.ok(!calls.some(c=>c.options.method==='POST'));assert.match(w.document.getElementById('notice').textContent,/15~300초/);}
+  input.value='120';await submit(w,f);const saved=calls.find(c=>c.options.method==='POST');assert.equal(saved.url,'/w/'+A+'/call-settings');assert.deepEqual(JSON.parse(saved.options.body),{timeoutSeconds:120,revision:17});assert.ok(!calls.some(c=>/\/call$|\/call-next$/.test(c.url)));
+});
+
+test('call conflicts retain the proposed timeout without changing a current participant deadline',async t=>{
+  const calls=[],w=await portal(t,(url,options)=>{calls.push({url,options});if(options.method==='POST')return Promise.resolve({ok:false,status:409,json:async()=>({error:'설정이 변경되었습니다.'})});return response(url.endsWith('/call-settings')?{settings:{timeoutSeconds:90},revision:17}:defaults(url));},'?server='+A+'&page=call-settings');
+  const f=w.document.querySelector('form');f.elements.timeoutSeconds.value='180';await submit(w,f);assert.equal(f.elements.timeoutSeconds.value,'180');assert.match(f.querySelector('.settings-feedback').textContent,/입력 내용은 유지/);assert.equal(calls.filter(c=>c.options.method==='POST').length,1);
+});
+
+test('portal practice runs one local step at a time through completion without any API calls',async t=>{
+  const calls=[],w=await portal(t,(url,options)=>{calls.push({url,options});return response(defaults(url));},'?server='+A+'&page=practice');const before=calls.length;
+  assert.match(w.document.getElementById('panel').textContent,/실제 운영에 반영되지 않습니다/);assert.equal(w.document.querySelectorAll('.practice-progress li').length,6);assert.equal(w.document.querySelectorAll('.practice-progress button').length,0);
+  for(const action of ['register','call','ready','draw','teams','end']){const buttons=w.document.querySelectorAll('[data-practice-action]');assert.equal(buttons.length,1);assert.equal(buttons[0].dataset.practiceAction,action);buttons[0].click();buttons[0].click();}
+  assert.equal(w.document.querySelectorAll('[data-practice-action]').length,0);assert.match(w.document.querySelector('.practice-stage').textContent,/연습 완료/);assert.match(w.document.querySelector('.practice-stage').textContent,/선발 6명/);assert.match(w.document.querySelector('.practice-stage').textContent,/팀 A.*연습 참가자/);assert.equal(calls.length,before,'practice must not fetch or mutate operational APIs');
+  assert.equal(w.localStorage.length,0);assert.equal(w.sessionStorage.length,0);w.document.querySelector('.practice-stage').innerHTML='<p>changed local DOM</p>';await w.portalTest.page('practice');assert.equal(w.document.querySelector('[data-practice-action]').dataset.practiceAction,'register');assert.equal(calls.length,before);
+});
+
+test('practice reset and page or server changes discard local state and stale controls',async t=>{
+  const calls=[],w=await portal(t,(url,options)=>{calls.push({url,options});return response(defaults(url));},'?server='+A+'&page=practice');w.document.querySelector('[data-practice-action]').click();const stale=w.document.querySelector('[data-practice-action]');assert.equal(stale.dataset.practiceAction,'call');
+  [...w.document.querySelectorAll('#panel button')].find(b=>b.textContent==='연습 초기화').click();assert.equal(w.document.querySelector('[data-practice-action]').dataset.practiceAction,'register');assert.doesNotMatch(w.document.querySelector('.practice-stage').textContent,/가상 접수 10명/);
+  w.document.querySelector('[data-practice-action]').click();await w.portalTest.page('home');await w.portalTest.page('practice');assert.equal(w.document.querySelector('[data-practice-action]').dataset.practiceAction,'register');
+  w.document.querySelector('[data-practice-action]').click();w.document.getElementById('servers').value=B;await w.portalTest.selectServer();await w.portalTest.page('practice');stale.click();assert.equal(w.document.querySelector('[data-practice-action]').dataset.practiceAction,'register');assert.equal(w.location.search,'?server='+B);assert.ok(calls.every(c=>c.options.method==='GET'));
+});
+
+test('participants cannot open rules, call settings or operator practice pages',async t=>{
+  const calls=[],w=await portal(t,(url,options)=>{calls.push({url,options});return response(url==='/portal/api/servers/'+A?{guildId:A,name:'방송 A',role:'participant'}:defaults(url));},'?server='+A+'&page=practice');
+  const before=calls.length;for(const page of ['recruitment-rules','call-settings','practice'])await w.portalTest.page(page);assert.equal(calls.length,before);assert.equal(w.document.getElementById('title').textContent,'내 참가 상태');assert.equal(w.document.querySelectorAll('form,[data-practice-action]').length,0);
+});
+
+test('missing or invalid saved settings fail closed instead of exposing defaults that could overwrite state',async t=>{
+  const calls=[],w=await portal(t,(url,options)=>{calls.push({url,options});return response(defaults(url));},'?server='+A);
+  for(const [page,fixture]of [['call-settings',{revision:0,settings:{}}],['call-settings',{revision:'0',settings:{timeoutSeconds:60}}],['recruitment-rules',{revision:0,settings:{fairness:{enabled:false,unplayedFirst:true,waitFirst:true,maxConsecutive:0,newcomerSlots:0}}}]]){
+    w.fetch=(url,options)=>{calls.push({url,options});return response(fixture);};await assert.rejects(w.portalTest.page(page),/저장된 설정을 확인/);assert.equal(w.document.querySelector('form'),null);assert.match(w.document.getElementById('panel').textContent,/설정 다시 불러오기/);
+  }
+  assert.ok(calls.every(c=>c.options.method==='GET'));
 });

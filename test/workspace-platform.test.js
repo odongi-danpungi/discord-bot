@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { mkdtemp,rm } from 'node:fs/promises';
+import { mkdtemp,rm,writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createWorkspacePlatform } from '../src/workspace-platform.js';
+import { createWorkspaceRuntime } from '../src/workspace-runtime.js';
 import { loadConfig } from '../src/config.js';
 
 const A='111111111111111111',B='222222222222222222',owner='333333333333333333',person='444444444444444444';
@@ -88,6 +89,89 @@ test('readiness remains available during a global operating lock and reports pau
   const response=await f.request('/w/'+A+'/readiness',admin);assert.equal(response.status,200);
   const data=await response.json();assert.equal(data.paused,true);assert.equal(data.productionVerification,'pending');
   assert.equal(JSON.stringify(data).includes('private creator incident details'),false);
+});
+
+test('call settings are server scoped, enforce fresh operator permission and require CSRF for writes',async t=>{
+  const f=await fixture(t),{admin,participant,contexts}=await prepareParticipants(f);
+  const before=JSON.stringify(contexts[A].operations.read());
+  assert.deepEqual(await(await f.request('/w/'+A+'/call-settings',admin)).json(),{settings:{timeoutSeconds:60},revision:0});
+  const response=await f.request('/w/'+A+'/call-settings',admin,{timeoutSeconds:120,revision:0});
+  assert.equal(response.status,200,await response.clone().text());
+  assert.deepEqual(await response.json(),{settings:{timeoutSeconds:120},revision:1});
+  assert.equal(contexts[A].participationCalls.timeoutSeconds,120);
+  assert.deepEqual(await(await f.request('/w/'+B+'/call-settings',admin)).json(),{settings:{timeoutSeconds:60},revision:0});
+  assert.equal(JSON.stringify(contexts[A].operations.read()),before,'preferences must preserve current operations');
+  assert.equal((await f.request('/w/'+A+'/call-settings',participant)).status,403);
+  assert.equal((await f.request('/w/'+A+'/call-settings',participant,{timeoutSeconds:90,revision:1})).status,403);
+  assert.equal((await f.request('/w/'+A+'/call-settings',{})).status,401);
+  for(const headers of [{...admin,'X-CSRF-Token':'wrong'},{...admin,Origin:'https://untrusted.invalid'}]){
+    assert.equal((await f.request('/w/'+A+'/call-settings',headers,{timeoutSeconds:90,revision:1})).status,403);
+  }
+  f.roles.set(owner,false);
+  assert.equal((await f.request('/w/'+A+'/call-settings',admin)).status,403,'GET must not trust an earlier manager cache');
+  assert.equal((await f.request('/w/'+A+'/call-settings',admin,{timeoutSeconds:90,revision:1})).status,403);
+  assert.equal(contexts[A].callSettings.snapshot().revision,1);
+});
+
+test('call settings reject stale simultaneous saves, malformed input and masked persistence errors',async t=>{
+  const f=await fixture(t),{admin,contexts}=await prepareParticipants(f);
+  const responses=await Promise.all([f.request('/w/'+A+'/call-settings',admin,{timeoutSeconds:90,revision:0}),f.request('/w/'+A+'/call-settings',admin,{timeoutSeconds:150,revision:0})]);
+  assert.deepEqual(responses.map(r=>r.status).sort(),[200,409]);
+  const saved=contexts[A].callSettings.snapshot();
+  for(const body of [{timeoutSeconds:'90',revision:1},{timeoutSeconds:14,revision:1},{timeoutSeconds:60.1,revision:1},{timeoutSeconds:90,revision:-1},{timeoutSeconds:90,revision:1,token:'must-not-save'}]){
+    assert.equal((await f.request('/w/'+A+'/call-settings',admin,body)).status,400);
+  }
+  const original=contexts[A].callSettings.writeUnlocked;
+  contexts[A].callSettings.writeUnlocked=async()=>{throw Error('secret filesystem detail');};
+  try{
+    const failed=await f.request('/w/'+A+'/call-settings',admin,{timeoutSeconds:180,revision:1});
+    assert.equal(failed.status,503);assert.equal((await failed.text()).includes('secret filesystem detail'),false);
+    assert.deepEqual(contexts[A].callSettings.snapshot(),saved);assert.equal(contexts[A].participationCalls.timeoutSeconds,saved.settings.timeoutSeconds);
+  }finally{contexts[A].callSettings.writeUnlocked=original;}
+  assert.equal((await f.request('/w/'+A+'/call-settings',admin,{timeoutSeconds:180,revision:1})).status,200,'a corrected persistence failure must permit retry');
+});
+
+test('call settings remain readable under locks but writes reject both creator and workspace pauses',async t=>{
+  const f=await fixture(t),{admin,contexts}=await prepareParticipants(f);let globalLock=true;
+  f.platform.registerLegacy({context:{config:{}},runtime:{operationGuard:()=>{if(globalLock)throw Object.assign(Error('private creator lock'),{status:423});}}});
+  assert.equal((await f.request('/w/'+A+'/call-settings',admin)).status,200);
+  assert.equal((await f.request('/w/'+A+'/call-settings',admin,{timeoutSeconds:90,revision:0})).status,423);
+  globalLock=false;
+  await contexts[A].recovery.setEmergency({locked:true,actor:'fixture',reason:'private workspace lock'});
+  assert.equal((await f.request('/w/'+A+'/call-settings',admin)).status,200);
+  assert.equal((await f.request('/w/'+A+'/call-settings',admin,{timeoutSeconds:90,revision:0})).status,423);
+  assert.equal((await f.request('/w/'+B+'/call-settings',admin,{timeoutSeconds:90,revision:0})).status,200);
+  assert.equal(contexts[A].callSettings.snapshot().revision,0);
+});
+
+test('legacy creator workspace uses the same call settings path and public practice asset is allowlisted',async t=>{
+  const f=await fixture(t),admin=await f.login(owner);
+  f.client.guilds.cache.set(f.config.guildId,{});
+  await f.platform.registry.ensure({guildId:f.config.guildId,userId:owner,name:'제작자 방송'});
+  const legacy=await f.platform.runtimeFor(f.config.guildId);legacy.runtime.operationGuard=()=>{};
+  f.platform.registerLegacy(legacy);
+  const result=await f.request('/w/'+f.config.guildId+'/call-settings',admin,{timeoutSeconds:75,revision:0});
+  assert.equal(result.status,200,await result.clone().text());assert.equal(legacy.context.participationCalls.timeoutSeconds,75);
+  assert.equal((await f.request('/portal/practice-model.js',{})).status,200);
+  assert.equal((await f.request('/portal/app.js',{})).status,404);
+});
+
+test('workspace restart loads the committed call preference and surfaces settings backup recovery in the runtime snapshot',async t=>{
+  const f=await fixture(t),{admin,contexts}=await prepareParticipants(f);
+  assert.equal((await f.request('/w/'+A+'/call-settings',admin,{timeoutSeconds:90,revision:0})).status,200);
+  assert.equal((await f.request('/w/'+A+'/call-settings',admin,{timeoutSeconds:120,revision:1})).status,200);
+  const previous=await f.platform.runtimeFor(A);await previous.close();
+  await writeFile(contexts[A].callSettings.file,'{"damaged":');
+  const restarted=await createWorkspaceRuntime({baseConfig:f.config,entry:f.platform.registry.find(A),root:path.join(path.dirname(f.config.operationsFile),'workspaces'),client:f.client,interactionBus:new EventEmitter()});
+  const server=restarted.runtime.app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));
+  try{
+    assert.deepEqual(restarted.context.callSettings.snapshot(),{settings:{timeoutSeconds:90},revision:1});
+    assert.equal(restarted.context.participationCalls.timeoutSeconds,90);assert.equal(restarted.context.callSettings.recovered,true);
+    const basic=Buffer.from(restarted.context.config.dashboardUser+':'+restarted.context.config.dashboardPassword).toString('base64');
+    const response=await fetch('http://127.0.0.1:'+server.address().port+'/api/snapshot',{headers:{Authorization:'Basic '+basic}});
+    assert.equal(response.status,200);const snapshot=await response.json();assert.equal(snapshot.recovered,true);
+    assert.equal(snapshot.participationCalls.timeoutSeconds,90);
+  }finally{await new Promise(r=>server.close(r));await restarted.close();}
 });
 
 test('participant views and mutations use the authenticated identity even when another user or workspace is supplied',async t=>{
