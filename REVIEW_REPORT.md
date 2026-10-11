@@ -1,6 +1,6 @@
-# 최신 검토: v5.2.2 참가 설정·운영 연습 배포 후보
+# 최신 검토: v5.2.3 참가 접수 조건 배포 후보
 
-현재 검토 결과는 [참가 설정·운영 연습 보고서](docs/workspace-review-v522.md)에 정리했습니다. 계정 분리 기반은 [v5.2.0 보고서](docs/workspace-review-v520.md), 운영 시작 안내는 [v5.2.1 보고서](docs/workspace-review-v521.md)에 있습니다. 새 포털은 기본 비활성이고 실제 계정 OAuth·서버 분리·팔로워 역할 부여 및 Railway 활성화는 PENDING입니다. 아래 내용은 이전 버전의 검토 기록입니다.
+현재 검토 결과는 [참가 접수 조건 보고서](docs/workspace-review-v523.md)에 정리했습니다. 서버별 접수 정원·중복 처리·정원 자동 마감을 각각 설정하고 다음 모집부터 적용합니다. 현재 Queue·예약은 보존하며 서비스별 정원을 사용합니다. 계정 분리 기반은 [v5.2.0 보고서](docs/workspace-review-v520.md), 운영 시작 안내는 [v5.2.1 보고서](docs/workspace-review-v521.md), 선발 규칙·호출 시간·연습은 [v5.2.2 보고서](docs/workspace-review-v522.md)에 있습니다. 새 포털은 기본 비활성이고 실제 계정 OAuth·서버 분리·팔로워 역할 부여 및 새 버전 Railway 활성화는 PENDING입니다. 아래 내용은 이전 버전의 검토 기록입니다.
 
 ---
 

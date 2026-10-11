@@ -11,6 +11,7 @@ import { createWorkspaceLogin } from './workspace-login.js';
 import { createWorkspaceRuntime } from './workspace-runtime.js';
 import { buildWorkspaceReadiness } from './workspace-readiness.js';
 import { saveWorkspaceCallSettings } from './workspace-call-settings.js';
+import { readIntakeSettings,saveIntakeSettings } from './intake-policy.js';
 import { discordId, workspaceError, workspaceRouteAllowed } from './workspace-policy.js';
 import { DISCORD_RECOMMENDED_INSTALL_PERMISSIONS } from './discord-permission-audit.js';
 
@@ -162,7 +163,7 @@ export async function createWorkspacePlatform({config,client,fetchImpl=fetch,run
       if(await workspaceAsset(req,res,guildId))return;
       return target.runtime.app(req,res,next);
     }
-    const {auth,member}=await authorize(req,guildId,!(req.path==='/viewer'||req.path.startsWith('/viewer/')),['/readiness','/call-settings'].includes(req.path));
+    const {auth,member}=await authorize(req,guildId,!(req.path==='/viewer'||req.path.startsWith('/viewer/')),['/readiness','/call-settings','/intake-settings'].includes(req.path));
     const target=await runtimeFor(guildId),ctx=target.context;
     if(req.path==='/readiness'&&req.method==='GET'){
       let paused=false;try{legacy?.runtime.operationGuard();target.runtime.operationGuard();}catch{paused=true;}
@@ -175,6 +176,12 @@ export async function createWorkspacePlatform({config,client,fetchImpl=fetch,run
     }
     if(req.path==='/call-settings'&&req.method==='POST'){
       const result=await saveWorkspaceCallSettings({store:ctx.callSettings,calls:ctx.participationCalls,input:req.body,
+        guard:()=>{legacy?.runtime.operationGuard();target.runtime.operationGuard();}});
+      return res.json(result);
+    }
+    if(req.path==='/intake-settings'&&req.method==='GET')return res.json(readIntakeSettings(ctx.operations.read()));
+    if(req.path==='/intake-settings'&&req.method==='POST'){
+      const result=await saveIntakeSettings({operations:ctx.operations,input:req.body,
         guard:()=>{legacy?.runtime.operationGuard();target.runtime.operationGuard();}});
       return res.json(result);
     }

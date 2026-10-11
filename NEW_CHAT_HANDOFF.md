@@ -1,15 +1,21 @@
-# Current handoff — v5.2.2 candidate
+# 현재 인수인계 — v5.2.3 배포 후보
 
-Baseline main is v5.1.7, commit 7898f1d98b2df3164a2427503ff373a213af4403. Preserve every existing Discord/Naver/CHZZK module. Data schema remains 2. New workspaces use separate files; legacy creator data stays in place.
+검토일은 2026-10-12 (Asia/Seoul)입니다. main 기준은 v5.1.7, commit 7898f1d98b2df3164a2427503ff373a213af4403입니다. 이번 개발의 직전 기준은 v5.2.2, commit 5e73c5d474f73190fb810363606d04cb0c7e5cf3입니다. 기존 Discord·네이버·CHZZK 모듈과 제작자 기능을 유지합니다. 데이터 스키마는 2이며 새 운영 공간은 서버별 파일을 사용하고 제작자 데이터는 기존 경로에 유지합니다.
 
-The current user decision is each operator runs their own Discord server and their own broadcast channel. The older shared-broadcaster design remains only in legacy mode. Creator diagnostics/deployment/recovery are not user portal capabilities.
+현재 사용자 결정은 각 운영자가 자기 Discord 서버와 자기 방송 채널을 운영하는 것입니다. 과거 공통 방송 채널 설계는 기존 단일 서버 모드에만 유지합니다. 제작자 점검·배포·복구 API는 사용자 포털에 공개하지 않습니다.
 
-Read docs/workspace-accounts.md and docs/workspace-review-v522.md for scope, verification and blockers. MULTI_WORKSPACE_ENABLED is false by default. Real OAuth, cross-server broadcaster E2E and positive follower verification are still PENDING. The user has no separate participant test account; do not imply that verification passed.
+[계정·운영·복구 안내](docs/workspace-accounts.md)와 [v5.2.3 검토 보고서](docs/workspace-review-v523.md)를 먼저 읽습니다. MULTI_WORKSPACE_ENABLED는 기본 false입니다. 실제 OAuth, 서버별 방송 연결 E2E와 팔로워 역할 부여는 계속 PENDING입니다. 사용자는 별도 참가자 테스트 계정이 없으므로 검증을 통과했다고 표현하지 않습니다. Railway 운영은 v5.1.7이며 이번 개발에서 운영 환경변수·트래픽을 변경하지 않습니다.
 
-v5.2.2 adds native per-server fairness and call-time settings and a six-step local-only practice screen. Settings must preserve existing roles/channels, session policy and active call deadlines; stale writes are rejected. Call settings use a separate additive store, leaving the registry/schema compatible with code rollback. Practice never reads or writes live participant data and resets on page/server changes.
+v5.2.3은 접수 정원(0~1000명, 0 무제한), 중복 처리(기존 순번 유지/거절), 정원 자동 마감을 개별 화면으로 제공합니다. 자동 마감에는 1명 이상의 정원이 필요합니다. revision 충돌을 검사해 서버별 operations에 저장하며 다음 모집부터 적용합니다. 현재 모집 정책과 Queue·예약은 보존합니다. 네이버 게시 시작 시에도 정책을 고정해 늦은 응답이 새 설정을 사용하지 않게 합니다.
 
-v5.2.1 adds operator-only /w/:guildId/readiness based on local saved configuration, onboarding and a PII-free text handoff. It must never infer production acceptance from token presence. The view performs no connector probes, refreshes, role changes, posting or state changes; Discord membership is still checked by platform authorization. The full project ZIP is authoritative for docs; v2 update JSON is unsigned and excludes docs per the release allowlist. Preserve the signature policy.
+접수 정원은 Discord와 네이버에 각각 적용하며 합산 정원이 아닙니다. 별도 수동 Queue 등록은 범위 밖입니다. Discord ID와 네이버 접수 이름의 검증된 계정 매핑이 없으므로 닉네임만으로 사람을 합치지 않습니다. 접수 조건이 아직 저장되지 않은 네이버 서버는 기존 중복 거절을 유지합니다. 추첨 인원은 정원 이하로 제한하고 정원이 줄어도 이월 예약을 삭제하지 않습니다. Discord 다시 열기는 해당 회차 정책을 유지하며, 네이버는 기존 초기화 후 새 모집 흐름을 유지합니다.
 
-User setup needed: register PUBLIC_BASE_URL origin + /portal/auth/callback in Discord OAuth2; store DISCORD_CLIENT_SECRET in Railway. Preserve all existing tokens, encryption keys and the /app/data volume. Keep one replica and back up the entire volume including workspaces/. Do not enable the portal before actual account tests.
+새 접수 조건은 기존 operations 파일에 저장되어 Queue/회차 복원 지점에 포함됩니다. 네이버 접수 정책은 네이버 접수 저장소·전체 볼륨 백업으로 보존합니다. 정책 필드가 없는 구형 데이터는 허용하되 명시적으로 잘못된 정책은 저장·복원 경계에서 거절합니다. 코드 롤백은 기존 파일을 보존하지만 이전 코드가 새 접수 정원을 집행하지 않으므로 운영 조건을 다시 확인해야 합니다. 참가자 API는 409·503 상태를 보존하고 저장소·내부 오류의 상세 메시지를 숨깁니다.
 
-Node requirement >=22.22.2. npm ci, npm run env:check and npm run verify:final are the production preparation commands. A local demo or mocked OAuth pass does not certify production credentials.
+v5.2.2 기록: 서버별 참가 선발 규칙·호출 시간과 6단계 가상 운영 연습을 추가했습니다. 기존 역할·채널·현재 모집 정책과 호출 마감을 보존하며 오래된 저장을 거절합니다. 호출 설정은 별도 추가 파일에 저장합니다. 연습은 실제 참가자 데이터를 읽거나 쓰지 않으며 화면·서버 변경 시 초기화합니다. 상세 기록은 [v5.2.2 보고서](docs/workspace-review-v522.md)에 있습니다.
+
+v5.2.1 기록: 운영자 전용 /w/:guildId/readiness는 저장된 설정으로 운영 시작 안내와 개인정보 없는 인수인계 요약을 제공합니다. 토큰 존재를 Production Acceptance 통과로 해석하지 않습니다. 화면 조회는 커넥터 검사·토큰 갱신·역할 변경·글 게시·상태 변경을 실행하지 않고 Discord 권한은 기존 인증 경로에서 확인합니다. 문서까지 포함하는 전체 ZIP이 기준 산출물이며 v2 Update JSON은 허용 목록상 문서를 제외하고 무서명입니다. 서명 필수 정책을 낮추지 않습니다.
+
+사용자 준비: Discord OAuth2에 PUBLIC_BASE_URL origin + /portal/auth/callback을 등록하고 DISCORD_CLIENT_SECRET은 Railway Variables에 저장합니다. 기존 토큰·암호화 키와 /app/data 볼륨을 보존합니다. replica는 1로 유지하고 workspaces/를 포함하는 전체 볼륨을 백업합니다. 실제 계정 검증 전에 포털을 활성화하지 않습니다. v5.2.3만을 위한 새 환경변수나 권한은 없습니다.
+
+Node 요구사항은 >=22.22.2입니다. npm ci, npm run env:check, npm run verify:final을 배포 준비에 사용합니다. 로컬 데모·가상 API·가상 OAuth 테스트는 실제 운영 인증정보를 증명하지 않습니다.

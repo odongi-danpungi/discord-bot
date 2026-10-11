@@ -39,7 +39,7 @@ function form(fields,submit,label='저장',confirmation=''){
 }
 function table(rows,columns){const t=el('table'),head=el('tr');for(const [,label]of columns)head.append(el('th',label));t.append(head);for(const row of rows||[]){const tr=el('tr');for(const [key]of columns)tr.append(el('td',String(row[key]??'—')));t.append(tr);}return t;}
 const menu=[
-  ['통합 운영',[['방송',['home','queue','open','round','ready','undo']],['운영 준비',['onboarding','handoff']],['참가 설정',['recruitment-rules','call-settings']],['방송 도구',['presets','schedule','poll','studio','obs','practice']],['방송 기록',['archive','timeline','stats','notifications']],['커뮤니티',['subscriptions','recruitment','my-panel','recap','publication','guide','tickets']]]],
+  ['통합 운영',[['방송',['home','queue','open','round','ready','undo']],['운영 준비',['onboarding','handoff']],['참가 설정',['intake-capacity','intake-duplicates','intake-close','recruitment-rules','call-settings']],['방송 도구',['presets','schedule','poll','studio','obs','practice']],['방송 기록',['archive','timeline','stats','notifications']],['커뮤니티',['subscriptions','recruitment','my-panel','recap','publication','guide','tickets']]]],
   ['네이버 카페',[['계정·게시판',['naver','cafe']],['카페 운영',['search','write','memo','monitor']]]],
   ['Discord',[['서버 운영',['discord','members']]]],
   ['CHZZK',[['방송 계정',['chzzk','live']],['팔로워 인증',['panel']]]]
@@ -49,6 +49,7 @@ Object.assign(titles,{subscriptions:'알림 구독',fairness:'공정 선발',rec
 Object.assign(titles,{presets:'모집 프리셋',timeline:'방송 타임라인',stats:'방송 통계',notifications:'알림 설정'});
 Object.assign(titles,{onboarding:'운영 시작 안내',handoff:'운영 인수인계'});
 Object.assign(titles,{'recruitment-rules':'참가 선발 규칙','call-settings':'호출 응답 시간'});
+Object.assign(titles,{'intake-capacity':'접수 인원 제한','intake-duplicates':'중복 접수 처리','intake-close':'정원 도달 마감'});
 const knownPage=id=>id==='fairness'||typeof id==='string'&&menu.some(([,middle])=>middle.some(([,leaves])=>leaves.includes(id)));
 const safeText=(value,limit=600)=>typeof value==='string'?value.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g,'').slice(0,limit):'';
 const readinessStatuses={configured:'설정 완료',attention:'확인 필요',pending:'검증 대기',optional:'선택 사항'};
@@ -94,6 +95,38 @@ async function page(id){
       const copy=button('요약 복사',async()=>{assertCurrent();if(!navigator.clipboard?.writeText)throw Error('자동 복사를 사용할 수 없습니다. 요약을 선택해 직접 복사해 주세요.');try{await navigator.clipboard.writeText(text);}catch{throw Error('요약을 복사하지 못했습니다. 요약을 선택해 직접 복사해 주세요.');}assertCurrent();});
       const download=button('요약 TXT 저장',async()=>{assertCurrent();const url=URL.createObjectURL(new Blob([text],{type:'text/plain;charset=utf-8'})),a=el('a');a.href=url;a.download='daengdaeng-handoff.txt';document.body.append(a);try{a.click();}finally{a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}},'secondary');copy.disabled=download.disabled=!text;actions(copy,download,button('요약 새로고침',()=>page('handoff'),'secondary'));
     }
+  }else if(['intake-capacity','intake-duplicates','intake-close'].includes(id)){
+    const data=await request('/intake-settings'),settings=data?.settings;
+    const valid=Number.isSafeInteger(data?.revision)&&data.revision>=0&&settings&&typeof settings==='object'&&!Array.isArray(settings)&&Number.isInteger(settings.maxApplicants)&&settings.maxApplicants>=0&&settings.maxApplicants<=1000&&['keep_existing','reject'].includes(settings.duplicatePolicy)&&typeof settings.closeOnCapacity==='boolean'&&(!settings.closeOnCapacity||settings.maxApplicants>0);
+    if(!valid){const message='저장된 접수 조건을 확인하지 못했습니다. 다시 불러온 뒤 저장해 주세요.';$('panel').replaceChildren(el('p',message),button('설정 다시 불러오기',()=>page(id),'secondary'));throw Error(message);}
+    p.append(el('p','저장하면 각 서비스의 다음 모집부터 공통 조건이 적용됩니다. 현재 Queue와 진행 중인 회차는 바뀌지 않습니다.','settings-guidance'));
+    const f=el('form',undefined,'form settings-form intake-form'),card=el('div',undefined,'intake-setting-card'),message=el('p','', 'settings-feedback');message.setAttribute('role','status');let dirty=false,input;
+    card.append(el('h2',titles[id]));
+    if(id==='intake-capacity'){
+      card.append(el('p','Discord 모집과 네이버 카페 모집에 각각 적용하는 정원입니다. 두 서비스의 접수 인원을 합산한 제한은 아닙니다.','muted'));
+      input=field(card,'maxApplicants','최대 접수 인원',settings.maxApplicants,'number');input.min='0';input.max='1000';input.step='1';input.required=true;input.parentElement.append(el('span','0은 무제한 · 1~1000명 사이의 정수로 입력하세요.','field-help'));
+      card.append(el('p','Discord 모집은 추첨 선정 인원 이상으로 설정하세요. 0은 제한 없음입니다.','field-help'));
+      card.append(el('p','운영자가 통합 Queue에 직접 추가하는 참가자는 이 정원의 대상이 아닙니다.','field-help'));
+      if(settings.closeOnCapacity)card.append(el('p','정원 도달 마감이 켜져 있습니다. 무제한으로 바꾸려면 정원 도달 마감을 먼저 해제하세요.','field-help'));
+    }else if(id==='intake-duplicates'){
+      card.append(el('p','이미 접수한 참가자가 다시 신청했을 때의 처리 방식입니다. 두 방식 모두 참가자를 중복으로 추가하지 않습니다.','muted'));
+      input=field(card,'duplicatePolicy','다시 신청한 참가자 처리',settings.duplicatePolicy,'select',[['keep_existing','기존 접수·순서 유지'],['reject','이미 접수했음을 안내']]);
+      card.append(el('p','각 서비스 안에서 참가자 식별 정보로 확인합니다. 닉네임이 같다는 이유만으로 Discord와 네이버 계정을 합치지 않습니다.','field-help'));
+      if(data.revision===0)card.append(el('p','아직 조건을 저장하지 않았다면 기존 서비스별 중복 처리 방식을 유지합니다.','field-help'));
+    }else{
+      card.append(el('p','설정한 접수 정원이 찼을 때 해당 서비스의 모집을 마감합니다. Discord와 네이버 카페의 정원을 각각 확인합니다.','muted'));
+      const wrap=el('label',undefined,'setting-toggle');input=el('input');input.type='checkbox';input.name='closeOnCapacity';input.checked=settings.closeOnCapacity;const text=el('span');text.append(el('strong','정원 도달 시 모집 마감'),el('span','사용하려면 접수 인원 제한을 1명 이상으로 설정하세요.','field-help'));wrap.append(input,text);card.append(wrap);
+      card.append(el('p','끄면 수동 마감 또는 기존 자동 마감 시간을 사용합니다. 이미 예약된 시간 마감은 유지됩니다.','field-help'));
+      card.append(el('p','마감 후 참가 취소·미루기도 제한됩니다. Discord에서 처리하려면 모집을 다시 열어 주세요.','field-help'));
+    }
+    const save=el('button','설정 저장');save.type='submit';f.append(card,save,message);f.oninput=()=>{dirty=true;};
+    f.onsubmit=event=>{event.preventDefault();if(busy)return;void run(async()=>{assertCurrent();const body={revision:data.revision,maxApplicants:settings.maxApplicants,duplicatePolicy:settings.duplicatePolicy,closeOnCapacity:settings.closeOnCapacity};
+      if(id==='intake-capacity'){if(input.value.trim()===''||!Number.isInteger(Number(input.value))||Number(input.value)<0||Number(input.value)>1000)throw Error('접수 인원은 0~1000명 사이의 정수로 입력해 주세요.');body.maxApplicants=Number(input.value);}
+      else if(id==='intake-duplicates'){if(!['keep_existing','reject'].includes(input.value))throw Error('중복 접수 처리 방식을 선택해 주세요.');body.duplicatePolicy=input.value;}
+      else body.closeOnCapacity=input.checked;
+      if(body.closeOnCapacity&&body.maxApplicants===0)throw Error('정원 도달 마감을 사용하려면 접수 인원을 1명 이상으로 설정하세요. 무제한으로 바꾸려면 정원 도달 마감을 먼저 해제해 주세요.');
+      save.disabled=true;message.textContent='저장 중…';try{await request('/intake-settings',body);await page(id);}catch(error){if(!error.stale)message.textContent=error.status===409?'다른 창에서 접수 조건이 변경되었습니다. 입력 내용은 유지했습니다. 새 설정을 불러와 확인한 뒤 다시 저장해 주세요.':error.message;throw error;}finally{save.disabled=false;}
+    });};p.append(f);actions(button('새 설정 불러오기',async()=>{assertCurrent();if(dirty&&!confirm('입력한 내용을 최신 저장 설정으로 바꿀까요?'))return;await page(id);},'secondary'));
   }else if(id==='recruitment-rules'||id==='fairness'||id==='call-settings'){
     const isFairness=id!=='call-settings',data=await request(isFairness?'/api/community':'/call-settings'),settings=data.settings||{},values=isFairness?settings.fairness||{}:settings;
     const validRevision=Number.isSafeInteger(data.revision)&&data.revision>=0,validSettings=isFairness?typeof settings.channelId==='string'&&settings.roles&&typeof settings.roles==='object'&&!Array.isArray(settings.roles)&&['enabled','unplayedFirst','waitFirst'].every(key=>typeof values[key]==='boolean')&&Number.isInteger(values.maxConsecutive)&&values.maxConsecutive>=0&&values.maxConsecutive<=20&&Number.isInteger(values.newcomerSlots)&&values.newcomerSlots>=0&&values.newcomerSlots<=50:Number.isInteger(values.timeoutSeconds)&&values.timeoutSeconds>=15&&values.timeoutSeconds<=300;

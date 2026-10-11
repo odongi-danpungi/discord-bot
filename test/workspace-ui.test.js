@@ -179,3 +179,75 @@ test('missing or invalid saved settings fail closed instead of exposing defaults
   }
   assert.ok(calls.every(c=>c.options.method==='GET'));
 });
+
+const intakeFixture=(settings={})=>({revision:23,settings:{maxApplicants:30,duplicatePolicy:'keep_existing',closeOnCapacity:false,...settings}});
+const intakePages=['intake-capacity','intake-duplicates','intake-close'];
+
+test('intake subpages show one feature at a time and preserve the other loaded fields when saving',async t=>{
+  const calls=[],fixture=intakeFixture(),w=await portal(t,(url,options)=>{calls.push({url,options});if(url.endsWith('/intake-settings')&&options.method==='POST'){const {revision,...settings}=JSON.parse(options.body);assert.equal(revision,fixture.revision);fixture.settings=settings;fixture.revision++;}return response(url.endsWith('/intake-settings')?fixture:defaults(url));},'?server='+A+'&page=intake-capacity');
+  for(const [page,title,key,value]of [['intake-capacity','접수 인원 제한','maxApplicants','50'],['intake-duplicates','중복 접수 처리','duplicatePolicy','reject'],['intake-close','정원 도달 마감','closeOnCapacity',true]]){
+    await w.portalTest.page(page);assert.equal(w.document.getElementById('breadcrumb').textContent,'통합 운영 / 참가 설정 / '+title);
+    assert.equal(w.document.querySelectorAll('.intake-setting-card').length,1);assert.equal(w.document.querySelectorAll('.intake-form input,.intake-form select').length,1);
+    assert.match(w.document.getElementById('panel').textContent,/저장하면 각 서비스의 다음 모집부터 공통 조건/);assert.match(w.document.getElementById('panel').textContent,/현재 Queue와 진행 중인 회차는 바뀌지/);
+    const f=w.document.querySelector('form'),before=structuredClone(fixture.settings);if(key==='closeOnCapacity')f.elements[key].checked=value;else f.elements[key].value=value;await submit(w,f);
+    const saved=calls.filter(c=>c.options.method==='POST').at(-1),expected={revision:fixture.revision-1,...before,[key]:key==='maxApplicants'?Number(value):value};assert.equal(saved.url,'/w/'+A+'/intake-settings');assert.deepEqual(JSON.parse(saved.options.body),expected);assert.equal(saved.options.headers['X-CSRF-Token'],'fixture-csrf');assert.ok(saved.options.headers['Idempotency-Key']);
+  }
+  assert.equal(fixture.revision,26);assert.ok(!calls.some(c=>/\/api\/(operations|naver)\//.test(c.url)));assert.deepEqual(intakePages.map(page=>w.document.querySelectorAll('[data-page="'+page+'"]').length),[1,1,1]);
+});
+
+test('capacity input validates bounds including empty values and explains service-specific capacity',async t=>{
+  const calls=[],w=await portal(t,(url,options)=>{calls.push({url,options});return response(url.endsWith('/intake-settings')?intakeFixture():defaults(url));},'?server='+A+'&page=intake-capacity'),f=w.document.querySelector('form'),input=f.elements.maxApplicants;
+  assert.equal(input.min,'0');assert.equal(input.max,'1000');assert.equal(input.step,'1');assert.equal(input.required,true);assert.match(w.document.getElementById('panel').textContent,/두 서비스의 접수 인원을 합산한 제한은 아닙니다/);assert.match(w.document.getElementById('panel').textContent,/추첨 선정 인원 이상으로 설정/);assert.match(w.document.getElementById('panel').textContent,/직접 추가하는 참가자는 이 정원의 대상이 아닙니다/);
+  for(const value of ['-1','1001','1.5','']){input.value=value;await submit(w,f);assert.match(w.document.getElementById('notice').textContent,/0~1000명/);assert.equal(calls.filter(c=>c.options.method==='POST').length,0);}
+  input.value='0';await submit(w,f);assert.equal(JSON.parse(calls.find(c=>c.options.method==='POST').options.body).maxApplicants,0);
+});
+
+test('capacity cannot become unlimited while automatic closure remains enabled',async t=>{
+  const calls=[],w=await portal(t,(url,options)=>{calls.push({url,options});return response(url.endsWith('/intake-settings')?intakeFixture({closeOnCapacity:true}):defaults(url));},'?server='+A+'&page=intake-capacity'),f=w.document.querySelector('form');
+  assert.match(w.document.getElementById('panel').textContent,/정원 도달 마감을 먼저 해제/);f.elements.maxApplicants.value='0';await submit(w,f);assert.match(w.document.getElementById('notice').textContent,/정원 도달 마감을 먼저 해제/);assert.equal(calls.filter(c=>c.options.method==='POST').length,0);assert.equal(f.elements.maxApplicants.value,'0');
+});
+
+test('duplicate handling explains identity matching and rejects unsupported select values without a write',async t=>{
+  const calls=[],w=await portal(t,(url,options)=>{calls.push({url,options});return response(url.endsWith('/intake-settings')?intakeFixture():defaults(url));},'?server='+A+'&page=intake-duplicates'),f=w.document.querySelector('form');
+  const text=w.document.getElementById('panel').textContent;assert.match(text,/두 방식 모두 참가자를 중복으로 추가하지/);assert.match(text,/닉네임이 같다는 이유만으로 Discord와 네이버 계정을 합치지/);
+  assert.deepEqual([...f.elements.duplicatePolicy.options].map(option=>option.value),['keep_existing','reject']);f.elements.duplicatePolicy.value='merge_nickname';await submit(w,f);assert.equal(calls.filter(c=>c.options.method==='POST').length,0);assert.match(w.document.getElementById('notice').textContent,/처리 방식을 선택/);
+});
+
+test('automatic closure requires a finite capacity and can remain disabled with existing timers',async t=>{
+  const calls=[],fixture=intakeFixture({maxApplicants:0}),w=await portal(t,(url,options)=>{calls.push({url,options});return response(url.endsWith('/intake-settings')?fixture:defaults(url));},'?server='+A+'&page=intake-close'),f=w.document.querySelector('form');
+  assert.match(w.document.getElementById('panel').textContent,/수동 마감 또는 기존 자동 마감 시간/);assert.match(w.document.getElementById('panel').textContent,/이미 예약된 시간 마감은 유지/);
+  f.elements.closeOnCapacity.checked=true;await submit(w,f);assert.equal(calls.filter(c=>c.options.method==='POST').length,0);assert.match(w.document.getElementById('notice').textContent,/접수 인원을 1명 이상/);
+  f.elements.closeOnCapacity.checked=false;await submit(w,f);assert.deepEqual(JSON.parse(calls.find(c=>c.options.method==='POST').options.body),{revision:23,maxApplicants:0,duplicatePolicy:'keep_existing',closeOnCapacity:false});
+});
+
+test('all intake conflicts retain edits and replace them only after confirmed refresh',async t=>{
+  const calls=[],fixture=intakeFixture(),w=await portal(t,(url,options)=>{calls.push({url,options});if(options.method==='POST')return Promise.resolve({ok:false,status:409,json:async()=>({error:'다른 운영자가 변경했습니다.'})});return response(url.endsWith('/intake-settings')?fixture:defaults(url));},'?server='+A);
+  for(const [page,key,value]of [['intake-capacity','maxApplicants','45'],['intake-duplicates','duplicatePolicy','reject'],['intake-close','closeOnCapacity',true]]){
+    await w.portalTest.page(page);const f=w.document.querySelector('form'),input=f.elements[key];if(key==='closeOnCapacity')input.checked=value;else input.value=value;input.dispatchEvent(new w.Event('input',{bubbles:true}));await submit(w,f);
+    assert.equal(w.document.querySelector('form'),f);assert.equal(key==='closeOnCapacity'?input.checked:input.value,value);assert.match(f.querySelector('.settings-feedback').textContent,/입력 내용은 유지/);assert.equal(f.querySelector('button').disabled,false);
+    const reload=[...w.document.querySelectorAll('#panel button')].find(button=>button.textContent==='새 설정 불러오기');w.confirm=()=>false;await reload.onclick();assert.equal(w.document.querySelector('form'),f);w.confirm=()=>true;await reload.onclick();assert.notEqual(w.document.querySelector('form'),f);
+  }
+  assert.equal(calls.filter(c=>c.options.method==='POST').length,3);
+});
+
+test('intake malformed state fails closed and ignores unrelated secret or markup payloads',async t=>{
+  const calls=[],w=await portal(t,(url,options)=>{calls.push({url,options});return response(defaults(url));},'?server='+A);
+  const invalid=[null,{revision:0,settings:{}},{revision:'23',settings:intakeFixture().settings},intakeFixture({maxApplicants:1001}),intakeFixture({maxApplicants:1.5}),intakeFixture({duplicatePolicy:'merge_nickname'}),intakeFixture({closeOnCapacity:'false'}),intakeFixture({maxApplicants:0,closeOnCapacity:true})];
+  for(const [index,fixture]of invalid.entries()){w.fetch=(url,options)=>{calls.push({url,options});return response(fixture);};await assert.rejects(w.portalTest.page(intakePages[index%3]),/저장된 접수 조건을 확인/);assert.equal(w.document.querySelector('form'),null);assert.match(w.document.getElementById('panel').textContent,/설정 다시 불러오기/);}
+  const safe=intakeFixture();safe.secret='secret-do-not-render';safe.settings.rawToken='token-do-not-render';safe.description='<img src=x onerror=alert(1)>';w.fetch=()=>response(safe);await w.portalTest.page('intake-duplicates');assert.doesNotMatch(w.document.getElementById('panel').textContent,/secret-do-not-render|token-do-not-render|onerror/);assert.equal(w.document.querySelector('#panel img'),null);assert.ok(calls.every(call=>call.options.method==='GET'));
+});
+
+test('server switches discard late intake responses and detached forms cannot submit to another server',async t=>{
+  const calls=[],w=await portal(t,(url,options)=>{calls.push({url,options});return response(url.endsWith('/intake-settings')?intakeFixture():defaults(url));},'?server='+A);
+  for(const page of intakePages){
+    await w.portalTest.page(page);const oldForm=w.document.querySelector('form');w.document.getElementById('servers').value=B;await w.portalTest.selectServer();await submit(w,oldForm);assert.ok(calls.every(call=>call.options.method==='GET'));
+    let resolveOld;w.fetch=(url,options)=>{calls.push({url,options});return url==='/w/'+B+'/intake-settings'?new Promise(resolve=>{resolveOld=resolve;}):response(defaults(url));};const pending=w.portalTest.page(page);w.document.getElementById('servers').value=A;await w.portalTest.selectServer();resolveOld({ok:true,json:async()=>intakeFixture()});await assert.rejects(pending,error=>error.stale===true);assert.equal(w.document.getElementById('title').textContent,'운영 홈');assert.equal(w.document.querySelector('.intake-form'),null);
+    w.fetch=(url,options)=>{calls.push({url,options});return response(url.endsWith('/intake-settings')?intakeFixture():defaults(url));};
+  }
+});
+
+test('participants cannot access intake settings and mobile navigation closes on selecting a feature',async t=>{
+  const calls=[],participant=await portal(t,(url,options)=>{calls.push({url,options});return response(url==='/portal/api/servers/'+A?{guildId:A,name:'방송 A',role:'participant'}:defaults(url));},'?server='+A+'&page=intake-capacity');const before=calls.length;
+  for(const page of intakePages)await participant.portalTest.page(page);assert.equal(calls.length,before);assert.equal(participant.document.querySelectorAll('.intake-form').length,0);assert.equal(participant.document.getElementById('title').textContent,'내 참가 상태');
+  const operator=await portal(t,url=>response(url.endsWith('/intake-settings')?intakeFixture():defaults(url)),'?server='+A);operator.document.getElementById('menu-toggle').click();assert.equal(operator.document.getElementById('menu-toggle').getAttribute('aria-expanded'),'true');operator.document.querySelector('[data-page="intake-capacity"]').click();await settle();assert.equal(operator.document.getElementById('menu-toggle').getAttribute('aria-expanded'),'false');assert.equal(operator.document.getElementById('sidebar').classList.contains('nav-open'),false);assert.equal(operator.document.getElementById('title').textContent,'접수 인원 제한');
+});

@@ -7,6 +7,7 @@ import path from 'node:path';
 import { createWorkspacePlatform } from '../src/workspace-platform.js';
 import { createWorkspaceRuntime } from '../src/workspace-runtime.js';
 import { loadConfig } from '../src/config.js';
+import { applyAction } from '../src/operations.js';
 
 const A='111111111111111111',B='222222222222222222',owner='333333333333333333',person='444444444444444444';
 async function fixture(t){
@@ -21,7 +22,7 @@ async function fixture(t){
   }});
   const server=platform.app.listen(0,'127.0.0.1');await new Promise(resolve=>server.once('listening',resolve));
   const base='http://127.0.0.1:'+server.address().port;
-  t.after(async()=>{await platform.close();await new Promise(r=>server.close(r));await rm(dir,{recursive:true,force:true});});
+  t.after(async()=>{try{await platform.close();}finally{await new Promise(r=>server.close(r));await rm(dir,{recursive:true,force:true});}});
   async function login(user){const start=await fetch(base+'/portal/auth/login',{redirect:'manual'}),state=new URL(start.headers.get('location')).searchParams.get('state'),cookie=start.headers.getSetCookie()[0].split(';')[0];
     const done=await fetch(base+'/portal/auth/callback?state='+state+'&code='+user,{headers:{cookie},redirect:'manual'});assert.equal(done.status,303);
     const sessionCookie=done.headers.getSetCookie().find(x=>x.startsWith('dd_portal=')).split(';')[0];
@@ -65,6 +66,109 @@ async function prepareParticipants(f){
   return {admin,participant,contexts};
 }
 
+test('intake settings require a current operator, isolate servers and preserve active sessions and Queue',async t=>{
+  const f=await fixture(t),{admin,participant,contexts}=await prepareParticipants(f);
+  await contexts[A].operations.update(state=>applyAction(state,'open',{game:'lol',mode:'aram',count:1,title:'기존 모집'}));
+  await contexts[A].participationQueue.register({source:'dashboard',displayName:'독립 Queue'});
+  const before=contexts[A].operations.read(),queue=contexts[A].participationQueue.read();
+  const initial=await(await f.request('/w/'+A+'/intake-settings',admin)).json();
+  assert.deepEqual(initial,{revision:0,settings:{maxApplicants:0,duplicatePolicy:'keep_existing',closeOnCapacity:false}});
+  const input={maxApplicants:5,duplicatePolicy:'reject',closeOnCapacity:true,revision:0};
+  const response=await f.request('/w/'+A+'/intake-settings',admin,input),body=await response.text();assert.equal(response.status,200,body);
+  assert.deepEqual(JSON.parse(body),{revision:1,settings:{maxApplicants:5,duplicatePolicy:'reject',closeOnCapacity:true}});
+  assert.deepEqual(contexts[A].operations.read().session,before.session);
+  assert.deepEqual(contexts[A].operations.read().reservations,before.reservations);
+  assert.deepEqual(contexts[A].participationQueue.read(),queue);
+  assert.deepEqual(await(await f.request('/w/'+B+'/intake-settings',admin)).json(),initial);
+  for(const headers of [participant,{}]){
+    assert.equal((await f.request('/w/'+A+'/intake-settings',headers)).status,headers===participant?403:401);
+    assert.equal((await f.request('/w/'+A+'/intake-settings',headers,input)).status,headers===participant?403:401);
+  }
+  for(const headers of [{...admin,'X-CSRF-Token':'wrong'},{...admin,Origin:'https://untrusted.invalid'}])
+    assert.equal((await f.request('/w/'+A+'/intake-settings',headers,{...input,revision:1})).status,403);
+  f.roles.set(owner,false);
+  assert.equal((await f.request('/w/'+A+'/intake-settings',admin)).status,403,'read must recheck removed operator privileges');
+  assert.equal((await f.request('/w/'+A+'/intake-settings',admin,{...input,revision:1})).status,403);
+});
+
+test('intake API rejects concurrent stale saves, invalid combinations and masked persistence errors',async t=>{
+  const f=await fixture(t),{admin,contexts}=await prepareParticipants(f);
+  const input={maxApplicants:3,duplicatePolicy:'keep_existing',closeOnCapacity:false,revision:0};
+  const responses=await Promise.all([f.request('/w/'+A+'/intake-settings',admin,input),f.request('/w/'+A+'/intake-settings',admin,{...input,maxApplicants:4})]);
+  assert.deepEqual(responses.map(r=>r.status).sort(),[200,409]);
+  const saved=contexts[A].operations.read();
+  for(const body of [{...input,revision:1,maxApplicants:'3'},{...input,revision:1,maxApplicants:1001},{...input,revision:1,maxApplicants:3.1},{...input,revision:1,maxApplicants:0,closeOnCapacity:true},{...input,revision:1,duplicatePolicy:'allow'},{...input,revision:1,token:'never-save'}])
+    assert.equal((await f.request('/w/'+A+'/intake-settings',admin,body)).status,400);
+  const original=contexts[A].operations.writeUnlocked;
+  contexts[A].operations.writeUnlocked=async()=>{throw Error('private filesystem detail');};
+  try{
+    const failed=await f.request('/w/'+A+'/intake-settings',admin,{...input,revision:1,maxApplicants:8});
+    assert.equal(failed.status,503);assert.equal((await failed.text()).includes('private filesystem detail'),false);
+    assert.deepEqual(contexts[A].operations.read(),saved);
+  }finally{contexts[A].operations.writeUnlocked=original;}
+  assert.equal((await f.request('/w/'+A+'/intake-settings',admin,{...input,revision:1,maxApplicants:8})).status,200);
+});
+
+test('intake settings remain readable under locks but mutations respect global and server recovery guards',async t=>{
+  const f=await fixture(t),{admin,contexts}=await prepareParticipants(f);let globalLock=true;
+  f.platform.registerLegacy({context:{config:{}},runtime:{operationGuard:()=>{if(globalLock)throw Object.assign(Error('fixture global lock'),{status:423});}}});
+  const input={maxApplicants:6,duplicatePolicy:'reject',closeOnCapacity:false,revision:0};
+  assert.equal((await f.request('/w/'+A+'/intake-settings',admin)).status,200);
+  assert.equal((await f.request('/w/'+A+'/intake-settings',admin,input)).status,423);
+  globalLock=false;await contexts[A].recovery.setEmergency({locked:true,actor:'fixture',reason:'fixture server lock'});
+  assert.equal((await f.request('/w/'+A+'/intake-settings',admin)).status,200);
+  assert.equal((await f.request('/w/'+A+'/intake-settings',admin,input)).status,423);
+  assert.equal((await f.request('/w/'+B+'/intake-settings',admin,input)).status,200);
+  assert.equal(Object.hasOwn(contexts[A].operations.read(),'intakeSettings'),false);
+});
+
+test('Naver publication snapshots saved intake before a delayed write and preserves unsaved legacy behavior',async t=>{
+  const f=await fixture(t),{admin,contexts}=await prepareParticipants(f);
+  const input={maxApplicants:2,duplicatePolicy:'keep_existing',closeOnCapacity:false,revision:0};
+  assert.equal((await f.request('/w/'+A+'/intake-settings',admin,input)).status,200);
+  let releaseWrite,enteredWrite;
+  const entered=new Promise(r=>{enteredWrite=r;}),pending=new Promise(r=>{releaseWrite=r;});
+  contexts[A].naver.writeArticle=async()=>{enteredWrite();await pending;return {articleId:'fixture-article',articleUrl:'https://cafe.naver.com/fixture/1'};};
+  const opening=f.request('/w/'+A+'/api/naver/participation/session',admin,{cafeId:'123',menuId:'55'});
+  await entered;
+  try{
+    assert.equal((await f.request('/w/'+A+'/intake-settings',admin,{...input,revision:1,maxApplicants:1,duplicatePolicy:'reject'})).status,200);
+  }finally{releaseWrite();}
+  const opened=await opening;assert.equal(opened.status,200,await opened.text());
+  assert.deepEqual(contexts[A].naverParticipation.summary().session.intakePolicy,{maxApplicants:2,duplicatePolicy:'keep_existing',closeOnCapacity:false});
+  for(const displayName of ['가상 참가자',' 가상 참가자 '])
+    assert.equal((await f.request('/w/'+A+'/api/naver/participation/register',admin,{displayName})).status,200);
+  assert.equal(contexts[A].naverParticipation.summary().counts.queued,1);
+  assert.equal((await f.request('/w/'+A+'/api/naver/participation/register',admin,{displayName:'둘째'})).status,200);
+  assert.equal((await f.request('/w/'+A+'/api/naver/participation/register',admin,{displayName:'초과'})).status,409);
+  contexts[B].naver.writeArticle=async()=>({articleId:'fixture-legacy'});
+  assert.equal((await f.request('/w/'+B+'/api/naver/participation/session',admin,{cafeId:'123',menuId:'55'})).status,200);
+  assert.equal((await f.request('/w/'+B+'/api/naver/participation/register',admin,{displayName:'기존 정책'})).status,200);
+  assert.equal((await f.request('/w/'+B+'/api/naver/participation/register',admin,{displayName:' 기존 정책 '})).status,409,'a distinct request must still reject the same normalized legacy name');
+});
+
+test('authenticated participant requests cannot bypass the current Discord intake limit or impersonate another user',async t=>{
+  const f=await fixture(t),{admin,participant,contexts}=await prepareParticipants(f);
+  assert.equal((await f.request('/w/'+A+'/intake-settings',admin,{maxApplicants:1,duplicatePolicy:'keep_existing',closeOnCapacity:false,revision:0})).status,200);
+  await contexts[A].operations.update(state=>applyAction(state,'open',{game:'lol',mode:'aram',count:1,title:'한 자리'}));
+  const route='/w/'+A+'/viewer/api/participation/action';
+  assert.equal((await f.request(route,participant,{action:'join',userId:owner,guildId:B})).status,200);
+  assert.deepEqual(contexts[A].operations.read().session.applicants.filter(id=>!(contexts[A].operations.read().session.postponed||[]).includes(id)),[person]);
+  assert.equal((await f.request(route,admin,{action:'join'})).status,409);
+  assert.equal(contexts[A].participationQueue.summary().entries.filter(e=>e.status==='waiting').length,1);
+  assert.equal(contexts[B].operations.read().session,null);
+  const original=contexts[A].operations.update;
+  try{
+    const errors=[Object.assign(Error('private filesystem marker'),{status:503}),Object.assign(Error('ENOSPC C:/private-user/data.json'),{code:'ENOSPC'}),new TypeError('private implementation marker')];
+    for(const [index,error] of errors.entries()){
+      contexts[A].operations.update=async()=>{throw error;};
+      const failed=await f.request(route,participant,{action:'leave',fixtureCase:index});
+      assert.equal(failed.status,index===0?503:500);const body=await failed.text();
+      assert.equal(body.includes('private'),false);assert.equal(body.includes('data.json'),false);
+    }
+  }finally{contexts[A].operations.update=original;}
+});
+
 test('operator readiness is scoped, read-only and excludes participant identities and OBS credentials',async t=>{
   const f=await fixture(t),{admin,participant,contexts}=await prepareParticipants(f);
   contexts[A].config.naverCafeId='123';contexts[A].config.naverMenuId='456';
@@ -96,8 +200,8 @@ test('call settings are server scoped, enforce fresh operator permission and req
   const before=JSON.stringify(contexts[A].operations.read());
   assert.deepEqual(await(await f.request('/w/'+A+'/call-settings',admin)).json(),{settings:{timeoutSeconds:60},revision:0});
   const response=await f.request('/w/'+A+'/call-settings',admin,{timeoutSeconds:120,revision:0});
-  assert.equal(response.status,200,await response.clone().text());
-  assert.deepEqual(await response.json(),{settings:{timeoutSeconds:120},revision:1});
+  const body=await response.text();assert.equal(response.status,200,body);
+  assert.deepEqual(JSON.parse(body),{settings:{timeoutSeconds:120},revision:1});
   assert.equal(contexts[A].participationCalls.timeoutSeconds,120);
   assert.deepEqual(await(await f.request('/w/'+B+'/call-settings',admin)).json(),{settings:{timeoutSeconds:60},revision:0});
   assert.equal(JSON.stringify(contexts[A].operations.read()),before,'preferences must preserve current operations');
@@ -151,7 +255,7 @@ test('legacy creator workspace uses the same call settings path and public pract
   const legacy=await f.platform.runtimeFor(f.config.guildId);legacy.runtime.operationGuard=()=>{};
   f.platform.registerLegacy(legacy);
   const result=await f.request('/w/'+f.config.guildId+'/call-settings',admin,{timeoutSeconds:75,revision:0});
-  assert.equal(result.status,200,await result.clone().text());assert.equal(legacy.context.participationCalls.timeoutSeconds,75);
+  assert.equal(result.status,200,await result.text());assert.equal(legacy.context.participationCalls.timeoutSeconds,75);
   assert.equal((await f.request('/portal/practice-model.js',{})).status,200);
   assert.equal((await f.request('/portal/app.js',{})).status,404);
 });

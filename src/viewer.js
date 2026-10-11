@@ -6,6 +6,7 @@ import {validateAvatar,DEFAULT_AVATAR} from '../public/avatar.js';
 import {createIdempotencyGuard} from './idempotency.js';
 import { buildParticipantSelfServiceState, performParticipantSelfServiceAction } from './participant-self-service.js';
 import {readyCheckView,answerReadyCheck} from './ready-check.js';
+import { classifyRuntimeError } from './runtime-health.js';
 const hash=s=>createHash('sha256').update(s).digest('hex');
 export function createViewerAuth(){
  const codes=new Map(),sessions=new Map();
@@ -63,5 +64,5 @@ export function createViewerRouter({config,store,operations,viewerAuth,broadcast
  router.post('/api/poll/vote',async(req,res,next)=>{try{if(!broadcastOps)throw Object.assign(Error('방송 투표 기능이 초기화되지 않았습니다.'),{statusCode:503});const result=await broadcastOps.votePoll(req.body.pollId,req.body.optionId,hash(req.viewer.userId));const voter=hash(req.viewer.userId),choice=result.options.find(option=>option.votes.includes(voter))?.id||null;res.json({poll:{id:result.id,question:result.question,options:result.options.map(option=>({id:option.id,label:option.label,votes:option.votes.length})),createdAt:result.createdAt},choice});}catch(e){next(e)}});
  router.post('/api/logout',(req,res)=>{viewerAuth.logout(req.viewerToken);res.setHeader('Set-Cookie','dd_viewer=; HttpOnly; SameSite=Strict; Path=/viewer; Max-Age=0');res.json({ok:true})});
  for(const [url,file] of [['/','viewer.html'],['/viewer.js','viewer.js'],['/viewer.css','viewer.css'],['/avatar.js','avatar.js'],['/art.js','art.js'],['/community-viewer.js','community-viewer.js']])router.get(url,(_req,res)=>res.sendFile(file,{root:fileURLToPath(new URL('../public/',import.meta.url))}));
- router.use((_req,res)=>res.sendStatus(404));router.use((e,_req,res,_next)=>res.status(e.statusCode||400).json({error:e.type?'요청 형식을 확인해 주세요.':e.message}));return router;
+ router.use((_req,res)=>res.sendStatus(404));router.use((e,_req,res,_next)=>{const classified=classifyRuntimeError(e),candidate=e.status||e.statusCode||classified.status,status=Number.isInteger(candidate)&&candidate>=400&&candidate<=599?candidate:classified.status;res.status(status).json({error:e.type?'요청 형식을 확인해 주세요.':status>=500?'요청을 완료하지 못했습니다. 잠시 후 다시 시도하세요.':classified.message});});return router;
 }

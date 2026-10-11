@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { APP_VERSION, DATA_SCHEMA_VERSION } from './version.js';
+import { assertIntakeOperationsState } from './intake-policy.js';
 
 const text=(value,max=160)=>String(value??'').replace(/[\r\n\t]+/g,' ').trim().slice(0,max);
 const uniq=array=>new Set(array).size===array.length;
@@ -23,6 +24,7 @@ export function validOperationsState(value,guildId=''){
     const s=value.session;
     if(!s||typeof s!=='object'||!Array.isArray(s.applicants)||!Array.isArray(s.winners)||!Array.isArray(s.confirmed)||!Array.isArray(s.teams))return false;
   }
+  try{assertIntakeOperationsState(value);}catch{return false;}
   return true;
 }
 

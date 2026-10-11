@@ -12,7 +12,7 @@ const coordinators = new Map();
 function coordinatorFor(file) {
   let coordinator = coordinators.get(file);
   if (!coordinator) {
-    coordinator = { queue: Promise.resolve(), state: undefined, listeners: new Set() };
+    coordinator = { queue: Promise.resolve(), flushError: null, state: undefined, listeners: new Set() };
     coordinators.set(file, coordinator);
   }
   return coordinator;
@@ -43,9 +43,19 @@ export class JsonStore {
   }
   setObserver(observer) { this.observer = typeof observer === 'function' ? observer : null; return this; }
   notify(event) { try { this.observer?.({ ...event, file: this.file, at: Date.now() }); } catch { /* Runtime diagnostics must never break storage. */ } }
-  enqueue(task) {
-    const run = this.coordinator.queue.catch(() => {}).then(task);
-    this.coordinator.queue = run;
+  enqueue(task, { flushFailure = true, clearFlushError = false } = {}) {
+    const run = this.coordinator.queue.then(task);
+    // Caller failures and pending persistence are different contracts. A
+    // rejected update callback (capacity, stale revision, permissions) has no
+    // uncommitted data, so it must not make a graceful shutdown fail. Keep the
+    // request rejection, but remember storage/init failures separately until
+    // a subsequent save or initialization completes successfully.
+    this.coordinator.queue = run.then(
+      () => { if (clearFlushError) this.coordinator.flushError = null; },
+      error => {
+        if (typeof flushFailure === 'function' ? flushFailure(error) : flushFailure) this.coordinator.flushError = error;
+      }
+    );
     return run;
   }
   setCommittedState(value) {
@@ -290,7 +300,7 @@ export class JsonStore {
       const failure = corruptionError(this.file, candidates);
       this.notify({type:'read-failure',error:failure});
       throw failure;
-    });
+    }, { clearFlushError:true });
   }
   read() {
     const state = this.coordinator.state ?? this.state;
@@ -308,6 +318,7 @@ export class JsonStore {
   }
   async flush() {
     await this.coordinator.queue;
+    if (this.coordinator.flushError) throw this.coordinator.flushError;
   }
   write(value, backup = true) {
     if (!this.validate(value)) return Promise.reject(Error('저장할 데이터 형식이 올바르지 않습니다.'));
@@ -315,19 +326,21 @@ export class JsonStore {
       await this.writeUnlocked(value, backup);
       this.setCommittedState(value);
       this.emitChange();
-    });
+    }, { clearFlushError:true });
   }
   update(fn) {
+    let persistenceStarted = false;
     return this.enqueue(async () => {
       const committed = this.coordinator.state ?? this.state;
       if (committed === undefined) throw Error('저장소가 초기화되지 않았습니다. init()을 먼저 실행해 주세요.');
       const next = structuredClone(committed);
       const result = await fn(next);
       if (!this.validate(next)) throw Error('저장할 데이터 형식이 올바르지 않습니다.');
+      persistenceStarted = true;
       await this.writeUnlocked(next);
       this.setCommittedState(next);
       this.emitChange();
       return result;
-    });
+    }, { flushFailure: () => persistenceStarted, clearFlushError:true });
   }
 }

@@ -15,6 +15,7 @@ import { dashboardExposureWarning } from './dashboard-exposure.js';
 import { randomInt, randomUUID, randomBytes, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { applyAction } from './operations.js';
+import { readIntakeSettings } from './intake-policy.js';
 import { hasGame } from './profiles.js';
 import { simulateDraw } from '../public/draw-engine.js';
 import { normalizeBroadcastSettings, validateBroadcastSettings } from './broadcast-settings.js';
@@ -353,7 +354,8 @@ export function createApp({config,store,operations,recovery,discord,discordPolic
   app.post('/api/naver/participation/session',async(req,res,next)=>{let publication=null;try{
     if(!naver||!naverParticipation)throw Object.assign(new Error('네이버 시참 연동 모듈이 초기화되지 않았습니다.'),{status:503});
     const cafeId=String(req.body.cafeId||config.naverCafeId||'').trim(),menuId=String(req.body.menuId||config.naverMemoMenuId||config.naverMenuId||'').trim();
-    publication=await naverParticipation.beginPublication({cafeId,menuId});
+    const intakeState=operations.read(),intake=Object.hasOwn(intakeState,'intakeSettings')?{intakePolicy:readIntakeSettings(intakeState).settings}:{};
+    publication=await naverParticipation.beginPublication({cafeId,menuId,...intake});
     const result=await naver.writeArticle({cafeId,menuId,subject:'칼바람 시참',content:'칼바람 시참'});
     const summary=await naverParticipation.completePublication(publication.id,{articleId:result.articleId,articleUrl:result.articleUrl,subject:'칼바람 시참'});if(participationQueue)await participationQueue.syncNaver(summary);
     await safeAudit({category:'naver',action:'participation_session_open',summary:'칼바람 시참 메모 게시 및 순번 접수 시작',details:{cafeId,menuId,articleId:result.articleId||null}});

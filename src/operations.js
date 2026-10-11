@@ -3,6 +3,7 @@ import { randomInt, randomUUID } from 'node:crypto';
 import { JsonStore } from './json-store.js';
 import { createTeams, TEAM_STRATEGIES } from './teams.js';
 import { assertOperationsStateConsistency, reconcileOperationsState } from './operations-consistency.js';
+import { activeIntakeCount, assertIntakeAdmission, assertIntakeOperationsState, intakeAtCapacity, readIntakeSettings, readSessionIntakePolicy } from './intake-policy.js';
 
 export function sample(items, count) {
   const pool = [...items];
@@ -33,17 +34,33 @@ export function applyAction(state, action, data = {}, now = Date.now()) {
     const title = String(data.title || '시참 모집').trim();
     const description = String(data.description || '참가하기 버튼을 눌러 신청해 주세요.').trim();
     if (!title || title.length > 256 || !description || description.length > 4000) throw Error('제목은 1~256자, 설명은 1~4000자로 입력해 주세요.');
+    const intakePolicy=readIntakeSettings(state).settings;
+    if(intakePolicy.maxApplicants>0&&intakePolicy.maxApplicants<data.count)throw Object.assign(Error('접수 정원은 추첨할 모집 인원 이상이어야 합니다. 다음 모집의 접수 조건 또는 모집 인원을 확인해 주세요.'),{status:400});
     const round = (state.rounds[data.game] || 0) + 1;
     state.rounds[data.game] = round;
     const due = state.reservations.filter(r => r.game === data.game && r.round <= round);
     state.reservations = state.reservations.filter(r => r.game !== data.game || r.round > round);
     const future = state.reservations.filter(r => r.game === data.game).map(r => r.userId);
-    state.session = { closeAt: closeMinutes ? now+closeMinutes*60000 : null, mode:data.mode || 'rift', round, title, description, postponed: future, id: randomUUID(), game: data.game, count: data.count, phase: 'open', applicants: [...new Set([...due.map(r => r.userId), ...future])], winners: [], confirmed: [], excluded: [], teams: [], teamMeta:null, createdAt: now };
+    state.session = { closeAt: closeMinutes ? now+closeMinutes*60000 : null, mode:data.mode || 'rift', round, title, description, postponed: future, id: randomUUID(), game: data.game, count: data.count, phase: 'open', applicants: [...new Set([...due.map(r => r.userId), ...future])], winners: [], confirmed: [], excluded: [], teams: [], teamMeta:null, createdAt: now, intakePolicy };
+    // Carry-over reservations are committed promises. Preserve every applicant
+    // even if the next round has a smaller limit, and block additional intake.
+    if(intakePolicy.closeOnCapacity&&intakeAtCapacity(intakePolicy,activeIntakeCount(state.session))){state.session.phase='closed';state.session.closeReason='capacity';}
   } else {
     if (!s || s.phase === 'ended') throw Error('진행 중인 모집이 없습니다.');
     if (action === 'join' || action === 'leave' || action === 'postpone_next' || action === 'postpone_later') {
       if (!data.userId || typeof data.userId !== 'string') throw Error('사용자를 확인할 수 없습니다.');
       if (s.phase !== 'open' || (s.closeAt && now >= s.closeAt) || data.sessionId !== s.id) throw Error('모집이 마감됐거나 이전 모집의 버튼입니다.');
+      const intakePolicy=readSessionIntakePolicy(s);
+      if(action==='join'){
+        const alreadyActive=s.applicants.includes(data.userId)&&!(s.postponed||[]).includes(data.userId);
+        if(alreadyActive){
+          if(intakePolicy.duplicatePolicy==='reject')throw Object.assign(Error('이미 현재 모집에 참가 신청되어 있습니다.'),{status:409});
+          // Retain the original position without cancelling reservations or
+          // re-running automatic closure after an operator has reopened intake.
+          return state;
+        }
+        assertIntakeAdmission(intakePolicy,activeIntakeCount(s));
+      }
       s.postponed ??= [];
       if (action === 'postpone_next' || action === 'postpone_later') {
         if (!s.applicants.includes(data.userId)) throw Error('참가 신청 후 순서를 미룰 수 있습니다.');
@@ -55,16 +72,22 @@ export function applyAction(state, action, data = {}, now = Date.now()) {
         s.postponed = s.postponed.filter(id => id !== data.userId);
         if (action === 'leave') s.applicants = s.applicants.filter(id => id !== data.userId);
         else if (!s.applicants.includes(data.userId)) s.applicants.push(data.userId);
+        if(action==='join'&&intakePolicy.closeOnCapacity&&intakeAtCapacity(intakePolicy,activeIntakeCount(s))){s.phase='closed';s.closeReason='capacity';}
       }
     } else if (action === 'close') {
       if (s.phase !== 'open') throw Error('이미 마감된 모집입니다.');
-      s.phase = 'closed';
+      s.phase = 'closed';s.closeReason='manual';
     } else if (action === 'reopen') {
       if(s.phase!=='closed')throw Error('추첨 전 마감 상태에서만 모집을 다시 열 수 있습니다.');
-      s.phase='open';s.closeAt=null;
+      readSessionIntakePolicy(s);
+      // Reopening retains the round's immutable policy. At capacity, only a
+      // leave/postpone can free a place; new active admissions remain blocked.
+      s.phase='open';s.closeAt=null;delete s.closeReason;
     } else if (action === 'resize') {
       if(!['open','closed'].includes(s.phase))throw Error('추첨 전에만 인원을 바꿀 수 있습니다.');
       if(!Number.isInteger(data.count)||data.count<1||data.count>50)throw Error('모집 인원은 1~50명입니다.');
+      const intakePolicy=readSessionIntakePolicy(s);
+      if(intakePolicy.maxApplicants>0&&intakePolicy.maxApplicants<data.count)throw Object.assign(Error('모집 인원은 현재 모집의 접수 정원을 초과할 수 없습니다.'),{status:400});
       s.count=data.count;
     } else if (action === 'edit_post') {
       if(!['open','closed'].includes(s.phase))throw Error('추첨 전에만 모집글을 수정할 수 있습니다.');
@@ -158,11 +181,15 @@ export function applyAction(state, action, data = {}, now = Date.now()) {
 }
 export class OperationsStore extends JsonStore {
   constructor(file) {
-    super(file, {session:null,history:[],reservations:[],sessionArchive:[],rounds:{},revision:0}, value => value && Array.isArray(value.history) && (!value.reservations || Array.isArray(value.reservations)) && (!value.sessionArchive || Array.isArray(value.sessionArchive)) && (!value.session || (Array.isArray(value.session.applicants) && Array.isArray(value.session.winners) && Array.isArray(value.session.confirmed) && Array.isArray(value.session.teams))));
+    super(file, {session:null,history:[],reservations:[],sessionArchive:[],rounds:{},revision:0}, value => {
+      try{return Boolean(value && Array.isArray(value.history) && (!value.reservations || Array.isArray(value.reservations)) && (!value.sessionArchive || Array.isArray(value.sessionArchive)) && (!value.session || (Array.isArray(value.session.applicants) && Array.isArray(value.session.winners) && Array.isArray(value.session.confirmed) && Array.isArray(value.session.teams))) && assertIntakeOperationsState(value));}
+      catch{return false;}
+    });
     this.consistencyRecovered=false;this.consistencyChanges=[];
   }
   async init(){
     await super.init();
+    assertIntakeOperationsState(this.read());
     const result=reconcileOperationsState(this.read());
     if(result.changed){
       await super.write(result.state);
@@ -173,8 +200,11 @@ export class OperationsStore extends JsonStore {
   }
   update(fn){
     return super.update(async state=>{
+      assertIntakeOperationsState(state);
       const result=await fn(state);
+      assertIntakeOperationsState(state);
       const reconciled=reconcileOperationsState(state);
+      assertIntakeOperationsState(reconciled.state);
       for(const key of Object.keys(state))delete state[key];Object.assign(state,reconciled.state);
       if(reconciled.changed)this.notify({type:'consistency-recovery',detail:`저장 직전 상태 일관성 정규화 · ${reconciled.changes.join(' · ')}`});
       return result;
