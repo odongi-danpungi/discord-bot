@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { buildParticipantSelfServiceState, performParticipantSelfServiceAction } from '../src/participant-self-service.js';
+import { OperationsStore } from '../src/operations.js';
 
 function fakeOperations(initial){
   const state=structuredClone(initial);
@@ -59,4 +63,164 @@ test('participant self-service blocks non-call mutations while a call is pending
   const operations=fakeOperations(openState()),raw={id:'q1',source:'discord',discordUserId:'u1',status:'called',callToken:'token',callDeadline:Date.now()+60_000};
   const queue={read:()=>({entries:[raw]}),summary:()=>({entries:[],counts:{},activeCount:1}),async syncOperations(){}};
   await assert.rejects(()=>performParticipantSelfServiceAction({action:'join',userId:'u1',profile,operations,participationQueue:queue,now:Date.now()}),/현재 호출에 먼저 응답/);
+});
+
+test('participant recruitment uses only the current Discord policy snapshot and not Queue or next-round settings',()=>{
+  const state=openState();
+  state.session.count=2;
+  state.session.intakePolicy={maxApplicants:4,duplicatePolicy:'keep_existing',closeOnCapacity:false};
+  state.session.applicants=['other','other','reserved'];state.session.postponed=['reserved'];
+  state.intakeSettings={revision:7,settings:{maxApplicants:1,duplicatePolicy:'reject',closeOnCapacity:true}};
+  const before=structuredClone(state);
+  const result=buildParticipantSelfServiceState({operationsState:state,userId:'u1',profile,now:1000,queueSummary:{activeCount:99,counts:{waiting:77},entries:[{id:'private-naver',source:'naver',displayName:'private cafe name',status:'waiting'}]}});
+  assert.deepEqual(result.recruitment,{status:'open',reason:null,maxApplicants:4,activeApplicants:1,remainingSlots:3,unlimited:false,closeAt:0,drawCount:2,duplicatePolicy:'keep_existing'});
+  assert.equal(result.actions.join,true);assert.equal(result.queue.activeCount,99);
+  assert.doesNotMatch(JSON.stringify(result.recruitment),/other|reserved|naver|cafe/);
+  assert.deepEqual(state,before);
+  state.intakeSettings=null;
+  assert.deepEqual(buildParticipantSelfServiceState({operationsState:state,userId:'u1',profile,now:1000}).recruitment,result.recruitment);
+});
+
+test('capacity disables new and postponed admissions while preserving active participant leave and postponement',()=>{
+  const state=openState();state.session.count=1;
+  state.session.intakePolicy={maxApplicants:1,duplicatePolicy:'keep_existing',closeOnCapacity:false};
+  state.session.applicants=['u1','reserved'];state.session.postponed=['reserved'];
+  const own=buildParticipantSelfServiceState({operationsState:state,userId:'u1',profile,now:1000});
+  assert.equal(own.recruitment.status,'full');assert.equal(own.actions.join,false);
+  assert.equal(own.actions.leave,true);assert.equal(own.actions.postponeNext,true);assert.equal(own.actions.postponeNext2,true);
+  const newcomer=buildParticipantSelfServiceState({operationsState:state,userId:'new',profile,now:1000});
+  assert.equal(newcomer.actions.join,false);assert.equal(newcomer.actions.leave,false);
+  const reserved=buildParticipantSelfServiceState({operationsState:state,userId:'reserved',profile,now:1000});
+  assert.equal(reserved.session.postponed,true);assert.equal(reserved.actions.join,false);assert.equal(reserved.actions.postponeNext,false);
+  state.session.applicants=['reserved'];
+  assert.equal(buildParticipantSelfServiceState({operationsState:state,userId:'reserved',profile,now:1000}).actions.join,true);
+});
+
+test('auto-closed capacity keeps intake mutations disabled but retains reservation cancellation',()=>{
+  const state=openState();state.session.count=1;state.session.phase='closed';state.session.closeReason='capacity';
+  state.session.intakePolicy={maxApplicants:1,duplicatePolicy:'reject',closeOnCapacity:true};
+  state.session.applicants=['u1'];state.reservations=[{userId:'u1',game:'lol',round:4}];
+  const own=buildParticipantSelfServiceState({operationsState:state,userId:'u1',profile,now:1000});
+  assert.equal(own.recruitment.status,'closed');assert.equal(own.recruitment.reason,'capacity');
+  assert.equal(own.actions.join,false);assert.equal(own.actions.leave,false);assert.equal(own.actions.postponeNext,false);
+  assert.equal(own.actions.cancelReservation,true);
+});
+
+test('intake deadline preserves a valid call join and attendance confirmation while blocking current-round pass',()=>{
+  const state=openState();state.session.count=1;state.session.closeAt=1000;
+  state.session.intakePolicy={maxApplicants:1,duplicatePolicy:'keep_existing',closeOnCapacity:false};
+  state.session.applicants=['u1'];
+  const queueSummary={entries:[{id:'own-call',source:'discord',discordUserId:'u1',sessionId:'s1',status:'called',callDeadline:2000,callToken:'server-only'}]};
+  const called=buildParticipantSelfServiceState({operationsState:state,queueSummary,userId:'u1',profile,now:1000});
+  assert.equal(called.recruitment.reason,'deadline');assert.equal(called.actions.callJoin,true);assert.equal(called.actions.callPass,false);assert.equal(called.actions.leave,false);
+  assert.doesNotMatch(JSON.stringify(called),/server-only/);
+  state.session.phase='checking';state.session.winners=['u1'];state.session.deadline=2000;
+  const checking=buildParticipantSelfServiceState({operationsState:state,userId:'u1',profile,now:1000});
+  assert.equal(checking.recruitment.reason,'progress');assert.equal(checking.actions.confirm,true);
+});
+
+test('recruitment preserves own identity actions while malformed current session data fails closed',()=>{
+  const state=openState();state.session.intakePolicy={maxApplicants:20,duplicatePolicy:'reject',closeOnCapacity:false};
+  state.session.applicants=['other'];
+  const own=buildParticipantSelfServiceState({operationsState:state,userId:'u1',profile,now:1000});
+  assert.equal(own.actions.join,true);assert.equal(own.session.applicant,false);assert.equal(own.queue.entry,null);
+  for(const malformed of [false,{...state.session,count:'10'},{...state.session,intakePolicy:null},{...state.session,applicants:null}])
+    assert.throws(()=>buildParticipantSelfServiceState({operationsState:{...state,session:malformed},userId:'u1',profile,now:1000}),error=>error.status===503);
+  const inactive=buildParticipantSelfServiceState({operationsState:{session:null,reservations:[]},userId:'u1',profile,now:1000});
+  assert.equal(inactive.recruitment.reason,'no_session');assert.equal(inactive.actions.join,false);
+});
+
+for(const action of ['join','confirm'])test(`queued ${action} rechecks its deadline inside the real OperationsStore update without changing committed state`,async()=>{
+  const dir=await mkdtemp(path.join(tmpdir(),'daeng-participant-deadline-'));
+  let release,blocking,pending;
+  try{
+    const file=path.join(dir,'operations.json'),operations=new OperationsStore(file);
+    await operations.init();
+    const state=openState();state.session.count=1;
+    if(action==='join')state.session.closeAt=1010;
+    else Object.assign(state.session,{phase:'checking',applicants:['u1'],winners:['u1'],deadline:1010,attendanceVersion:1});
+    await operations.write(state);
+    const before=operations.read(),bytes=await readFile(file);
+    let entered;const started=new Promise(resolve=>{entered=resolve;});
+    const barrier=new Promise(resolve=>{release=resolve;});
+    blocking=operations.update(async()=>{entered();await barrier;});
+    await started;
+    let time=50_000;
+    pending=performParticipantSelfServiceAction({action,userId:'u1',profile,operations,now:1000,clock:()=>time});
+    const rejected=assert.rejects(pending,action==='join'?/모집이 마감됐거나 이전 모집/:/참석 확인 대상이 아니거나 시간이 만료/);
+    time+=10;release();
+    await blocking;await rejected;
+    assert.deepEqual(operations.read(),before);assert.deepEqual(await readFile(file),bytes);
+    await operations.flush();
+  }finally{
+    release?.();await Promise.allSettled([blocking,pending].filter(Boolean));
+    await rm(dir,{recursive:true,force:true});
+  }
+});
+
+for(const phase of ['expired_open','closed','drawn','checking','ended'])test(`current-session call pass is safely unavailable for ${phase} while call join remains valid`,async()=>{
+  const dir=await mkdtemp(path.join(tmpdir(),'daeng-participant-pass-'));
+  try{
+    const at=Date.now(),file=path.join(dir,'operations.json'),operations=new OperationsStore(file);
+    await operations.init();
+    const state=openState();state.session.count=1;state.session.applicants=['u1'];
+    state.session.phase=phase==='expired_open'?'open':phase;
+    if(phase==='expired_open')state.session.closeAt=at;
+    if(phase==='closed')state.session.closeReason='manual';
+    if(['drawn','checking'].includes(phase))state.session.winners=['u1'];
+    if(phase==='checking'){state.session.deadline=at+60_000;state.session.attendanceVersion=1;}
+    await operations.write(state);
+    const raw={id:'own-call',source:'discord',discordUserId:'u1',sessionId:'s1',status:'called',callDeadline:at+60_000,callToken:'server-only'};
+    let responses=0,syncs=0;
+    const queue={read:()=>({entries:[raw]}),summary:()=>({entries:[{...raw}],counts:{called:1},activeCount:1}),async syncOperations(){syncs++;}};
+    const calls={async respond(input){responses++;assert.equal(input.action,'join');raw.status='joined';return {entry:{id:raw.id,status:raw.status}};}};
+    const before=operations.read(),bytes=await readFile(file),rawBefore=structuredClone(raw);
+    const own=buildParticipantSelfServiceState({operationsState:operations.read(),queueSummary:queue.summary(),userId:'u1',profile,now:at});
+    assert.equal(own.actions.callPass,false);assert.equal(own.actions.callJoin,true);
+    await assert.rejects(performParticipantSelfServiceAction({action:'call_pass',userId:'u1',profile,operations,participationQueue:queue,participationCalls:calls,now:at,clock:()=>at}),error=>error.status===409&&error.code==='participant_call_pass_closed'&&/모집이 마감되어 패스 예약/.test(error.message));
+    assert.equal(responses,0);assert.equal(syncs,0);assert.deepEqual(raw,rawBefore);
+    assert.deepEqual(operations.read(),before);assert.deepEqual(await readFile(file),bytes);
+    const joined=await performParticipantSelfServiceAction({action:'call_join',userId:'u1',profile,operations,participationQueue:queue,participationCalls:calls,now:at,clock:()=>at});
+    assert.equal(responses,1);assert.equal(joined.result.entry.status,'joined');assert.equal(syncs,0);
+    assert.deepEqual(operations.read(),before);assert.deepEqual(await readFile(file),bytes);
+    await operations.flush();
+  }finally{await rm(dir,{recursive:true,force:true});}
+});
+
+test('a full but open current-session call can still pass and reserve the next round',async()=>{
+  const state=openState();state.session.count=1;state.session.applicants=['u1'];
+  state.session.intakePolicy={maxApplicants:1,duplicatePolicy:'keep_existing',closeOnCapacity:false};
+  const operations=fakeOperations(state),at=Date.now();
+  const raw={id:'own-call',source:'discord',discordUserId:'u1',sessionId:'s1',status:'called',callDeadline:at+60_000,callToken:'server-only'};
+  let responses=0,syncs=0;
+  const queue={read:()=>({entries:[raw]}),summary:()=>({entries:[raw],counts:{called:1},activeCount:1}),async syncOperations(){syncs++;}};
+  const calls={async respond(input){responses++;assert.equal(input.action,'pass');raw.status='postponed_next';return {entry:{id:raw.id,status:raw.status}};}};
+  const own=buildParticipantSelfServiceState({operationsState:operations.read(),queueSummary:queue.summary(),userId:'u1',profile,now:at});
+  assert.equal(own.recruitment.status,'full');assert.equal(own.actions.callPass,true);
+  const result=await performParticipantSelfServiceAction({action:'call_pass',userId:'u1',profile,operations,participationQueue:queue,participationCalls:calls,now:at,clock:()=>at});
+  assert.equal(responses,1);assert.equal(syncs,1);assert.equal(result.state.recruitment.remainingSlots,1);
+  assert.deepEqual(operations.read().session.postponed,['u1']);assert.deepEqual(operations.read().reservations,[{game:'lol',userId:'u1',round:4}]);
+});
+
+test('unmatched or manual Queue calls and calls without a current session retain their existing pass path',async()=>{
+  const at=Date.now();
+  for(const sessionId of ['other-session',undefined,null]){
+    const state=openState();state.session.phase='closed';state.session.closeReason='manual';
+    const operations=fakeOperations(state),before=structuredClone(state);
+    const raw={id:'other-call',source:'discord',discordUserId:'u1',sessionId,status:'called',callDeadline:at+60_000,callToken:'server-only'};
+    let responses=0;
+    const queue={read:()=>({entries:[raw]}),summary:()=>({entries:[raw],counts:{called:1},activeCount:1}),async syncOperations(){}};
+    const calls={async respond(input){responses++;assert.equal(input.action,'pass');raw.status='postponed_next';return {entry:{id:raw.id,status:raw.status}};}};
+    assert.equal(buildParticipantSelfServiceState({operationsState:state,queueSummary:queue.summary(),userId:'u1',profile,now:at}).actions.callPass,true);
+    await performParticipantSelfServiceAction({action:'call_pass',userId:'u1',profile,operations,participationQueue:queue,participationCalls:calls,now:at,clock:()=>at});
+    assert.equal(responses,1);assert.deepEqual(operations.read(),before);
+  }
+  const operations=fakeOperations({session:null,reservations:[]});
+  const raw={id:'manual-call',source:'discord',discordUserId:'u1',sessionId:'past-session',status:'called',callDeadline:at+60_000,callToken:'server-only'};
+  let responded=false;
+  const queue={read:()=>({entries:[raw]}),summary:()=>({entries:[raw],counts:{called:1},activeCount:1}),async syncOperations(){}};
+  const calls={async respond(){responded=true;raw.status='postponed_next';return {};}};
+  assert.equal(buildParticipantSelfServiceState({operationsState:operations.read(),queueSummary:queue.summary(),userId:'u1',profile,now:at}).actions.callPass,true);
+  await performParticipantSelfServiceAction({action:'call_pass',userId:'u1',profile,operations,participationQueue:queue,participationCalls:calls,now:at,clock:()=>at});
+  assert.equal(responded,true);assert.deepEqual(operations.read(),{session:null,reservations:[]});
 });

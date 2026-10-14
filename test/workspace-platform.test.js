@@ -31,6 +31,70 @@ async function fixture(t){
   }
   return {platform,base,roles,deniedMembers,login,client,config,request:async(url,headers,body)=>fetch(base+url,{headers,method:body===undefined?'GET':'POST',...(body===undefined?{}:{body:JSON.stringify(body)})})};
 }
+test('participant recruitment reads current session capacity per server without exposing identities or writing state',async t=>{
+  const f=await fixture(t),{participant,contexts}=await prepareParticipants(f);
+  for(const [id,capacity]of [[A,3],[B,7]])await contexts[id].operations.update(state=>{
+    state.reservations=[];
+    state.intakeSettings={revision:1,settings:{maxApplicants:capacity,duplicatePolicy:'reject',closeOnCapacity:false}};
+    applyAction(state,'open',{game:'lol',mode:'aram',count:1,title:'현재 모집'});
+    applyAction(state,'join',{sessionId:state.session.id,userId:owner});
+    state.intakeSettings={revision:2,settings:{maxApplicants:99,duplicatePolicy:'keep_existing',closeOnCapacity:true}};
+  });
+  await contexts[A].participationQueue.register({source:'dashboard',displayName:'다른 사람의 수동 Queue'});
+  const before=Object.fromEntries([A,B].map(id=>[id,{state:contexts[id].operations.read(),queue:contexts[id].participationQueue.read()}]));
+  for(const [id,capacity]of [[A,3],[B,7]]){
+    const response=await f.request('/w/'+id+'/viewer/api/participation',participant);
+    assert.equal(response.status,200);assert.match(response.headers.get('cache-control'),/no-store/);
+    const body=await response.json();
+    assert.deepEqual(body.recruitment,{status:'open',reason:null,maxApplicants:capacity,activeApplicants:1,remainingSlots:capacity-1,unlimited:false,closeAt:0,drawCount:1,duplicatePolicy:'reject'});
+    assert.equal(body.actions.join,true);
+    assert.equal(JSON.stringify(body).includes(owner),false);
+    assert.equal(JSON.stringify(body).includes('다른 사람의 수동 Queue'),false);
+    assert.deepEqual(contexts[id].operations.read(),before[id].state);
+    assert.deepEqual(contexts[id].participationQueue.read(),before[id].queue);
+  }
+  assert.equal((await f.request('/w/'+A+'/viewer/api/participation',{})).status,401);
+});
+
+test('participant recruitment at capacity hides admission and keeps server-side conflicts and own cancellation available',async t=>{
+  const f=await fixture(t),{admin,participant,contexts}=await prepareParticipants(f),operations=contexts[A].operations;
+  await operations.update(state=>{
+    state.reservations=[];state.intakeSettings={revision:1,settings:{maxApplicants:1,duplicatePolicy:'keep_existing',closeOnCapacity:false}};
+    applyAction(state,'open',{game:'lol',count:1,title:'한 자리'});
+    applyAction(state,'join',{sessionId:state.session.id,userId:owner});
+  });
+  const read=()=>f.request('/w/'+A+'/viewer/api/participation',participant);
+  const full=await(await read()).json();assert.equal(full.recruitment.status,'full');assert.equal(full.recruitment.reason,'capacity');
+  assert.equal(full.recruitment.remainingSlots,0);assert.equal(full.actions.join,false);
+  const own=await(await f.request('/w/'+A+'/viewer/api/participation',admin)).json();assert.equal(own.actions.leave,true);
+  const rejected=await f.request('/w/'+A+'/viewer/api/participation/action',participant,{action:'join',expectedSessionId:operations.read().session.id});
+  assert.equal(rejected.status,409);assert.deepEqual(operations.read().session.applicants,[owner]);
+  await operations.update(state=>applyAction(state,'leave',{sessionId:state.session.id,userId:owner}));
+  const available=await(await read()).json();assert.equal(available.recruitment.remainingSlots,1);assert.equal(available.actions.join,true);
+  const stale=await f.request('/w/'+A+'/viewer/api/participation/action',participant,{action:'join',expectedSessionId:'old-session'});
+  assert.equal(stale.status,409);assert.deepEqual(operations.read().session.applicants,[]);
+});
+
+test('participant recruitment rechecks current server membership even after a cached read and masks invalid stored policy',async t=>{
+  const f=await fixture(t),{participant,contexts}=await prepareParticipants(f);
+  const route='/w/'+A+'/viewer/api/participation';
+  for(const variant of [route+'/',route.replace('/participation','/Participation'),route]){
+    f.deniedMembers.delete(A+':'+person);
+    assert.equal((await f.request(route,participant)).status,200);
+    f.deniedMembers.add(A+':'+person);
+    assert.equal((await f.request(variant,participant)).status,403,'a cached membership must not reveal current recruitment after removal: '+variant);
+  }
+  assert.equal((await f.request('/w/'+B+'/viewer/api/participation',participant)).status,200);
+  f.deniedMembers.delete(A+':'+person);
+  const operations=contexts[A].operations;
+  await operations.update(state=>{state.reservations=[];applyAction(state,'open',{game:'lol',count:1,title:'안전한 모집'});});
+  const original=operations.read.bind(operations),saved=original();
+  operations.read=()=>({...saved,session:{...saved.session,intakePolicy:{maxApplicants:'private-invalid-path',duplicatePolicy:'reject',closeOnCapacity:false}}});
+  try{const failed=await f.request(route,participant);assert.equal(failed.status,503);const text=await failed.text();assert.equal(text.includes('private-invalid-path'),false);assert.equal(text.includes('recruitment'),false);}
+  finally{operations.read=original;}
+  assert.equal((await f.request(route,participant)).status,200);
+});
+
 test('real workspace runtimes isolate operations, participants, CSRF and creator APIs',async t=>{
   const f=await fixture(t),admin=await f.login(owner),participant=await f.login(person);
   assert.equal((await f.request('/portal/api/servers/'+A,participant,{})).status,403);

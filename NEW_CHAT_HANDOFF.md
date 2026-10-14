@@ -1,10 +1,12 @@
-# 현재 인수인계 — v5.2.3 배포 후보
+# 현재 인수인계 — v5.2.4 배포 후보
 
-검토일은 2026-10-12 (Asia/Seoul)입니다. main 기준은 v5.1.7, commit 7898f1d98b2df3164a2427503ff373a213af4403입니다. 이번 개발의 직전 기준은 v5.2.2, commit 5e73c5d474f73190fb810363606d04cb0c7e5cf3입니다. 기존 Discord·네이버·CHZZK 모듈과 제작자 기능을 유지합니다. 데이터 스키마는 2이며 새 운영 공간은 서버별 파일을 사용하고 제작자 데이터는 기존 경로에 유지합니다.
+검토일은 2026-10-14 (Asia/Seoul)입니다. main 기준은 v5.1.7, commit 7898f1d98b2df3164a2427503ff373a213af4403입니다. 이번 개발의 직전 기준은 v5.2.3, commit 3f76e7bca7358beaaee621f34509e408630c56a7입니다. 기존 Discord·네이버·CHZZK 모듈과 제작자 기능을 유지합니다. 데이터 스키마는 2이며 새 운영 공간은 서버별 파일을 사용하고 제작자 데이터는 기존 경로에 유지합니다.
 
 현재 사용자 결정은 각 운영자가 자기 Discord 서버와 자기 방송 채널을 운영하는 것입니다. 과거 공통 방송 채널 설계는 기존 단일 서버 모드에만 유지합니다. 제작자 점검·배포·복구 API는 사용자 포털에 공개하지 않습니다.
 
-[계정·운영·복구 안내](docs/workspace-accounts.md)와 [v5.2.3 검토 보고서](docs/workspace-review-v523.md)를 먼저 읽습니다. MULTI_WORKSPACE_ENABLED는 기본 false입니다. 실제 OAuth, 서버별 방송 연결 E2E와 팔로워 역할 부여는 계속 PENDING입니다. 사용자는 별도 참가자 테스트 계정이 없으므로 검증을 통과했다고 표현하지 않습니다. Railway 운영은 v5.1.7이며 이번 개발에서 운영 환경변수·트래픽을 변경하지 않습니다.
+[계정·운영·복구 안내](docs/workspace-accounts.md)와 [v5.2.4 검토 보고서](docs/workspace-review-v524.md)를 먼저 읽습니다. MULTI_WORKSPACE_ENABLED는 기본 false입니다. 실제 OAuth, 서버별 방송 연결 E2E와 팔로워 역할 부여는 계속 PENDING입니다. 사용자는 별도 참가자 테스트 계정이 없으므로 검증을 통과했다고 표현하지 않습니다. Railway 운영은 v5.1.7이며 이번 개발에서 운영 환경변수·트래픽을 변경하지 않습니다.
+
+v5.2.4는 참가자 내 참가 화면의 정원·남은 자리·마감 안내를 추가합니다. 현재 Discord session snapshot만 집계하며 타인 식별 정보·네이버 합계·수동 Queue를 노출하거나 혼합하지 않습니다. 조회 실패·시간 만료·이전 모집 링크에서 참가 동작을 차단합니다. 멤버십을 새로 확인하고 저장 대기 중 마감 경계도 재확인합니다. 실제 OAuth·E2E는 계속 PENDING입니다.
 
 v5.2.3은 접수 정원(0~1000명, 0 무제한), 중복 처리(기존 순번 유지/거절), 정원 자동 마감을 개별 화면으로 제공합니다. 자동 마감에는 1명 이상의 정원이 필요합니다. revision 충돌을 검사해 서버별 operations에 저장하며 다음 모집부터 적용합니다. 현재 모집 정책과 Queue·예약은 보존합니다. 네이버 게시 시작 시에도 정책을 고정해 늦은 응답이 새 설정을 사용하지 않게 합니다.
 
@@ -16,6 +18,6 @@ v5.2.2 기록: 서버별 참가 선발 규칙·호출 시간과 6단계 가상 �
 
 v5.2.1 기록: 운영자 전용 /w/:guildId/readiness는 저장된 설정으로 운영 시작 안내와 개인정보 없는 인수인계 요약을 제공합니다. 토큰 존재를 Production Acceptance 통과로 해석하지 않습니다. 화면 조회는 커넥터 검사·토큰 갱신·역할 변경·글 게시·상태 변경을 실행하지 않고 Discord 권한은 기존 인증 경로에서 확인합니다. 문서까지 포함하는 전체 ZIP이 기준 산출물이며 v2 Update JSON은 허용 목록상 문서를 제외하고 무서명입니다. 서명 필수 정책을 낮추지 않습니다.
 
-사용자 준비: Discord OAuth2에 PUBLIC_BASE_URL origin + /portal/auth/callback을 등록하고 DISCORD_CLIENT_SECRET은 Railway Variables에 저장합니다. 기존 토큰·암호화 키와 /app/data 볼륨을 보존합니다. replica는 1로 유지하고 workspaces/를 포함하는 전체 볼륨을 백업합니다. 실제 계정 검증 전에 포털을 활성화하지 않습니다. v5.2.3만을 위한 새 환경변수나 권한은 없습니다.
+사용자 준비: Discord OAuth2에 PUBLIC_BASE_URL origin + /portal/auth/callback을 등록하고 DISCORD_CLIENT_SECRET은 Railway Variables에 저장합니다. 기존 토큰·암호화 키와 /app/data 볼륨을 보존합니다. replica는 1로 유지하고 workspaces/를 포함하는 전체 볼륨을 백업합니다. 실제 계정 검증 전에 포털을 활성화하지 않습니다. v5.2.4만을 위한 새 환경변수나 권한은 없습니다.
 
 Node 요구사항은 >=22.22.2입니다. npm ci, npm run env:check, npm run verify:final을 배포 준비에 사용합니다. 로컬 데모·가상 API·가상 OAuth 테스트는 실제 운영 인증정보를 증명하지 않습니다.

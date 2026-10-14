@@ -76,7 +76,7 @@ export function applyAction(state, action, data = {}, now = Date.now()) {
       }
     } else if (action === 'close') {
       if (s.phase !== 'open') throw Error('이미 마감된 모집입니다.');
-      s.phase = 'closed';s.closeReason='manual';
+      s.phase = 'closed';s.closeReason=s.closeAt&&now>=s.closeAt?'deadline':'manual';
     } else if (action === 'reopen') {
       if(s.phase!=='closed')throw Error('추첨 전 마감 상태에서만 모집을 다시 열 수 있습니다.');
       readSessionIntakePolicy(s);
