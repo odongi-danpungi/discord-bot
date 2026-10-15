@@ -14,6 +14,24 @@ test('--dev selects development profile and demo stays isolated',async()=>{
   const demo=await loadConfig({},['--demo']);assert.equal(demo.profile,'demo');assert.equal(demo.host,'127.0.0.1');assert.match(demo.backupDir,/data\/demo\/backups/);
 });
 
+test('participant Naver app stays optional and never falls back to operator credentials',async()=>{
+  const existing=await loadConfig({...base,NAVER_CLIENT_ID:'operator-client',NAVER_CLIENT_SECRET:'operator-secret'},[]);
+  assert.equal(existing.participantNaverClientId,'');assert.equal(existing.participantNaverClientSecret,'');
+  const participant=await loadConfig({...base,NAVER_PARTICIPANT_CLIENT_ID:' participant-client ',NAVER_PARTICIPANT_CLIENT_SECRET:' participant-secret ',NAVER_TOKEN_KEY:'ab'.repeat(32)},[]);
+  assert.equal(participant.participantNaverClientId,'participant-client');assert.equal(participant.participantNaverClientSecret,'participant-secret');
+  assert.equal(participant.naverClientId,'');assert.equal(participant.naverClientSecret,'');assert.equal(participant.naverRedirectUri,'');
+  const incomplete=await loadConfig({...base,NAVER_PARTICIPANT_CLIENT_ID:'participant-client'},[]);
+  assert.equal(incomplete.participantNaverClientId,'participant-client');assert.equal(incomplete.participantNaverClientSecret,'');
+  const secretOnly=await loadConfig({...base,NAVER_PARTICIPANT_CLIENT_SECRET:'participant-secret',NAVER_TOKEN_KEY:'ab'.repeat(32)},[]);
+  assert.equal(secretOnly.participantNaverClientId,'');assert.equal(secretOnly.naverClientId,'');
+  const canonicalKey=Buffer.alloc(32,7).toString('base64');
+  assert.equal((await loadConfig({...base,NAVER_PARTICIPANT_CLIENT_ID:'participant-client',NAVER_TOKEN_KEY:canonicalKey},[])).naverTokenKey,canonicalKey);
+  for(const key of [canonicalKey+'!',canonicalKey.slice(0,-1),canonicalKey.slice(0,-2)+'d='])
+    await assert.rejects(loadConfig({...base,NAVER_PARTICIPANT_CLIENT_ID:'participant-client',NAVER_TOKEN_KEY:key},[]),/NAVER_TOKEN_KEY/);
+  await assert.rejects(loadConfig({...base,NAVER_PARTICIPANT_CLIENT_ID:'participant-client',NAVER_TOKEN_KEY:'invalid'},[]),/NAVER_TOKEN_KEY/);
+  await assert.rejects(loadConfig({...base,NAVER_PARTICIPANT_CLIENT_ID:'participant-client',NAVER_CLIENT_ID:'operator-client'},[]),/NAVER_CLIENT_SECRET/);
+});
+
 test('invalid backup retention values are rejected',async()=>{
   await assert.rejects(loadConfig({...base,BACKUP_KEEP_COUNT:'0'},[]),/BACKUP_KEEP_COUNT/);
   await assert.rejects(loadConfig({...base,BACKUP_MAX_AGE_DAYS:'366'},[]),/BACKUP_MAX_AGE_DAYS/);

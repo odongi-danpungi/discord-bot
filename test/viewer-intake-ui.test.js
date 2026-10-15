@@ -33,7 +33,7 @@ test('viewer displays current Discord intake capacity separately from Queue and 
   assert.match(ui.get('recruitmentDetail').textContent,/현재 접수 3명 · 최대 10명 · 추첨 인원 5명/);assert.doesNotMatch(card.textContent,/99명/);
   assert.match(ui.get('recruitmentDeadline').textContent,/1분 0초/);assert.match(card.textContent,/네이버 카페·수동 Queue의 인원은 합산하지 않습니다/);
   assert.equal(ui.get('recruitmentStatus').getAttribute('role'),'status');assert.equal(ui.w.document.querySelectorAll('[data-participation-action="join"]').length,1);
-  assert.deepEqual(ui.calls.map(call=>call.url).sort(),['/viewer/api/me','/viewer/api/mode','/viewer/api/participation','/viewer/api/poll','/viewer/api/ready-check'].sort());
+  assert.deepEqual(ui.calls.map(call=>call.url).sort(),['/viewer/api/me','/viewer/api/mode','/viewer/api/participation','/viewer/api/poll','/viewer/api/ready-check','/viewer/api/account-link'].sort());
   assert.ok(ui.calls.every(call=>call.options.method===undefined&&call.options.body===undefined));
 });
 

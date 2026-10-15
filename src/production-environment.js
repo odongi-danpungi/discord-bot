@@ -26,8 +26,9 @@ function secretCheck(value,{required=false,min=0}={}){
   if(min&&text.length<min)return 'fail';
   return 'pass';
 }
-function validNaverTokenKey(value){const raw=String(value||'').trim();if(/^[0-9a-fA-F]{64}$/.test(raw))return true;try{return Buffer.from(raw,'base64').length===32;}catch{return false;}}
-function hasNaver(config={}){return Boolean(config.naverClientId||config.naverClientSecret||config.naverRedirectUri||config.naverCafeId||config.naverMenuId||config.naverMemoMenuId||config.naverTokenKey||config.naverMonitorEnabled);}
+function validNaverTokenKey(value){const raw=String(value||'').trim();if(/^[0-9a-fA-F]{64}$/.test(raw))return true;if(!/^[A-Za-z0-9+/]{43}=$/.test(raw))return false;const bytes=Buffer.from(raw,'base64');return bytes.length===32&&bytes.toString('base64')===raw;}
+function hasParticipantNaver(config={}){return Boolean(config.participantNaverClientId||config.participantNaverClientSecret);}
+function hasNaver(config={}){return Boolean(config.naverClientId||config.naverClientSecret||config.naverRedirectUri||config.naverCafeId||config.naverMenuId||config.naverMemoMenuId||(config.naverTokenKey&&!hasParticipantNaver(config))||config.naverMonitorEnabled);}
 function hasChzzk(config={}){return Boolean(config.chzzkClientId||config.chzzkClientSecret||config.chzzkChannelId||config.chzzkMonitorEnabled);}
 
 export function buildProductionEnvironmentValidation({config={},now=Date.now()}={}){
@@ -79,6 +80,16 @@ export function buildProductionEnvironmentValidation({config={},now=Date.now()}=
     add(checks,{id:'naver-cafe-target',group:'naver',label:'Naver Cafe 게시 대상',status:cafeReady?'pass':'warn',detail:cafeReady?'Cafe/Menu 대상 설정됨':'Cafe ID 또는 Menu ID가 아직 완성되지 않았습니다.',action:'칼바람 시참 메모 게시를 사용하면 NAVER_CAFE_ID와 NAVER_MEMO_MENU_ID 또는 NAVER_MENU_ID를 설정하세요.',required:false});
   }else add(checks,{id:'naver-client',group:'naver',label:'Naver Cafe 연동',status:'warn',detail:'Naver Cafe 연동 미설정',action:'Naver 기능을 사용할 때 Client/OAuth/Cafe 설정을 추가하세요.',required:false});
 
+  if(hasParticipantNaver(config)){
+    const credential=value=>typeof value==='string'&&value.length>0&&value.length<=4096&&!/[\s\u0000-\u001f\u007f]/.test(value)&&secretCheck(value,{required:true})==='pass';
+    const pairOk=credential(config.participantNaverClientId)&&credential(config.participantNaverClientSecret);
+    const separate=Boolean(config.participantNaverClientId&&config.participantNaverClientId!==config.naverClientId);
+    const originOk=validHttpsUrl(config.publicBaseUrl,{path:'/'}),keyConfigured=Boolean(config.naverTokenKey),keyOk=keyConfigured&&validNaverTokenKey(config.naverTokenKey);
+    const ready=Boolean(config.multiWorkspaceEnabled&&pairOk&&separate&&originOk&&keyOk);
+    add(checks,{id:'participant-naver-app',group:'naver',label:'참가자 네이버 전용 로그인',status:ready?'pass':'warn',detail:ready?'전용 앱·콜백·키 기본 설정 확인됨 · 실제 동의·앱 권한 검증은 별도 필요':'선택 기능 준비 전 · 포털·별도 앱 쌍·HTTPS origin·기존 키를 확인하세요.',action:'최소 정보 전용 앱을 따로 만들고 NAVER_PARTICIPANT_CLIENT_ID/SECRET 및 PUBLIC_BASE_URL origin + /naver/participant/callback을 설정하세요. 카페 쓰기 권한은 추가하지 마세요.',required:false});
+    add(checks,{id:'participant-naver-key',group:'naver',label:'참가자 네이버 식별 보호 키',status:keyOk?'pass':keyConfigured?'fail':'warn',detail:keyOk?'32바이트 기존 키 형식 확인됨 · 앱 또는 키 변경 시 재연결 필요':keyConfigured?'기존 키의 HEX·정규 Base64 형식을 확인하세요.':'선택 기능 준비 전 · 기존 NAVER_TOKEN_KEY 설정 필요',action:'NAVER_TOKEN_KEY와 전체 영구 볼륨을 함께 보존하세요. 임의 키 교체는 기존 연결을 이어 주지 않습니다.',required:keyConfigured});
+  }
+
   const chzzkConfigured=hasChzzk(config);
   if(chzzkConfigured){
     const clientOk=Boolean(config.chzzkClientId)&&secretCheck(config.chzzkClientSecret,{required:true})==='pass',channelOk=/^[0-9a-fA-F]{32}$/.test(String(config.chzzkChannelId||''));
@@ -93,7 +104,7 @@ export function buildProductionEnvironmentValidation({config={},now=Date.now()}=
     add(checks,{id:'chzzk-verification-key',group:'chzzk',label:'CHZZK 인증 토큰 암호화',status:keyOk?'pass':'fail',detail:keyOk?'32바이트 암호화 키 형식 확인됨':'인증 토큰 저장 키가 필요합니다.',action:'CHZZK_TOKEN_KEY는 다른 Secret과 별개로 생성하고 재배포 후 유지하세요.',required:true});
     add(checks,{id:'chzzk-verification-role',group:'chzzk',label:'CHZZK 인증 전용 역할',status:roleOk?'pass':'fail',detail:roleOk?(config.chzzkVerifyRoleId?'역할 ID 형식 확인됨 · 실제 권한/순서는 적용 시 검사':'서버별 인증 역할 자동 생성 · Discord 역할 관리 권한 필요'):'인증 전용 역할 ID를 확인하세요.',action:'봇에 역할 관리 권한을 허용하세요. CHZZK_VERIFY_ROLE_ID는 기존 기본 서버 역할 지정 시에만 사용합니다.',required:true});
   }
-  const comparable=[['DISCORD_CLIENT_SECRET',config.discordClientSecret],['DASHBOARD_PASSWORD',config.dashboardPassword],['DASHBOARD_OPERATOR_PASSWORD',config.dashboardOperatorPassword],['BROADCAST_TOKEN',config.broadcastToken],['NAVER_CLIENT_SECRET',config.naverClientSecret],['NAVER_TOKEN_KEY',config.naverTokenKey],['CHZZK_CLIENT_SECRET',config.chzzkClientSecret],['CHZZK_TOKEN_KEY',config.chzzkTokenKey]].filter(([,value])=>String(value||'').length>=12);
+  const comparable=[['DISCORD_CLIENT_SECRET',config.discordClientSecret],['DASHBOARD_PASSWORD',config.dashboardPassword],['DASHBOARD_OPERATOR_PASSWORD',config.dashboardOperatorPassword],['BROADCAST_TOKEN',config.broadcastToken],['NAVER_CLIENT_SECRET',config.naverClientSecret],['NAVER_PARTICIPANT_CLIENT_SECRET',config.participantNaverClientSecret],['NAVER_TOKEN_KEY',config.naverTokenKey],['CHZZK_CLIENT_SECRET',config.chzzkClientSecret],['CHZZK_TOKEN_KEY',config.chzzkTokenKey]].filter(([,value])=>String(value||'').length>=12);
   const reused=[];for(let i=0;i<comparable.length;i++)for(let j=i+1;j<comparable.length;j++)if(comparable[i][1]===comparable[j][1])reused.push(`${comparable[i][0]} / ${comparable[j][0]}`);
   add(checks,{id:'secret-reuse',group:'core',label:'Secret 재사용',status:reused.length?'fail':'pass',detail:reused.length?`서로 다른 자격 증명 ${reused.length}쌍이 같은 값을 사용합니다.`:'검사 대상 Secret 간 동일 값 없음',action:'Dashboard/Broadcast/Naver/CHZZK 비밀값은 각각 독립된 랜덤값을 사용하세요.',required:production});
 
