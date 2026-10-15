@@ -6,6 +6,7 @@ import { ActionRowBuilder, ButtonBuilder, ButtonStyle, TextInputBuilder, TextInp
 import { randomUUID } from 'node:crypto';
 import { applyAction } from './operations.js';
 import { validateProfile, hasGame } from './profiles.js';
+import { classifyRuntimeError } from './runtime-health.js';
 
 const ephemeral={flags:MessageFlags.Ephemeral};
 function field(id,label,placeholder,value='',required=false,max=100){
@@ -46,17 +47,13 @@ export function installInteractions({client,config,store,operations,discord,view
       }
       if(interaction.isButton()&&interaction.customId.startsWith('queuecall:')){
         if(!participationQueue||!participationCalls)return interaction.reply({content:'시참 호출 기능이 준비되지 않았습니다.',...ephemeral});
-        const [,action,entryId,token]=interaction.customId.split(':');if(!['join','pass'].includes(action)||!entryId||!token)throw Error('이전 호출 버튼입니다. 최신 시참 호출 메시지를 이용해 주세요.');
-        const entry=participationQueue.read().entries.find(item=>item.id===entryId);if(!entry)throw Error('호출된 참가자를 찾지 못했습니다.');
+        const [,action,entryId,token]=interaction.customId.split(':');if(!['join','pass'].includes(action)||!entryId||!token)throw Object.assign(Error('이전 호출 버튼입니다. 최신 시참 호출 메시지를 이용해 주세요.'),{status:400});
+        const entry=participationQueue.read().entries.find(item=>item.id===entryId);if(!entry)throw Object.assign(Error('호출된 참가자를 찾지 못했습니다.'),{status:404});
         if(entry.discordUserId!==userId)return interaction.reply({content:'호출된 참가자만 이 버튼을 사용할 수 있습니다.',...ephemeral});
         await interaction.deferReply(ephemeral);
-        if(action==='pass'){
-          const s=operations.read().session;if(s&&s.phase==='open'&&entry.sessionId===s.id&&entry.source==='discord'){await operations.update(state=>applyAction(state,'postpone_next',{sessionId:s.id,userId}));}
-        }
         const result=await participationCalls.respond({entryId,token,userId,action});
-        if(action==='pass'){const s=operations.read().session;if(s&&entry.source==='discord')await participationQueue.syncOperations({operationsState:operations.read(),records:store.read().filter(r=>r.guildId===config.guildId)});}
         queueSync();
-        return interaction.editReply(action==='join'?'참가 확인 완료! 진행자의 안내를 기다려 주세요.':result.advanceError?'이번판 패스는 저장됐지만 다음 참가자 자동 호출에 실패했습니다. 진행자가 대시보드에서 다시 호출해 주세요.':'이번판 패스 처리했습니다. 다음 참가자를 자동 호출합니다.');
+        return interaction.editReply(action==='join'?'참가 확인 완료! 진행자의 안내를 기다려 주세요.':result.advanceError?'이번판 패스는 저장됐지만 다음 참가자 자동 호출에 실패했습니다. 진행자가 대시보드에서 다시 호출해 주세요.':result.replayed?'이미 저장된 패스 처리 결과를 확인했습니다. 내 참가 상태에서 예약을 확인해 주세요.':'이번판 패스 처리했습니다. 다음 참가자를 자동 호출합니다.');
       }
       if(interaction.isButton()&&interaction.customId.startsWith('guide:')){
         const [,page,value]=interaction.customId.split(':');
@@ -117,7 +114,13 @@ export function installInteractions({client,config,store,operations,discord,view
         return interaction.editReply('사용자 연동 완료! /연동으로 다시 수정할 수 있습니다.');
       }
     }catch(error){
-      const content=error.code?'Discord 요청에 실패했습니다. 봇의 채널 권한을 확인해 주세요.':error.message;
+      let content=error.code?'Discord 요청에 실패했습니다. 봇의 채널 권한을 확인해 주세요.':error.message;
+      if(interaction.customId?.startsWith('queuecall:')||/^community:act:call_(join|pass):/.test(interaction.customId||'')){
+        const classified=classifyRuntimeError(error),status=error.status||error.statusCode;
+        content=classified.kind==='storage'||classified.kind==='discord'?classified.message:
+          Number.isInteger(status)&&status>=400&&status<500?classified.message:
+          '호출 응답을 처리하지 못했습니다. 내 참가 상태를 확인하고 진행자에게 문의해 주세요.';
+      }
       if(interaction.deferred&&!interaction.replied)await interaction.editReply({content}).catch(()=>{});
       else if(interaction.replied)await interaction.followUp({content,...ephemeral}).catch(()=>{});
       else await interaction.reply({content,...ephemeral}).catch(()=>{});

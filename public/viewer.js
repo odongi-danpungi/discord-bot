@@ -33,7 +33,8 @@ function participationView(){
  if(session?.phase!=='open'||!Number.isSafeInteger(session.closeAt)||(session.closeAt&&session.closeAt<=participationNow()))for(const key of ['leave','postponeNext','postponeNext2'])actions[key]=false;
  const callDeadline=data.queue?.entry?.callDeadline;
  if(!Number.isFinite(callDeadline)||callDeadline<=participationNow())actions.callJoin=actions.callPass=false;
- if(session&&data.queue?.entry?.sessionId===session.id&&(session.phase!=='open'||(session.closeAt&&session.closeAt<=participationNow())))actions.callPass=false;
+ if(data.queue?.passPending===true)actions.callJoin=actions.callPass=false;
+ if(session&&data.queue?.entry?.sessionId===session.id&&(!recruitment||!['open','closed'].includes(session.phase)||session.applicant!==true||session.postponed!==false))actions.callPass=false;
  if(!Number.isFinite(session?.deadline)||session.deadline<=participationNow())actions.confirm=false;
  return {data,session,stale,recruitment,actions};
 }
@@ -59,7 +60,7 @@ function renderParticipation(){
  $('participationPosition').textContent=entry?.position?`${entry.position}번`:'—';
  const callActive=Boolean(actions.callJoin||actions.callPass);$('participationCall').hidden=!callActive;
  const deadline=Number(entry?.callDeadline)||0;if(callActive&&deadline){const seconds=Math.max(0,Math.ceil((deadline-participationNow())/1000));$('participationCallTimer').textContent=`${seconds}초 안에 응답해 주세요.`;}else $('participationCallTimer').textContent='응답 시간을 확인 중입니다.';
- document.querySelectorAll('[data-participation-action="call_join"],[data-participation-action="call_pass"]').forEach(button=>{const key=button.dataset.participationAction==='call_join'?'callJoin':'callPass';button.disabled=participationBusy||!actions[key];});
+ document.querySelectorAll('[data-participation-action="call_join"],[data-participation-action="call_pass"]').forEach(button=>{const key=button.dataset.participationAction==='call_join'?'callJoin':'callPass';button.disabled=participationBusy||!actions[key];button.onclick=()=>runParticipationAction(button.dataset.participationAction);});
  const host=$('participationActions'),buttons=[];
  if(actions.join)buttons.push(actionButton('join',session?.postponed?'↩ 현재판으로 복귀':'⚔️ 현재판 참가'));
  if(actions.confirm)buttons.push(actionButton('confirm','✓ 준비 완료'));
@@ -69,7 +70,12 @@ function renderParticipation(){
  host.replaceChildren(...buttons);
  const reservations=$('participationReservations'),rows=(data.reservations||[]).map(item=>{const row=document.createElement('div');row.className='reservation-row';const text=document.createElement('span');text.textContent=`${item.game==='er'?'이터널 리턴':'리그 오브 레전드'} ${item.round}판 예약`;const button=document.createElement('button');button.className='secondary compact';button.textContent='예약 취소';button.disabled=participationBusy||!actions.cancelReservation;button.onclick=()=>runParticipationAction('cancel_reservation',item.game);row.append(text,button);return row;});reservations.replaceChildren(...rows);
  let hint='진행 중인 모집이 없습니다.';
- if(callActive)hint=actions.callJoin&&!actions.callPass&&entry?.sessionId===session?.id?'모집 마감 후 패스 예약 변경은 진행자에게 요청해 주세요. 참가 응답은 아래 버튼으로 보낼 수 있습니다.':'Discord 호출 메시지와 이 화면 중 한 곳에서만 응답하면 됩니다.';
+ if(!stale&&queue.passPending===true)hint='패스 예약은 저장되었습니다. 처리 상태를 확인 중입니다. 잠시 후 새로고침해 주세요.';
+ else if(callActive){
+  if(actions.callPass&&session&&entry?.sessionId===session.id)hint='이번판 패스 시 다음판으로 예약됩니다. 현재 모집에 다시 접수하지 않습니다. Discord 호출 메시지와 이 화면 중 한 곳에서만 응답하면 됩니다.';
+  else if(actions.callJoin&&session&&entry?.sessionId===session.id)hint=!['open','closed'].includes(session.phase)?'추첨 후 패스 예약은 진행자에게 요청해 주세요. 참가 응답은 아래 버튼으로 보낼 수 있습니다.':'패스 예약을 사용할 수 없습니다. 진행자에게 요청해 주세요. 참가 응답은 아래 버튼으로 보낼 수 있습니다.';
+  else hint='Discord 호출 메시지와 이 화면 중 한 곳에서만 응답하면 됩니다.';
+ }
  else if(session?.confirmed)hint='참석 확인까지 완료되었습니다. 진행자의 다음 안내를 기다려 주세요.';
  else if(session?.winner&&session?.phase==='checking')hint='당첨되었습니다. 참석 확인 시간이 끝나기 전에 준비 완료를 눌러 주세요.';
  else if(session?.postponed)hint=actions.join?'다음 회차 예약 상태입니다. 현재판으로 다시 복귀할 수 있습니다.':'다음 회차 예약 상태입니다. 현재판에 참가 가능한 자리가 생기고 접수 중일 때 복귀할 수 있습니다.';

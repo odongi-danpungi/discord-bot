@@ -66,6 +66,14 @@ async function main(){
   const naverMonitorPending=await naverMonitorStore.recoverPending();
   const naverParticipationPending=await naverParticipationStore.recoverPending();
   const chzzkLivePending=await chzzkLiveStore.recoverPending();
+  const callGuard=()=>{
+    if(shuttingDown)throw Object.assign(Error('서비스가 종료 중입니다.'),{status:503});
+    if(!runtime)throw Object.assign(Error('서비스가 준비 중입니다.'),{status:503});
+    if(recovery.emergencyState().locked)throw Object.assign(Error('방송 운영이 긴급 잠금 상태입니다.'),{status:423});
+    runtime.operationGuard();
+  };
+  participationQueueStore.bindOperations(operations,{guard:callGuard});
+  await participationQueueStore.recoverCallPasses();
   await participationQueueStore.syncOperations({operationsState:operations.read(),records:store.read().filter(r=>r.guildId===config.guildId)});
   await participationQueueStore.syncNaver(naverParticipationStore.summary());
   const idempotencyRecovery=await idempotencyStore.recoverPreviousBoot({bootId:instanceId});
@@ -152,7 +160,7 @@ async function main(){
       name:'치지직인증', description:'치지직 팔로워 인증을 시작합니다', type:1, contexts:[0], integration_types:[0]
     }});
   }
-  const startupEmergency=recovery.emergencyState();participationCalls=new ParticipationCallService({queue:participationQueueStore,discord,timeoutSeconds:resolveLegacyCallTimeout({config,callSettings}),audit:event=>recovery.audit({...event,actor:'system'}),reporter:event=>runtimeHealth.recordDiscord(event),paused:startupEmergency.locked,pausedAt:startupEmergency.lockedAt});
+  const startupEmergency=recovery.emergencyState();participationCalls=new ParticipationCallService({queue:participationQueueStore,discord,guard:callGuard,timeoutSeconds:resolveLegacyCallTimeout({config,callSettings}),audit:event=>recovery.audit({...event,actor:'system'}),reporter:event=>runtimeHealth.recordDiscord(event),paused:startupEmergency.locked,pausedAt:startupEmergency.lockedAt});
   let chzzkVerification = null;
   if (chzzkAuthStore) {
     installChzzkVerificationDiscord(DiscordService);
@@ -161,7 +169,6 @@ async function main(){
     } });
   }
   if(!config.demo)cleanupInteractions=installInteractions({client,config,store,operations,discord,viewerAuth,chzzkVerification,participationQueue:participationQueueStore,participationCalls,emergencyState:()=>recovery.emergencyState()});
-  await participationCalls.start();
   const naverMonitor=new NaverCafeMonitor({store:naverMonitorStore,naver,discord,reporter:event=>runtimeHealth.recordApi({method:'NAVER',path:`naver:${event.operation||'monitor'}`,status:event.ok?200:(Number(event.status)||502),durationMs:Number(event.durationMs)||0}),audit:event=>recovery.audit({...event,actor:'system'})});
   const chzzkLiveMonitor=new ChzzkLiveMonitor({store:chzzkLiveStore,chzzk,discord,reporter:event=>runtimeHealth.recordApi({method:'CHZZK',path:`chzzk:${event.operation||'live-scan'}`,status:event.ok?(Number(event.status)||200):(Number(event.status)||502),durationMs:Number(event.durationMs)||0}),audit:event=>recovery.audit({...event,actor:'system'})});
   if(naverMonitorPending){await recovery.audit({category:'naver',action:'monitor_recovery',summary:`이전 실행의 네이버 Discord 알림 ${naverMonitorPending}건을 미확정 상태로 복구`,actor:'system',details:{uncertain:naverMonitorPending}});runtimeHealth.recordIncident({severity:'warn',source:'naver',code:'naver_monitor_uncertain',summary:'네이버 카페 알림 전송 결과 미확정',detail:`${naverMonitorPending}건은 중복 알림 방지를 위해 자동 재전송하지 않았습니다.`,persist:false});}
@@ -181,6 +188,7 @@ async function main(){
   const appContext={config,store,operations,recovery,discord,discordPolicy,incidentWorkflow,idempotencyStore,naver,naverMonitor,naverParticipation:naverParticipationStore,chzzkLiveMonitor,chzzkVerification,participationQueue:participationQueueStore,participationCalls,callSettings,broadcastOps:broadcastOpsStore,viewerAuth,instanceId,runtimeHealth,backupManager,releaseCenter,startupPreflight,startupEnvironmentValidation,
     workspaceAuthenticate:workspacePlatform?workspaceIdentity:null,workspaceViewerAuthenticate:workspacePlatform?workspaceViewerIdentity:null};
   runtime=createApp(appContext);
+  await participationCalls.start();
   if(workspacePlatform){workspacePlatform.registerLegacy({runtime,context:appContext});await workspacePlatform.start();workspacePlatform.app.use(runtime.app);}
 
   await new Promise((resolve,reject)=>{server=(workspacePlatform?.app||runtime.app).listen(config.port,config.host,resolve);server.once('error',reject);});

@@ -166,7 +166,7 @@ export function createApp({config,store,operations,recovery,discord,discordPolic
     return buildBroadcastPreflight({state:current,records:store.read().filter(record=>record.guildId===config.guildId),participationQueue:queueSummary,participationCalls:callSummary,chzzkLive:chzzkSummary,broadcastOps:broadcastOpsSummary(),runtime:runtimeState,incidents:incidentSummary,emergency:emergencyState(),discord:discordDiagnostics,discordPolicy:policySummary,naver:naverStatus,naverParticipation:naverSummary,demo:config.demo,now:Date.now()});
   };
   const snapshot=async(includeCsrf=true,identity=requestScope.getStore()?.dashboardIdentity||{role:'admin',user:config.dashboardUser||'admin',capabilities:['*']})=>{
-    const current=operations.read();current.broadcastSettings=normalizeBroadcastSettings(current.broadcastSettings);current.broadcastPresets=normalizeBroadcastPresets(current.broadcastPresets);current.broadcastAutomation=normalizeBroadcastAutomation(current.broadcastAutomation,current.broadcastPresets);const policySummary=policyStore.summary(),incidentSummary=incidentStore.summary();
+    const current=operations.read();delete current.callPassReceipts;current.broadcastSettings=normalizeBroadcastSettings(current.broadcastSettings);current.broadcastPresets=normalizeBroadcastPresets(current.broadcastPresets);current.broadcastAutomation=normalizeBroadcastAutomation(current.broadcastAutomation,current.broadcastPresets);const policySummary=policyStore.summary(),incidentSummary=incidentStore.summary();
     const full={state:current,records:await records(),...(includeCsrf?{csrf}:{}),demo:config.demo,profile:config.profile,version:APP_VERSION,revision:Number(current.revision)||0,serverTime:Date.now(),access:publicDashboardAccess(identity),emergency:emergencyState(),policyMonitor:{baseline:Boolean(policySummary.baseline),settings:policySummary.monitor,state:policySummary.monitorState,maintenance:policySummary.maintenance,acknowledgement:policySummary.acknowledgement},incidentWorkflow:{status:incidentSummary.status,counts:incidentSummary.counts},participationQueue:participationQueue?.summary?.()||{entries:[],counts:{},activeCount:0,currentCall:null},participationCalls:participationCalls?.state?.()||{timeoutSeconds:60,current:null,calledCount:0},chzzkLive:chzzkLiveMonitor?.summary?.()||{settings:{enabled:false,channelId:'',intervalMinutes:2,discordAlerts:true,maxPages:50},state:{lastStatus:'idle',lastKnownLive:null,baselineReady:false},currentLive:null,events:[],connector:{configured:false}},broadcastOps:broadcastOpsSummary(),broadcastPreflight:broadcastPreflightSnapshot(),recovered:hasRecoveredStore()};
     if(identity?.role==='workspace'){try{participantOperationGuard();}catch{full.emergency={...full.emergency,locked:true};}}
     return identity?.role==='workspace'?workspacePublicSnapshot(full,identity):identity?.role==='operator'?sanitizeOperatorSnapshot(full,identity):full;
@@ -660,7 +660,12 @@ export function createApp({config,store,operations,recovery,discord,discordPolic
   async function tick(now=Date.now()){
     if(timerBusy||busy)return;timerBusy=true;const started=Date.now();
     try{
-      if(workspaceOperationGuard){try{workspaceOperationGuard();}catch{return;}}
+      try{participantOperationGuard();}catch{
+        if(participationCalls&&!participationCalls.paused)await participationCalls.pause('workspace-guard');
+        return;
+      }
+      if(participationCalls?.paused&&participationCalls.pauseReason==='workspace-guard')await participationCalls.resume('workspace-resume',{at:now});
+      if(participationCalls&&!participationCalls.paused&&participationQueue?.pendingCallPassAdvances?.().length)await participationCalls.start();
       await syncRunbookAutomation(now).catch(error=>runtime.recordIncident({severity:'warn',source:'system',code:'runbook_phase_sync_failure',summary:'Runbook 자동 단계 감지 실패',detail:error?.message,persist:false}));
       if(emergencyState().locked){runtime.recordTick({ok:true,durationMs:Date.now()-started});return;}
       const current=operations.read(),s=current.session,automation=normalizeBroadcastAutomation(current.broadcastAutomation,normalizeBroadcastPresets(current.broadcastPresets));

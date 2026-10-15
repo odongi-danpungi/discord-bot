@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 const AUTO_ADVANCE_STATUSES=new Set(['no_show','postponed_next','postponed_next2','cancelled']);
+const ADVANCE_FAILURE='다음 참가자 자동 호출에 실패했습니다. 진행자가 호출 상태를 확인해 주세요.';
 
 function httpError(message,status=400,code='participation_call_error'){
   return Object.assign(new Error(message),{status,code});
@@ -28,7 +29,26 @@ export class ParticipationCallService {
   async record(action,entry,details={}){try{await this.audit?.({category:'operation',action,summary:`시참 호출 · ${entry?.displayName||'참가자'}`,details:{entryId:entry?.id||null,source:entry?.source||null,...details}})}catch{}}
   async autoAdvance(reason,entry=null){
     try{const next=await this.callNextUnlocked({reason,allowEmpty:true});return {next,error:null};}
-    catch(error){this.report({operation:'participation-call-auto-advance',ok:false,error});await this.record('participation_call_auto_advance_failed',entry,{reason:safeReason(reason),error:String(error?.message||'자동 호출 실패').slice(0,180)});return {next:null,error:String(error?.message||'다음 참가자 자동 호출에 실패했습니다.').slice(0,180)};}
+    catch(error){this.report({operation:'participation-call-auto-advance',ok:false,error});await this.record('participation_call_auto_advance_failed',entry,{reason:safeReason(reason)});return {next:null,error:ADVANCE_FAILURE};}
+  }
+  async advanceCallPass(receiptId,entry=null){
+    let attempted=false;
+    try{
+      this.ensureActive();
+      const advance=await this.queueStore.selectCallPassAdvance(receiptId);
+      if(!advance||advance.done)return {next:null,error:null};
+      const target=this.queueStore.read().entries.find(item=>item.id===advance.targetId);
+      let next=null;
+      if(target?.status==='called')next={entry:this.publicCall(target),alreadyCalled:true};
+      else if(target?.status==='waiting'){attempted=true;next=await this.callEntryUnlocked(target.id,{reason:'pass-auto',expectedSession:advance});}
+      await this.queueStore.finishCallPassAdvance(receiptId);
+      return {next,error:null};
+    }catch(error){
+      if(attempted)await this.queueStore.finishCallPassAdvance(receiptId).catch(()=>{});
+      this.report({operation:'participation-call-pass-advance',ok:false,error});
+      await this.record('participation_call_auto_advance_failed',entry,{reason:'pass-auto'});
+      return {next:null,error:ADVANCE_FAILURE};
+    }
   }
   state(){
     const raw=this.queueStore.read(),called=raw.entries.filter(entry=>entry.status==='called').sort((a,b)=>a.position-b.position||a.sequence-b.sequence),current=called[0]||null;
@@ -36,7 +56,7 @@ export class ParticipationCallService {
   }
   ensureActive(){this.guard();if(this.paused)throw httpError('방송 운영이 긴급 잠금 상태입니다. 관리자가 잠금을 해제한 뒤 다시 시도해 주세요.',423,'participation_call_paused');}
   pause(reason='emergency-lock',{at=Date.now()}={}){return this.serial(async()=>{if(this.paused)return this.state();this.paused=true;this.pausedAt=Math.max(0,Number(at)||Date.now());this.pauseReason=safeReason(reason);this.clearTimer();const current=this.queueStore.read().entries.find(entry=>entry.status==='called');if(current)await this.record('participation_call_pause',current,{reason:this.pauseReason});return this.state();});}
-  resume(reason='emergency-unlock',{at=Date.now()}={}){return this.serial(async()=>{if(!this.paused)return this.state();const now=Math.max(0,Number(at)||Date.now()),elapsed=Math.max(0,now-this.pausedAt),current=this.queueStore.read().entries.find(entry=>entry.status==='called');if(current&&elapsed)await this.queueStore.extendCallDeadline(current.id,{token:current.callToken,deltaMs:elapsed,reason:safeReason(reason)});this.paused=false;this.pausedAt=0;this.pauseReason='';const refreshed=this.queueStore.read().entries.find(entry=>entry.status==='called');if(refreshed)this.schedule(refreshed);if(refreshed)await this.record('participation_call_resume',refreshed,{pausedMs:elapsed,reason:safeReason(reason)});return this.state();});}
+  resume(reason='emergency-unlock',{at=Date.now()}={}){return this.serial(async()=>{if(!this.paused)return this.state();const now=Math.max(0,Number(at)||Date.now()),elapsed=Math.max(0,now-this.pausedAt),current=this.queueStore.read().entries.find(entry=>entry.status==='called');if(current&&elapsed)await this.queueStore.extendCallDeadline(current.id,{token:current.callToken,deltaMs:elapsed,reason:safeReason(reason)});this.paused=false;this.pausedAt=0;this.pauseReason='';await this.queueStore.recoverCallPasses?.();for(const pending of this.queueStore.pendingCallPassAdvances?.()||[])await this.advanceCallPass(pending.id);const refreshed=this.queueStore.read().entries.find(entry=>entry.status==='called');if(refreshed)this.schedule(refreshed);if(refreshed)await this.record('participation_call_resume',refreshed,{pausedMs:elapsed,reason:safeReason(reason)});return this.state();});}
   publicCall(entry){
     if(!entry)return null;
     return {id:entry.id,displayName:entry.displayName,source:entry.source,discordUserId:entry.discordUserId||'',position:entry.position,calledAt:Number(entry.calledAt)||0,deadline:Number(entry.callDeadline)||0,attempt:Number(entry.callAttempt)||0,messageRef:entry.callMessage?{...entry.callMessage}:null};
@@ -51,6 +71,12 @@ export class ParticipationCallService {
   async start(){
     this.closed=false;
     return this.serial(async()=>{
+      await this.queueStore.recoverCallPasses?.();
+      const pending=this.queueStore.pendingCallPassAdvances?.()||[];
+      if(pending.length&&!this.paused){
+        try{this.guard();}catch{this.paused=true;this.pausedAt=Date.now();this.pauseReason='workspace-guard';}
+        if(!this.paused)for(const advance of pending)await this.advanceCallPass(advance.id);
+      }
       const called=this.queueStore.read().entries.filter(entry=>entry.status==='called').sort((a,b)=>a.position-b.position||a.sequence-b.sequence);
       if(called.length>1){
         for(const extra of called.slice(1))await this.queueStore.cancelCall(extra.id,{reason:'restart-duplicate-call'});
@@ -71,6 +97,7 @@ export class ParticipationCallService {
   }
   stop(){this.closed=true;this.clearTimer();}
   async reconcile({autoAdvance=false,reason='external-sync'}={}){return this.serial(async()=>{
+    await this.queueStore.recoverCallPasses?.();
     const current=this.queueStore.read().entries.find(entry=>entry.status==='called');
     if(current){this.schedule(current);return {current:this.publicCall(current),advanced:false};}
     this.clearTimer();if(!autoAdvance)return {current:null,advanced:false};
@@ -79,6 +106,8 @@ export class ParticipationCallService {
   async callNext({reason='dashboard'}={}){this.ensureActive();return this.serial(()=>this.callNextUnlocked({reason}));}
   async callNextUnlocked({reason='dashboard',allowEmpty=false}={}){
     this.ensureActive();
+    await this.queueStore.recoverCallPasses?.();
+    for(const pending of this.queueStore.pendingCallPassAdvances?.()||[]){const resumed=await this.advanceCallPass(pending.id);if(resumed.error)throw httpError(ADVANCE_FAILURE,503,'participation_call_advance_pending');}
     const current=this.queueStore.read().entries.find(entry=>entry.status==='called');
     if(current)return {entry:this.publicCall(current),alreadyCalled:true};
     const next=this.queueStore.read().entries.filter(entry=>entry.status==='waiting').sort((a,b)=>a.position-b.position||a.sequence-b.sequence)[0];
@@ -86,8 +115,9 @@ export class ParticipationCallService {
     return this.callEntryUnlocked(next.id,{reason});
   }
   async callEntry(id,{reason='dashboard',recall=false}={}){this.ensureActive();return this.serial(()=>this.callEntryUnlocked(id,{reason,recall}));}
-  async callEntryUnlocked(id,{reason='dashboard',recall=false}={}){
+  async callEntryUnlocked(id,{reason='dashboard',recall=false,expectedSession=null}={}){
     this.ensureActive();
+    await this.queueStore.recoverCallPasses?.();
     if(this.closed)throw httpError('시참 호출 서비스가 종료 중입니다.',503,'participation_call_stopping');
     const raw=this.queueStore.read(),entry=raw.entries.find(item=>item.id===id);
     if(!entry)throw httpError('호출할 참가자를 찾지 못했습니다.',404,'participation_entry_missing');
@@ -95,9 +125,10 @@ export class ParticipationCallService {
     if(other)throw httpError(`${other.displayName}님의 응답을 먼저 처리해 주세요.`,409,'participation_call_active');
     if(entry.status==='called'&&!recall)return {entry:this.publicCall(entry),alreadyCalled:true};
     if(!['waiting','called'].includes(entry.status))throw httpError('대기 중인 참가자만 호출할 수 있습니다.',409,'participation_call_invalid_status');
-    const token=randomUUID().replaceAll('-','').slice(0,16),call=await this.queueStore.beginCall(id,{token,timeoutSeconds:this.timeoutSeconds,reason:safeReason(reason),recall});
+    const token=randomUUID().replaceAll('-','').slice(0,16),call=await this.queueStore.beginCall(id,{token,timeoutSeconds:this.timeoutSeconds,reason:safeReason(reason),recall,expectedSession,guard:()=>this.ensureActive()});
     let messageRef=call.previousMessage||null;
     try{
+      this.ensureActive();if(expectedSession)this.queueStore.assertCallPassOrigin(expectedSession);
       messageRef=await this.discord.participationCall(call.entry,{messageRef,token,deadline:call.entry.callDeadline,timeoutSeconds:this.timeoutSeconds,recall});
       const delivered=await this.queueStore.attachCallMessage(id,{token,messageRef});
       this.schedule(this.queueStore.read().entries.find(item=>item.id===id));
@@ -119,10 +150,10 @@ export class ParticipationCallService {
   }
   async respond({entryId,token,userId,action}){
     this.ensureActive();return this.serial(async()=>{
-      const result=await this.queueStore.respondCall(entryId,{token,userId,action,now:Date.now()});
-      this.clearTimer();await this.safeFinalize(result,result.entry.status);await this.record(action==='join'?'participation_call_join':'participation_call_pass',result.entry,{action});
-      const advance=action==='pass'?await this.autoAdvance('pass-auto',result.entry):{next:null,error:null};
-      return {entry:result.entry,next:advance.next?.entry||null,advanceError:advance.error};
+      const result=await this.queueStore.respondCall(entryId,{token,userId,action,guard:()=>this.ensureActive()});
+      if(result.changed){this.clearTimer();await this.safeFinalize(result,result.entry.status);await this.record(action==='join'?'participation_call_join':'participation_call_pass',result.entry,{action});}
+      const advance=action==='pass'?(result.receiptId?await this.advanceCallPass(result.receiptId,result.entry):await this.autoAdvance('pass-auto',result.entry)):{next:null,error:null};
+      return {entry:result.entry,next:advance.next?.entry||null,advanceError:advance.error,replayed:Boolean(result.replayed)};
     });
   }
   async resolveManual(id,status,{reason='dashboard'}={}){
@@ -135,7 +166,9 @@ export class ParticipationCallService {
   }
   async expireAndAdvance(id,token){
     this.guard();
+    await this.queueStore.recoverCallPasses?.();
     if(this.paused)return {entry:this.queueStore.read().entries.find(entry=>entry.id===id)||null,changed:false,paused:true};
+    for(const pending of this.queueStore.pendingCallPassAdvances?.()||[])await this.advanceCallPass(pending.id);
     const result=await this.queueStore.expireCall(id,{token,now:Date.now(),reason:'timeout'});if(!result.changed)return result;
     await this.safeFinalize(result,'no_show');await this.record('participation_call_timeout',result.entry,{autoAdvance:true});this.report({operation:'participation-call-timeout',ok:true});
     const advance=await this.autoAdvance('timeout-auto',result.entry);return {...result,next:advance.next?.entry||null,advanceError:advance.error};

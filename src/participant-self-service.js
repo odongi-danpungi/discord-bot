@@ -1,6 +1,7 @@
 import { applyAction } from './operations.js';
 import { hasGame } from './profiles.js';
 import { buildParticipantRecruitmentState } from './participant-intake.js';
+import { canBookCallPass,hasPendingCallPass } from './call-pass.js';
 
 const ACTIVE_QUEUE_STATUSES=new Set(['waiting','called','joined','postponed_next','postponed_next2']);
 const STATUS_LABELS={
@@ -56,18 +57,19 @@ export function buildParticipantSelfServiceState({operationsState={},queueSummar
   const postponed=Boolean(session?.postponed?.includes(userId));
   const winner=Boolean(session?.winners?.includes(userId));
   const confirmed=Boolean(session?.confirmed?.includes(userId));
-  const called=ownEntry?.status==='called'&&Number(ownEntry.callDeadline||ownEntry.deadline||0)>now;
+  const passPending=hasPendingCallPass({state:operationsState,entry:ownEntry});
+  const called=!passPending&&ownEntry?.status==='called'&&Number(ownEntry.callDeadline||ownEntry.deadline||0)>now;
   const currentSessionCall=Boolean(session&&ownEntry?.sessionId===session.id);
-  const canJoinCurrent=Boolean(recruitment.status==='open'&&profile&&hasGame(profile,session.game)&&(!applicant||postponed)&&!called);
+  const canJoinCurrent=Boolean(recruitment.status==='open'&&profile&&hasGame(profile,session.game)&&(!applicant||postponed)&&!called&&!passPending);
   const actions={
     join:canJoinCurrent,
-    leave:Boolean(open&&applicant&&!called),
-    postponeNext:Boolean(open&&applicant&&!postponed&&!called),
-    postponeNext2:Boolean(open&&applicant&&!postponed&&!called),
+    leave:Boolean(open&&applicant&&!called&&!passPending),
+    postponeNext:Boolean(open&&applicant&&!postponed&&!called&&!passPending),
+    postponeNext2:Boolean(open&&applicant&&!postponed&&!called&&!passPending),
     callJoin:Boolean(called),
-    callPass:Boolean(called&&(!currentSessionCall||open)),
+    callPass:Boolean(called&&(!currentSessionCall||canBookCallPass({state:operationsState,entry:ownEntry}))),
     confirm:Boolean(session?.phase==='checking'&&winner&&!confirmed&&Number(session.deadline)>now),
-    cancelReservation:reservations.length>0&&!called
+    cancelReservation:reservations.length>0&&!called&&!passPending
   };
   return {
     recruitment,
@@ -90,7 +92,8 @@ export function buildParticipantSelfServiceState({operationsState={},queueSummar
       confirmed
     }:null,
     queue:{
-      entry:publicOwnEntry(ownEntry),
+      entry:ownEntry&&passPending?{...publicOwnEntry(ownEntry),statusLabel:'패스 반영 확인 중'}:publicOwnEntry(ownEntry),
+      passPending,
       waitingCount:Number(queueSummary?.counts?.waiting)||0,
       activeCount:Number(queueSummary?.activeCount)||0
     },
@@ -134,19 +137,13 @@ export async function performParticipantSelfServiceAction({
     if(!participationQueue||!participationCalls)throw httpError('시참 호출 기능이 준비되지 않았습니다.',503,'participant_call_unavailable');
     const entry=participationQueue.read().entries.find(item=>item?.source==='discord'&&item?.discordUserId===userId&&item?.status==='called');
     if(!entry)throw httpError('현재 응답할 호출이 없습니다.',409,'participant_call_missing');
-    if(Number(entry.callDeadline)&&Number(entry.callDeadline)<=now)throw httpError('응답 시간이 만료됐습니다.',409,'participant_call_expired');
+    if(Number(entry.callDeadline)&&Number(entry.callDeadline)<=now&&!(action==='call_pass'&&hasPendingCallPass({state:operations.read(),entry})))throw httpError('응답 시간이 만료됐습니다.',409,'participant_call_expired');
     const callAction=action==='call_join'?'join':'pass';
-    if(callAction==='pass'){
-      const state=operations.read(),session=state.session;
-      if(session&&entry.sessionId===session.id&&(session.phase!=='open'||(session.closeAt&&Number(session.closeAt)<=currentTime())))
-        throw httpError('모집이 마감되어 패스 예약을 변경할 수 없습니다. 참가 응답 또는 진행자 안내를 이용해 주세요.',409,'participant_call_pass_closed');
-      if(session&&session.phase==='open'&&entry.sessionId===session.id&&entry.source==='discord'){
-        await operations.update(next=>applyAction(next,'postpone_next',{sessionId:session.id,userId},currentTime()));
-      }
-    }
+    // The call service owns the durable reservation decision and Queue projection.
+    // Do not pre-write Operations or replay a snapshot after it commits.
     const result=await participationCalls.respond({entryId:entry.id,token:entry.callToken,userId,action:callAction});
-    if(callAction==='pass')await participationQueue.syncOperations({operationsState:operations.read(),records});
-    return {result,state:buildParticipantSelfServiceState({operationsState:operations.read(),queueSummary:participationQueue.summary(),userId,profile,now:Date.now()})};
+    const ownResult={entry:publicOwnEntry(result.entry),replayed:Boolean(result.replayed),advanceError:result.advanceError?'다음 참가자 호출을 완료하지 못했습니다. 진행자가 확인해야 합니다.':null};
+    return {result:ownResult,state:buildParticipantSelfServiceState({operationsState:operations.read(),queueSummary:participationQueue.summary(),userId,profile,now:Date.now()})};
   }
 
   if(action==='cancel_reservation'){

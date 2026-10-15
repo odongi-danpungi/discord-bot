@@ -83,12 +83,75 @@ test('full recruitment keeps current call response and reservation information i
   ui.advance(11000);assert.equal(ui.get('participationCall').hidden,true);await ui.w.viewerTest.runParticipationAction('call_join');assert.ok(ui.calls.every(call=>!call.options.body));
 });
 
-test('own call remains answerable after intake expiry while same-session pass is blocked with operator guidance',async t=>{
-  const state=fixture();state.session.closeAt=NOW+1000;state.recruitment.closeAt=NOW+1000;state.queue.entry={status:'called',statusLabel:'호출됨',sessionId:'round-a',callDeadline:NOW+10000};state.actions={callJoin:true,callPass:true};
-  const ui=await viewer(t,{state});assert.equal(ui.w.document.querySelector('[data-participation-action="call_pass"]').disabled,false);ui.advance(2000);
-  assert.equal(ui.get('participationCall').hidden,false);assert.equal(ui.w.document.querySelector('[data-participation-action="call_join"]').disabled,false);assert.equal(ui.w.document.querySelector('[data-participation-action="call_pass"]').disabled,true);assert.match(ui.get('participationHint').textContent,/모집 마감 후 패스 예약 변경은 진행자에게 요청/);
-  await ui.w.viewerTest.runParticipationAction('call_pass');assert.ok(ui.calls.every(call=>!call.options.body));
-  state.serverTime=NOW+2000;state.session.phase='closed';state.recruitment.status='closed';state.recruitment.reason='deadline';state.actions.callPass=false;ui.setState(state);await ui.w.viewerTest.loadParticipation();assert.equal(ui.w.document.querySelector('[data-participation-action="call_join"]').disabled,false);assert.equal(ui.w.document.querySelector('[data-participation-action="call_pass"]').disabled,true);assert.match(ui.get('participationHint').textContent,/진행자에게 요청/);
+test('same-session call can pass after intake expiry without reopening admission and posts the displayed session binding',async t=>{
+  const state=fixture(),writes=[];state.session.applicant=true;state.session.closeAt=NOW+1000;state.recruitment.closeAt=NOW+1000;state.queue.entry={status:'called',statusLabel:'호출됨',sessionId:'round-a',callDeadline:NOW+10000};state.actions={join:true,leave:true,postponeNext:true,postponeNext2:true,callJoin:true,callPass:true};
+  const ui=await viewer(t,{state,query:'?session=round-a',fetcher:(url,options)=>{if(url.endsWith('/participation/action')){writes.push({body:JSON.parse(options.body),headers:options.headers});return result({state,result:{}});}}});ui.advance(2000);
+  assert.equal(ui.get('recruitmentSummary').dataset.state,'closed');assert.equal(ui.get('participationCall').hidden,false);assert.equal(ui.w.document.querySelector('[data-participation-action="call_join"]').disabled,false);assert.equal(ui.w.document.querySelector('[data-participation-action="call_pass"]').disabled,false);assert.equal(ui.get('participationActions').children.length,0);
+  assert.match(ui.get('participationHint').textContent,/이번판 패스 시 다음판으로 예약/);assert.match(ui.get('participationHint').textContent,/현재 모집에 다시 접수하지 않습니다/);
+  state.serverTime=NOW+2000;state.session.phase='closed';Object.assign(state.recruitment,{status:'closed',reason:'deadline'});state.session.applicant=false;state.session.postponed=true;state.queue.entry=null;state.actions={};state.reservations=[{game:'lol',round:4}];
+  await ui.w.document.querySelector('[data-participation-action="call_pass"]').onclick();assert.equal(writes.length,1);assert.deepEqual(writes[0].body,{action:'call_pass',expectedSessionId:'round-a'});assert.equal(writes[0].headers['X-CSRF-Token'],'fixture-csrf');assert.ok(writes[0].headers['Idempotency-Key']);assert.match(ui.get('participationStatus').textContent,/이번판 패스를 반영/);assert.match(ui.get('participationReservations').textContent,/4판 예약/);
+});
+
+test('capacity, manual and deadline closure before drawing preserve an authorized current applicant call pass',async t=>{
+  const state=fixture();state.session.applicant=true;state.queue.entry={status:'called',statusLabel:'호출됨',sessionId:'round-a',callDeadline:NOW+10000};state.actions={callJoin:true,callPass:true};
+  const ui=await viewer(t,{state});
+  for(const reason of ['capacity','manual','deadline']){state.session.phase='closed';Object.assign(state.recruitment,{status:'closed',reason});if(reason==='capacity')Object.assign(state.recruitment,{activeApplicants:10,remainingSlots:0});ui.setState(state);await ui.w.viewerTest.loadParticipation();assert.equal(ui.w.document.querySelector('[data-participation-action="call_pass"]').disabled,false,reason);assert.match(ui.get('participationHint').textContent,/다음판으로 예약/);assert.equal(ui.w.document.querySelector('[data-participation-action="join"]'),null);}
+  state.session.phase='open';Object.assign(state.recruitment,{status:'full',reason:'capacity',activeApplicants:10,remainingSlots:0});ui.setState(state);await ui.w.viewerTest.loadParticipation();assert.equal(ui.w.document.querySelector('[data-participation-action="call_pass"]').disabled,false);assert.ok(ui.calls.every(call=>!call.options.body));
+});
+
+test('after drawing, same-session pass stays blocked while the live call join response remains available',async t=>{
+  const state=fixture();state.session.applicant=true;state.queue.entry={status:'called',statusLabel:'호출됨',sessionId:'round-a',callDeadline:NOW+10000};state.actions={callJoin:true,callPass:true};
+  const ui=await viewer(t,{state});
+  for(const phase of ['drawn','checking','ended']){state.session.phase=phase;Object.assign(state.recruitment,{status:'closed',reason:'progress'});ui.setState(state);await ui.w.viewerTest.loadParticipation();assert.equal(ui.w.document.querySelector('[data-participation-action="call_join"]').disabled,false,phase);assert.equal(ui.w.document.querySelector('[data-participation-action="call_pass"]').disabled,true,phase);assert.match(ui.get('participationHint').textContent,/추첨 후 패스 예약은 진행자에게 요청/);await ui.w.viewerTest.runParticipationAction('call_pass');}
+  assert.ok(ui.calls.every(call=>!call.options.body));
+});
+
+test('an expired call deadline blocks join and pass even when intake is already closed',async t=>{
+  const state=fixture();state.session.applicant=true;state.session.phase='closed';Object.assign(state.recruitment,{status:'closed',reason:'manual'});state.queue.entry={status:'called',statusLabel:'호출됨',sessionId:'round-a',callDeadline:NOW+1000};state.actions={callJoin:true,callPass:true};
+  const ui=await viewer(t,{state});assert.equal(ui.w.document.querySelector('[data-participation-action="call_pass"]').disabled,false);ui.advance(1100);assert.equal(ui.get('participationCall').hidden,true);assert.equal(ui.w.document.querySelector('[data-participation-action="call_join"]').disabled,true);assert.equal(ui.w.document.querySelector('[data-participation-action="call_pass"]').disabled,true);
+  await ui.w.viewerTest.runParticipationAction('call_join');await ui.w.viewerTest.runParticipationAction('call_pass');assert.ok(ui.calls.every(call=>!call.options.body));
+});
+
+test('invalid recruitment, missing applicant and failed refresh cannot authorize a same-session call pass',async t=>{
+  const state=fixture();state.session.applicant=true;state.session.phase='closed';Object.assign(state.recruitment,{status:'closed',reason:'manual'});state.queue.entry={status:'called',statusLabel:'호출됨',sessionId:'round-a',callDeadline:NOW+10000};state.actions={callJoin:true,callPass:true};
+  let failRead=false;const ui=await viewer(t,{state,fetcher:url=>url.endsWith('/participation')&&failRead?Promise.reject(Error('private-read-path')):undefined});
+  for(const modified of [{...state,recruitment:null},{...state,session:{...state.session,applicant:false}},{...state,session:{...state.session,postponed:true}}]){ui.setState(modified);await ui.w.viewerTest.loadParticipation();assert.equal(ui.w.document.querySelector('[data-participation-action="call_pass"]').disabled,true);await ui.w.viewerTest.runParticipationAction('call_pass');}
+  ui.setState(state);await ui.w.viewerTest.loadParticipation();assert.equal(ui.w.document.querySelector('[data-participation-action="call_pass"]').disabled,false);failRead=true;await ui.w.viewerTest.loadParticipation();assert.equal(ui.get('participationCall').hidden,true);await ui.w.viewerTest.runParticipationAction('call_pass');assert.ok(ui.calls.every(call=>!call.options.body));assert.doesNotMatch(ui.w.document.body.textContent,/private-read-path/);
+});
+
+test('unrelated or manual Queue calls retain their existing independent response actions',async t=>{
+  const state=fixture();state.session.phase='ended';Object.assign(state.recruitment,{status:'closed',reason:'progress'});state.queue.entry={status:'called',statusLabel:'호출됨',sessionId:'other-round',callDeadline:NOW+10000};state.actions={callJoin:true,callPass:true};
+  const ui=await viewer(t,{state});assert.equal(ui.w.document.querySelector('[data-participation-action="call_pass"]').disabled,false);assert.match(ui.get('participationHint').textContent,/한 곳에서만 응답/);
+  delete state.queue.entry.sessionId;ui.setState(state);await ui.w.viewerTest.loadParticipation();assert.equal(ui.w.document.querySelector('[data-participation-action="call_pass"]').disabled,false);assert.ok(ui.calls.every(call=>!call.options.body));
+});
+
+test('a stale session link cannot pass the newer current call through its previously attached button',async t=>{
+  const state=fixture();state.session.applicant=true;state.session.phase='closed';Object.assign(state.recruitment,{status:'closed',reason:'manual'});state.queue.entry={status:'called',statusLabel:'호출됨',sessionId:'round-a',callDeadline:NOW+10000};state.actions={callJoin:true,callPass:true};
+  const ui=await viewer(t,{state,query:'?session=round-a'}),oldButton=ui.w.document.querySelector('[data-participation-action="call_pass"]');assert.equal(oldButton.disabled,false);
+  state.session.id='round-b';state.queue.entry.sessionId='round-b';ui.setState(state);await ui.w.viewerTest.loadParticipation();assert.equal(ui.get('participationCall').hidden,true);assert.equal(oldButton.disabled,true);await oldButton.onclick();assert.ok(ui.calls.every(call=>!call.options.body));
+});
+
+test('a failed pass never reports a completed reservation and preserves the server returned current state',async t=>{
+  const state=fixture();state.session.applicant=true;state.session.phase='closed';Object.assign(state.recruitment,{status:'closed',reason:'manual'});state.queue.entry={status:'called',statusLabel:'호출됨',sessionId:'round-a',callDeadline:NOW+10000};state.actions={callJoin:true,callPass:true};
+  const ui=await viewer(t,{state,fetcher:url=>url.endsWith('/participation/action')?result({error:'예약을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.'},503):undefined});await ui.w.viewerTest.runParticipationAction('call_pass');
+  assert.match(ui.get('participationStatus').textContent,/예약을 저장하지 못했습니다/);assert.doesNotMatch(ui.get('participationStatus').textContent,/패스를 반영|처리했습니다/);assert.equal(ui.get('participationReservations').children.length,0);assert.equal(ui.get('participationCall').hidden,false);assert.equal(ui.w.document.querySelector('[data-participation-action="call_pass"]').disabled,false);assert.equal(ui.calls.filter(call=>call.options.body).length,1);
+});
+
+test('the rendered call join button submits its own bound participant response after recruitment closure',async t=>{
+  const state=fixture(),writes=[];state.session.applicant=true;state.session.phase='drawn';Object.assign(state.recruitment,{status:'closed',reason:'progress'});state.queue.entry={status:'called',statusLabel:'호출됨',sessionId:'round-a',callDeadline:NOW+10000};state.actions={callJoin:true,callPass:false};
+  const ui=await viewer(t,{state,fetcher:(url,options)=>{if(url.endsWith('/participation/action')){writes.push(JSON.parse(options.body));return result({state,result:{}});}}});const button=ui.w.document.querySelector('[data-participation-action="call_join"]');assert.equal(button.disabled,false);await button.onclick();assert.deepEqual(writes,[{action:'call_join',expectedSessionId:'round-a'}]);assert.match(ui.get('participationStatus').textContent,/참가 응답을 전송/);
+});
+
+test('a durable pending pass blocks both real call buttons until a fresh read clears the pending state',async t=>{
+  const state=fixture();state.session.applicant=true;state.session.phase='closed';Object.assign(state.recruitment,{status:'closed',reason:'manual'});state.queue.entry={status:'called',statusLabel:'패스 반영 확인 중',sessionId:'round-a',callDeadline:NOW+10000};state.queue.passPending=true;state.reservations=[{game:'lol',round:4}];state.actions={callJoin:true,callPass:true};
+  const ui=await viewer(t,{state}),join=ui.w.document.querySelector('[data-participation-action="call_join"]'),pass=ui.w.document.querySelector('[data-participation-action="call_pass"]');
+  assert.equal(ui.get('participationCall').hidden,true);assert.equal(join.disabled,true);assert.equal(pass.disabled,true);assert.match(ui.get('participationHint').textContent,/패스 예약은 저장되었습니다.*처리 상태를 확인 중/);assert.match(ui.get('participationReservations').textContent,/4판 예약/);assert.equal(ui.get('participationState').textContent,'패스 반영 확인 중');await join.onclick();await pass.onclick();assert.ok(ui.calls.every(call=>!call.options.body));
+  state.queue.passPending=false;state.queue.entry.statusLabel='호출됨';ui.setState(state);await ui.w.viewerTest.loadParticipation();assert.equal(ui.get('participationCall').hidden,false);assert.equal(join.disabled,false);assert.equal(pass.disabled,false);assert.doesNotMatch(ui.get('participationHint').textContent,/처리 상태를 확인 중/);assert.ok(ui.calls.every(call=>!call.options.body));
+});
+
+test('a completed pass refresh removes pending guidance and keeps its next-round reservation without more writes',async t=>{
+  const state=fixture();state.session.applicant=true;state.session.phase='closed';Object.assign(state.recruitment,{status:'closed',reason:'manual'});state.queue.entry={status:'called',statusLabel:'패스 반영 확인 중',sessionId:'round-a',callDeadline:NOW+10000};state.queue.passPending=true;state.reservations=[{game:'lol',round:4}];state.actions={callJoin:true,callPass:true};
+  const ui=await viewer(t,{state});state.queue.passPending=false;state.queue.entry={status:'passed',statusLabel:'패스',sessionId:'round-a',callDeadline:0};state.session.postponed=true;state.actions={cancelReservation:true};ui.setState(state);await ui.w.viewerTest.loadParticipation();assert.equal(ui.get('participationCall').hidden,true);assert.match(ui.get('participationHint').textContent,/다음 회차 예약 상태/);assert.match(ui.get('participationReservations').textContent,/4판 예약/);assert.equal(ui.get('participationState').textContent,'패스');assert.doesNotMatch(ui.get('participationHint').textContent,/처리 상태를 확인 중/);assert.ok(ui.calls.every(call=>!call.options.body));
 });
 
 test('fresh participation renders even when ready-check fails and failed refresh clears previous state',async t=>{

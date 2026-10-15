@@ -4,6 +4,7 @@ import { JsonStore } from './json-store.js';
 import { createTeams, TEAM_STRATEGIES } from './teams.js';
 import { assertOperationsStateConsistency, reconcileOperationsState } from './operations-consistency.js';
 import { activeIntakeCount, assertIntakeAdmission, assertIntakeOperationsState, intakeAtCapacity, readIntakeSettings, readSessionIntakePolicy } from './intake-policy.js';
+import { acceptCallPass, acknowledgeCallPasses, assertCallPassOperationsState } from './call-pass.js';
 
 export function sample(items, count) {
   const pool = [...items];
@@ -182,7 +183,7 @@ export function applyAction(state, action, data = {}, now = Date.now()) {
 export class OperationsStore extends JsonStore {
   constructor(file) {
     super(file, {session:null,history:[],reservations:[],sessionArchive:[],rounds:{},revision:0}, value => {
-      try{return Boolean(value && Array.isArray(value.history) && (!value.reservations || Array.isArray(value.reservations)) && (!value.sessionArchive || Array.isArray(value.sessionArchive)) && (!value.session || (Array.isArray(value.session.applicants) && Array.isArray(value.session.winners) && Array.isArray(value.session.confirmed) && Array.isArray(value.session.teams))) && assertIntakeOperationsState(value));}
+      try{return Boolean(value && Array.isArray(value.history) && (!value.reservations || Array.isArray(value.reservations)) && (!value.sessionArchive || Array.isArray(value.sessionArchive)) && (!value.session || (Array.isArray(value.session.applicants) && Array.isArray(value.session.winners) && Array.isArray(value.session.confirmed) && Array.isArray(value.session.teams))) && assertIntakeOperationsState(value) && assertCallPassOperationsState(value));}
       catch{return false;}
     });
     this.consistencyRecovered=false;this.consistencyChanges=[];
@@ -190,6 +191,7 @@ export class OperationsStore extends JsonStore {
   async init(){
     await super.init();
     assertIntakeOperationsState(this.read());
+    assertCallPassOperationsState(this.read());
     const result=reconcileOperationsState(this.read());
     if(result.changed){
       await super.write(result.state);
@@ -201,13 +203,21 @@ export class OperationsStore extends JsonStore {
   update(fn){
     return super.update(async state=>{
       assertIntakeOperationsState(state);
+      assertCallPassOperationsState(state);
       const result=await fn(state);
       assertIntakeOperationsState(state);
+      assertCallPassOperationsState(state);
       const reconciled=reconcileOperationsState(state);
       assertIntakeOperationsState(reconciled.state);
       for(const key of Object.keys(state))delete state[key];Object.assign(state,reconciled.state);
       if(reconciled.changed)this.notify({type:'consistency-recovery',detail:`저장 직전 상태 일관성 정규화 · ${reconciled.changes.join(' · ')}`});
       return result;
     });
+  }
+  async acceptCallPass(input,{guard=()=>{},clock=Date.now}={}){
+    let result;await this.update(state=>{guard();result=acceptCallPass(state,input,clock());});return result;
+  }
+  async acknowledgeCallPasses(ids){
+    return this.update(state=>acknowledgeCallPasses(state,ids,Date.now()));
   }
 }

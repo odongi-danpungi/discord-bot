@@ -68,6 +68,9 @@ export async function createWorkspaceRuntime({ baseConfig, entry, root, client, 
     await operations.update(state=>Object.assign(state,migrateOperationsState(state,{guildId:config.guildId,appVersion:APP_VERSION}).state));
     if(!recovery.read().restorePoints.length||lock.previousCrash)await recovery.checkpoint({records,operations:operations.read(),label:lock.previousCrash?'비정상 종료 후 방송 보호':'방송 초기 보호',reason:lock.previousCrash?'auto-after-unclean-shutdown':'initial',guildId:config.guildId});
     await Promise.all([naverMonitorStore.recoverPending(),naverParticipation.recoverPending(),liveStore.recoverPending(),idempotencyStore.recoverPreviousBoot({bootId:lock.instanceId})]);
+    const guard=()=>{operationGuard();runtime?.operationGuard();if(recovery.emergencyState().locked)throw workspaceError('방송 운영이 일시 중지되었습니다.',423);};
+    queue.bindOperations(operations,{guard});
+    await queue.recoverCallPasses();
     await queue.syncOperations({operationsState:operations.read(),records:store.read().filter(r=>r.guildId===config.guildId)});
     await queue.syncNaver(naverParticipation.summary());
     health.attachAudit(e=>recovery.audit(e)).seedFromAudit(recovery.read().auditLog);
@@ -75,7 +78,6 @@ export async function createWorkspaceRuntime({ baseConfig, entry, root, client, 
     if(lock.previousCrash||recovered.length)await recovery.audit({category:'system',action:'workspace_recovery',actor:'system',summary:'방송별 저장 상태 복구 점검',details:{integrityRecoveries:recovered.length,unclean:Boolean(lock.previousCrash)}});
     const reporter=e=>health.recordDiscord(e),discord=new DiscordService(client,config.guildId,operations,reporter),viewerAuth=createViewerAuth();
     installChzzkVerificationDiscord(DiscordService);
-    const guard=()=>{operationGuard();if(recovery.emergencyState().locked)throw workspaceError('방송 운영이 일시 중지되었습니다.',423);};
     calls=new ParticipationCallService({queue,discord,guard,timeoutSeconds:callSettings.snapshot().settings.timeoutSeconds,audit:e=>recovery.audit(e),reporter,paused:recovery.emergencyState().locked});
     const naver=new NaverService({config,authStore:naverAuth,guard:()=>{guard();runtime?.operationGuard();}}),naverMonitor=new NaverCafeMonitor({store:naverMonitorStore,naver,discord,guard,audit:e=>recovery.audit(e)}),
       chzzk=new ChzzkService({clientId:config.chzzkClientId,clientSecret:config.chzzkClientSecret}),

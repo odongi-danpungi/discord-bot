@@ -31,6 +31,60 @@ async function fixture(t){
   }
   return {platform,base,roles,deniedMembers,login,client,config,request:async(url,headers,body)=>fetch(base+url,{headers,method:body===undefined?'GET':'POST',...(body===undefined?{}:{body:JSON.stringify(body)})})};
 }
+async function prepareClosedCall(f,kind){
+  const prepared=await prepareParticipants(f),context=prepared.contexts[A],sent=[];
+  context.discord.participationCall=async(entry)=>{sent.push(entry.id);return {channelId:'fixture-channel',id:'fixture-message-'+sent.length};};
+  context.discord.completeParticipationCall=async()=>{};
+  await context.operations.update(state=>{
+    state.reservations=[];
+    if(kind==='capacity')state.intakeSettings={revision:1,settings:{maxApplicants:2,duplicatePolicy:'keep_existing',closeOnCapacity:true}};
+    applyAction(state,'open',{game:'lol',mode:'aram',count:1,title:'마감 후 호출'});
+    for(const userId of [person,owner])applyAction(state,'join',{sessionId:state.session.id,userId});
+    if(kind==='manual')applyAction(state,'close');
+    if(kind==='deadline')state.session.closeAt=Date.now()-1;
+  });
+  await context.participationQueue.syncOperations({records:context.store.read()});
+  await context.participationCalls.callNext();
+  const raw=context.participationQueue.read().entries.find(entry=>entry.status==='called');
+  assert.equal(raw.discordUserId,person);
+  return {...prepared,context,sent,raw};
+}
+
+for(const kind of ['manual','deadline','capacity'])test(`participant API persists a ${kind} post-close pass once, preserves isolation and hides the next caller`,async t=>{
+  const f=await fixture(t),p=await prepareClosedCall(f,kind),{context,participant,admin,raw,sent}=p;
+  const route='/w/'+A+'/viewer/api/participation',body={action:'call_pass',expectedSessionId:context.operations.read().session.id,userId:owner};
+  const before=context.operations.read(),queueBefore=context.participationQueue.read(),b=p.contexts[B].operations.read();
+  for(const headers of [{...participant,'X-CSRF-Token':'wrong'},{...participant,Origin:'https://untrusted.invalid'}])assert.equal((await f.request(route+'/action',headers,body)).status,403);
+  assert.deepEqual(context.operations.read(),before);assert.deepEqual(context.participationQueue.read(),queueBefore);
+  const ready=await(await f.request(route,participant)).json();assert.equal(ready.actions.callPass,true);assert.equal(ready.actions.join,false);
+  const headers={...participant,'Idempotency-Key':'post-close-pass-'+kind};
+  const passed=await f.request(route+'/action',headers,body);assert.equal(passed.status,200);const result=await passed.json();
+  assert.equal(result.state.queue.entry.status,'postponed_next');assert.deepEqual(result.state.reservations,[{game:'lol',round:2}]);
+  assert.equal(result.state.queue.passPending,false);assert.equal(result.result.next,undefined);
+  assert.doesNotMatch(JSON.stringify(result),new RegExp(owner+'|callPassReceipts|callPassAdvances|callPassReceipt|'+raw.callToken));
+  assert.deepEqual(context.operations.read().reservations,[{game:'lol',userId:person,round:2}]);
+  assert.equal(context.operations.read().session.phase,before.session.phase);
+  assert.deepEqual(p.contexts[B].operations.read(),b);assert.equal(sent.length,2);
+  const replay=await f.request(route+'/action',headers,body);assert.equal(replay.status,200);assert.deepEqual(await replay.json(),result);assert.equal(sent.length,2);
+  const snapshot=await(await f.request('/w/'+A+'/api/snapshot',admin)).json();assert.equal(snapshot.state.callPassReceipts,undefined);assert.equal(snapshot.participationQueue.callPassAdvances,undefined);
+});
+
+test('participant API reports a durable pass awaiting Queue recovery without writes on GET',async t=>{
+  const f=await fixture(t),p=await prepareClosedCall(f,'manual'),{context,participant}=p,queue=context.participationQueue;
+  const route='/w/'+A+'/viewer/api/participation',original=queue.writeUnlocked;
+  queue.writeUnlocked=async()=>{throw Object.assign(Error('private queue path'),{code:'ENOSPC'});};
+  try{
+    const response=await f.request(route+'/action',participant,{action:'call_pass',expectedSessionId:context.operations.read().session.id});assert.equal(response.status,500);assert.doesNotMatch(await response.text(),/private queue path/);
+    assert.equal(context.operations.read().reservations.length,1);
+    const before=context.operations.read(),queued=queue.read();
+    const pending=await(await f.request(route,participant)).json();assert.equal(pending.queue.passPending,true);assert.equal(pending.actions.callJoin,false);assert.equal(pending.actions.callPass,false);
+    assert.match(pending.queue.entry.statusLabel,/반영 확인/);assert.doesNotMatch(JSON.stringify(pending),/callPassReceipt|callPassAdvances/);
+    assert.deepEqual(context.operations.read(),before);assert.deepEqual(queue.read(),queued);
+  }finally{queue.writeUnlocked=original;}
+  await context.participationCalls.start();
+  const recovered=await(await f.request(route,participant)).json();assert.equal(recovered.queue.passPending,false);assert.equal(recovered.queue.entry.status,'postponed_next');assert.equal(context.operations.read().reservations.length,1);
+});
+
 test('participant recruitment reads current session capacity per server without exposing identities or writing state',async t=>{
   const f=await fixture(t),{participant,contexts}=await prepareParticipants(f);
   for(const [id,capacity]of [[A,3],[B,7]])await contexts[id].operations.update(state=>{
