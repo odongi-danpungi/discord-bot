@@ -2,6 +2,7 @@ import { applyAction } from './operations.js';
 import { hasGame } from './profiles.js';
 import { buildParticipantRecruitmentState } from './participant-intake.js';
 import { canBookCallPass,hasPendingCallPass } from './call-pass.js';
+import { buildParticipantCallResponse } from './participant-call-result.js';
 
 const ACTIVE_QUEUE_STATUSES=new Set(['waiting','called','joined','postponed_next','postponed_next2']);
 const STATUS_LABELS={
@@ -94,6 +95,7 @@ export function buildParticipantSelfServiceState({operationsState={},queueSummar
     queue:{
       entry:ownEntry&&passPending?{...publicOwnEntry(ownEntry),statusLabel:'패스 반영 확인 중'}:publicOwnEntry(ownEntry),
       passPending,
+      callResponse:buildParticipantCallResponse({operationsState,entry:ownEntry,userId}),
       waitingCount:Number(queueSummary?.counts?.waiting)||0,
       activeCount:Number(queueSummary?.activeCount)||0
     },
@@ -106,6 +108,7 @@ export function buildParticipantSelfServiceState({operationsState={},queueSummar
 export async function performParticipantSelfServiceAction({
   action,
   game,
+  expectedCall,
   userId,
   profile,
   operations,
@@ -135,8 +138,13 @@ export async function performParticipantSelfServiceAction({
 
   if(action==='call_join'||action==='call_pass'){
     if(!participationQueue||!participationCalls)throw httpError('시참 호출 기능이 준비되지 않았습니다.',503,'participant_call_unavailable');
+    if(expectedCall!==undefined){
+      const text=value=>typeof value==='string'&&value.length>0&&value.length<=80&&!/[\r\n\t]/.test(value);
+      if(!expectedCall||typeof expectedCall!=='object'||Array.isArray(expectedCall)||Object.keys(expectedCall).length!==3||Object.keys(expectedCall).some(key=>!['entryId','attempt','sessionId'].includes(key))||!text(expectedCall.entryId)||!Number.isSafeInteger(expectedCall.attempt)||expectedCall.attempt<1||(expectedCall.sessionId!==null&&!text(expectedCall.sessionId)))throw httpError('화면의 호출 정보를 확인할 수 없습니다. 상태를 다시 확인해 주세요.',400,'participant_call_binding_invalid');
+    }
     const entry=participationQueue.read().entries.find(item=>item?.source==='discord'&&item?.discordUserId===userId&&item?.status==='called');
     if(!entry)throw httpError('현재 응답할 호출이 없습니다.',409,'participant_call_missing');
+    if(expectedCall&&(expectedCall.entryId!==entry.id||expectedCall.attempt!==entry.callAttempt||expectedCall.sessionId!==(entry.sessionId||null)))throw httpError('호출이 변경되었습니다. 상태를 다시 확인한 뒤 최신 호출에 응답해 주세요.',409,'participant_call_changed');
     if(Number(entry.callDeadline)&&Number(entry.callDeadline)<=now&&!(action==='call_pass'&&hasPendingCallPass({state:operations.read(),entry})))throw httpError('응답 시간이 만료됐습니다.',409,'participant_call_expired');
     const callAction=action==='call_join'?'join':'pass';
     // The call service owns the durable reservation decision and Queue projection.

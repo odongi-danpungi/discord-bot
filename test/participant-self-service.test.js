@@ -236,3 +236,34 @@ test('unmatched or manual Queue calls and calls without a current session retain
   await performParticipantSelfServiceAction({action:'call_pass',userId:'u1',profile,operations,participationQueue:queue,participationCalls:calls,now:at,clock:()=>at});
   assert.equal(responded,true);assert.deepEqual(operations.read(),{session:null,reservations:[]});
 });
+
+for(const action of ['call_join','call_pass'])test(`a stale same-session recall binding cannot submit ${action} to a newer call`,async t=>{
+  const f=await durableCalled(t,'closed'),expectedCall={entryId:f.raw.id,attempt:f.raw.callAttempt,sessionId:f.raw.sessionId};
+  await f.calls.recall(f.raw.id);const before=f.operations.read(),queueBefore=f.queue.read();
+  await assert.rejects(performParticipantSelfServiceAction({action,expectedCall,userId:'u1',profile,operations:f.operations,participationQueue:f.queue,participationCalls:f.calls}),error=>error.status===409&&error.code==='participant_call_changed');
+  assert.deepEqual(f.operations.read(),before);assert.deepEqual(f.queue.read(),queueBefore);
+  const latest=f.queue.read().entries.find(entry=>entry.id===f.raw.id);
+  const accepted=await performParticipantSelfServiceAction({action,expectedCall:{entryId:latest.id,attempt:latest.callAttempt,sessionId:latest.sessionId},userId:'u1',profile,operations:f.operations,participationQueue:f.queue,participationCalls:f.calls});
+  assert.equal(accepted.state.queue.entry.status,action==='call_pass'?'postponed_next':'joined');
+});
+
+test('call binding validates shape and rejects foreign entry or session without invoking the service',async()=>{
+  const state=openState(),operations=fakeOperations(state),raw={id:'own',source:'discord',discordUserId:'u1',status:'called',sessionId:'s1',callAttempt:2,callToken:'private',callDeadline:Date.now()+60_000};
+  const queue={read:()=>({entries:[raw]})};let sends=0;
+  const calls={async respond(){sends++;throw Error('must not respond');}};
+  const binding={entryId:'own',attempt:2,sessionId:'s1'},base={action:'call_pass',userId:'u1',profile,operations,participationQueue:queue,participationCalls:calls};
+  for(const expectedCall of [null,[],{}, {...binding,extra:true},{...binding,attempt:'2'},{...binding,attempt:0},{...binding,attempt:Number.MAX_SAFE_INTEGER+1},{...binding,entryId:''},{...binding,entryId:'bad\nID'},{...binding,sessionId:''},{...binding,sessionId:42}])
+    await assert.rejects(performParticipantSelfServiceAction({...base,expectedCall}),error=>error.status===400&&error.code==='participant_call_binding_invalid');
+  for(const expectedCall of [{...binding,entryId:'foreign'},{...binding,sessionId:'foreign'},{...binding,attempt:1}])
+    await assert.rejects(performParticipantSelfServiceAction({...base,expectedCall}),error=>error.status===409&&error.code==='participant_call_changed');
+  assert.equal(sends,0);assert.deepEqual(operations.read(),state);
+});
+
+test('recall after a valid participant binding is checked still rejects the old server-only token inside the Queue lock',async t=>{
+  const f=await durableCalled(t,'closed'),expectedCall={entryId:f.raw.id,attempt:f.raw.callAttempt,sessionId:f.raw.sessionId};
+  const respond=f.calls.respond.bind(f.calls);
+  f.calls.respond=async input=>{await f.calls.recall(f.raw.id);return respond(input);};
+  await assert.rejects(performParticipantSelfServiceAction({action:'call_pass',expectedCall,userId:'u1',profile,operations:f.operations,participationQueue:f.queue,participationCalls:f.calls}),error=>error.status===409);
+  assert.deepEqual(f.operations.read().reservations,[]);assert.equal(f.queue.read().entries.find(entry=>entry.id===f.raw.id).status,'called');
+  assert.equal(f.queue.read().entries.find(entry=>entry.id===f.raw.id).callAttempt,expectedCall.attempt+1);
+});

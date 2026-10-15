@@ -36,10 +36,11 @@
         <article><span>내 상태</span><strong id="participationState">대기</strong></article>
         <article><span>내 순번</span><strong id="participationPosition">—</strong></article>
       </div>
-      <div id="participationCall" class="call-panel" hidden>
-        <strong>진행자가 지금 호출했습니다.</strong>
+      <div id="participationCall" class="call-panel" aria-labelledby="participationCallTitle" hidden>
+        <strong id="participationCallTitle">진행자가 지금 호출했습니다.</strong>
         <span id="participationCallTimer">응답 시간을 확인 중입니다.</span>
-        <div class="button-row"><button data-participation-action="call_join">✓ 참가할게요</button><button class="secondary" data-participation-action="call_pass">↪ 이번판 패스</button></div>
+        <div id="participationCallActions" class="button-row"><button data-participation-action="call_join">✓ 참가할게요</button><button class="secondary" data-participation-action="call_pass">↪ 이번판 패스</button></div>
+        <button id="participationCallRefresh" class="secondary compact" hidden>상태 다시 확인</button>
       </div>
       <p id="participationHint" class="participation-hint">현재 시참 상태를 불러오는 중입니다.</p>
       <div id="participationActions" class="participation-actions"></div>

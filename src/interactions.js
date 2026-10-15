@@ -115,7 +115,7 @@ export function installInteractions({client,config,store,operations,discord,view
       }
     }catch(error){
       let content=error.code?'Discord 요청에 실패했습니다. 봇의 채널 권한을 확인해 주세요.':error.message;
-      if(interaction.customId?.startsWith('queuecall:')||/^community:act:call_(join|pass):/.test(interaction.customId||'')){
+      if(interaction.customId?.startsWith('queuecall:')||/^community:act:call_(join|pass):/.test(interaction.customId||'')||/^community:call:(join|pass):/.test(interaction.customId||'')){
         const classified=classifyRuntimeError(error),status=error.status||error.statusCode;
         content=classified.kind==='storage'||classified.kind==='discord'?classified.message:
           Number.isInteger(status)&&status>=400&&status<500?classified.message:

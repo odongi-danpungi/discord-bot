@@ -9,6 +9,7 @@ import { OperationsStore } from '../src/operations.js';
 import { ParticipationQueueStore } from '../src/participation-queue-store.js';
 import { ParticipationCallService } from '../src/participation-call-service.js';
 import { installInteractions } from '../src/interactions.js';
+import { communityCallButtonId } from '../src/community-discord.js';
 
 async function fixture(t,phase='closed'){
   const dir=await mkdtemp(path.join(tmpdir(),'dd-pass-discord-'));
@@ -82,7 +83,7 @@ test('Discord community participant call buttons also mask internal pass and joi
   try{
     for(const action of ['call_pass','call_join'])for(const status of [undefined,503]){
       f.calls.respond=async()=>{throw Object.assign(Error('secret=fixture-community-private C:/private/file.json'),status?{status}:{});};
-      const replies=await f.click({customId:`community:act:${action}:fixture-session`});
+      const replies=await f.click({customId:communityCallButtonId(action==='call_pass'?'pass':'join','fixture-session',f.raw)});
       assert.match(replies[0],/호출 응답을 처리하지 못/);assert.doesNotMatch(JSON.stringify(replies),/fixture-community-private|private\/file/);
     }
     assert.equal(f.operations.read().reservations.length,0);assert.equal(f.sent.length,1);

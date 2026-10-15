@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { mkdtemp,rm,writeFile } from 'node:fs/promises';
+import { mkdtemp,rm,writeFile,readFile,stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createWorkspacePlatform } from '../src/workspace-platform.js';
@@ -78,11 +78,64 @@ test('participant API reports a durable pass awaiting Queue recovery without wri
     assert.equal(context.operations.read().reservations.length,1);
     const before=context.operations.read(),queued=queue.read();
     const pending=await(await f.request(route,participant)).json();assert.equal(pending.queue.passPending,true);assert.equal(pending.actions.callJoin,false);assert.equal(pending.actions.callPass,false);
+    assert.equal(pending.queue.callResponse.state,'confirming');assert.equal(pending.queue.callResponse.confirmedAt,null);
     assert.match(pending.queue.entry.statusLabel,/반영 확인/);assert.doesNotMatch(JSON.stringify(pending),/callPassReceipt|callPassAdvances/);
     assert.deepEqual(context.operations.read(),before);assert.deepEqual(queue.read(),queued);
   }finally{queue.writeUnlocked=original;}
   await context.participationCalls.start();
   const recovered=await(await f.request(route,participant)).json();assert.equal(recovered.queue.passPending,false);assert.equal(recovered.queue.entry.status,'postponed_next');assert.equal(context.operations.read().reservations.length,1);
+});
+
+test('own pass result reads are private, durable, read-only and separate from the current reservation',async t=>{
+  const f=await fixture(t),p=await prepareClosedCall(f,'manual'),{context,participant,admin,raw,sent}=p;
+  const route='/w/'+A+'/viewer/api/participation',binding={entryId:raw.id,attempt:raw.callAttempt,sessionId:raw.sessionId};
+  const response=await f.request(route+'/action',participant,{action:'call_pass',expectedSessionId:raw.sessionId,expectedCall:binding});assert.equal(response.status,200);
+  // Deliberately discard the original response body: fresh GET must provide proof.
+  const queue=context.participationQueue,ops=context.operations,files=[ops.file,queue.file];
+  const bytes=await Promise.all(files.map(file=>readFile(file))),times=await Promise.all(files.map(file=>stat(file).then(info=>info.mtimeMs))),before=ops.read(),queued=queue.read(),sends=sent.length;
+  for(let i=0;i<2;i++){
+    const result=await(await f.request(route+'?userId='+owner,participant)).json();
+    assert.equal(result.queue.callResponse.state,'recorded');assert.equal(result.queue.callResponse.action,'pass');assert.equal(result.queue.callResponse.targetRound,2);
+    assert.ok(result.queue.callResponse.confirmedAt>=result.queue.callResponse.recordedAt);
+    assert.deepEqual(result.reservations,[{game:'lol',round:2}]);
+    assert.doesNotMatch(JSON.stringify(result),new RegExp(owner+'|'+raw.callToken+'|callPassReceipt|targetId|identityKey'));
+  }
+  const other=await(await f.request(route,admin)).json();assert.equal(other.queue.callResponse,null);
+  const otherServer=await(await f.request('/w/'+B+'/viewer/api/participation',participant)).json();assert.equal(otherServer.queue.callResponse,null);
+  assert.deepEqual(ops.read(),before);assert.deepEqual(queue.read(),queued);assert.equal(sent.length,sends);
+  assert.deepEqual(await Promise.all(files.map(file=>readFile(file))),bytes);assert.deepEqual(await Promise.all(files.map(file=>stat(file).then(info=>info.mtimeMs))),times);
+  assert.equal((await f.request(route+'/action',participant,{action:'cancel_reservation',game:'lol',expectedSessionId:raw.sessionId})).status,200);
+  const cancelled=await(await f.request(route,participant)).json();assert.deepEqual(cancelled.reservations,[]);assert.equal(cancelled.queue.callResponse.state,'recorded');
+  await ops.update(state=>{applyAction(state,'end');applyAction(state,'open',{game:'lol',count:1,title:'새 모집'});});
+  const changed=await(await f.request(route,participant)).json();assert.equal(changed.queue.callResponse,null);
+});
+
+test('participant result remains confirming when acknowledgement fails, and GET never retries that write',async t=>{
+  const f=await fixture(t),p=await prepareClosedCall(f,'manual'),{context,participant}=p,ops=context.operations,queue=context.participationQueue;
+  const route='/w/'+A+'/viewer/api/participation',ack=ops.acknowledgeCallPasses;
+  let attempts=0;ops.acknowledgeCallPasses=async()=>{attempts++;throw Object.assign(Error('private acknowledgement path'),{code:'EIO'});};
+  try{
+    const accepted=await f.request(route+'/action',participant,{action:'call_pass',expectedSessionId:ops.read().session.id});assert.equal(accepted.status,200);
+    const before=ops.read(),queued=queue.read(),count=attempts;
+    const state=await(await f.request(route,participant)).json();assert.equal(state.queue.callResponse.state,'confirming');assert.equal(state.queue.passPending,true);
+    assert.equal(attempts,count);assert.deepEqual(ops.read(),before);assert.deepEqual(queue.read(),queued);assert.doesNotMatch(JSON.stringify(state),/private acknowledgement|callPassReceipt/);
+  }finally{ops.acknowledgeCallPasses=ack;await queue.recoverCallPasses();}
+  const confirmed=await(await f.request(route,participant)).json();assert.equal(confirmed.queue.callResponse.state,'recorded');
+});
+
+test('participant HTTP call binding rejects same-session recall, foreign context and malformed input before accepting the fresh binding',async t=>{
+  const f=await fixture(t),p=await prepareClosedCall(f,'manual'),{context,participant,raw}=p,queue=context.participationQueue;
+  const route='/w/'+A+'/viewer/api/participation/action',binding={entryId:raw.id,attempt:raw.callAttempt,sessionId:raw.sessionId};
+  await context.participationCalls.recall(raw.id);const before=context.operations.read(),queued=queue.read();
+  for(const action of ['call_pass','call_join']){
+    const stale=await f.request(route,participant,{action,expectedSessionId:raw.sessionId,expectedCall:binding});assert.equal(stale.status,409);
+    const foreign=await f.request(route,participant,{action,expectedCall:{...binding,entryId:'foreign-private-entry'}});assert.equal(foreign.status,409);assert.doesNotMatch(await foreign.text(),/foreign-private-entry/);
+    const malformed=await f.request(route,participant,{action,expectedCall:{...binding,attempt:'2'}});assert.equal(malformed.status,400);
+  }
+  assert.deepEqual(context.operations.read(),before);assert.deepEqual(queue.read(),queued);
+  const current=queue.read().entries.find(entry=>entry.id===raw.id);
+  const accepted=await f.request(route,participant,{action:'call_join',expectedSessionId:raw.sessionId,expectedCall:{entryId:current.id,attempt:current.callAttempt,sessionId:current.sessionId}});assert.equal(accepted.status,200);
+  const result=await accepted.json();assert.equal(result.state.queue.entry.status,'joined');assert.equal(result.state.queue.callResponse,null,'joined state is not a durable pass result');
 });
 
 test('participant recruitment reads current session capacity per server without exposing identities or writing state',async t=>{
