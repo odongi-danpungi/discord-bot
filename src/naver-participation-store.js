@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { JsonStore } from './json-store.js';
+import { assertIntakeAdmission, intakeAtCapacity, LEGACY_NAVER_INTAKE_POLICY, readSessionIntakePolicy, snapshotIntakePolicy } from './intake-policy.js';
 
 const initialState=()=>({
   version:1,
@@ -11,13 +12,17 @@ const initialState=()=>({
 });
 
 function isText(value,max){return typeof value==='string'&&value.length<=max;}
+function validOptionalIntakePolicy(value){
+  try{readSessionIntakePolicy(value,{legacy:LEGACY_NAVER_INTAKE_POLICY});return true;}
+  catch{return false;}
+}
 function validPublication(value){
   if(value===null)return true;
-  return value&&typeof value==='object'&&isText(value.id,80)&&['pending','failed','uncertain'].includes(value.status)&&isText(value.cafeId,32)&&isText(value.menuId,32)&&Number.isFinite(Number(value.startedAt))&&(!value.error||isText(value.error,500));
+  return value&&typeof value==='object'&&isText(value.id,80)&&['pending','failed','uncertain'].includes(value.status)&&isText(value.cafeId,32)&&isText(value.menuId,32)&&Number.isFinite(Number(value.startedAt))&&(!value.error||isText(value.error,500))&&validOptionalIntakePolicy(value);
 }
 function validSession(value){
   if(value===null)return true;
-  return value&&typeof value==='object'&&isText(value.id,80)&&['open','closed'].includes(value.status)&&isText(value.cafeId,32)&&isText(value.menuId,32)&&isText(value.subject,200)&&Number.isFinite(Number(value.openedAt))&&(!value.closedAt||Number.isFinite(Number(value.closedAt)))&&(!value.articleId||isText(String(value.articleId),64))&&(!value.articleUrl||isText(value.articleUrl,1000));
+  return value&&typeof value==='object'&&isText(value.id,80)&&['open','closed'].includes(value.status)&&isText(value.cafeId,32)&&isText(value.menuId,32)&&isText(value.subject,200)&&Number.isFinite(Number(value.openedAt))&&(!value.closedAt||Number.isFinite(Number(value.closedAt)))&&(!value.articleId||isText(String(value.articleId),64))&&(!value.articleUrl||isText(value.articleUrl,1000))&&validOptionalIntakePolicy(value);
 }
 function validEntry(entry){
   return entry&&typeof entry==='object'&&isText(entry.id,80)&&Number.isInteger(entry.order)&&entry.order>0&&isText(entry.displayName,80)&&entry.displayName.trim()&&['queued','cancelled'].includes(entry.status)&&Number.isFinite(Number(entry.registeredAt))&&(!entry.cancelledAt||Number.isFinite(Number(entry.cancelledAt)));
@@ -54,14 +59,15 @@ export class NaverParticipationStore extends JsonStore {
     });
     return recovered;
   }
-  async beginPublication({cafeId,menuId}){
+  async beginPublication({cafeId,menuId,intakePolicy}){
     cafeId=String(cafeId??'').trim();menuId=String(menuId??'').trim();
     if(!/^\d+$/.test(cafeId)||!/^\d+$/.test(menuId))throw Object.assign(new Error('카페 ID와 메모 게시판 ID를 확인해 주세요.'),{status:400});
+    const policy=snapshotIntakePolicy(intakePolicy,{legacy:LEGACY_NAVER_INTAKE_POLICY});
     let publication;
     await this.update(state=>{
       if(state.session)throw Object.assign(new Error('이미 진행 중인 칼바람 시참 메모가 있습니다. 먼저 현재 순번을 마감/초기화해 주세요.'),{status:409});
       if(state.publication&&['pending','uncertain'].includes(state.publication.status))throw Object.assign(new Error('이전 메모 게시 결과가 미확정 상태입니다. 네이버 카페에서 확인한 뒤 초기화해 주세요.'),{status:409});
-      publication={id:randomUUID(),status:'pending',cafeId,menuId,startedAt:Date.now(),error:''};
+      publication={id:randomUUID(),status:'pending',cafeId,menuId,startedAt:Date.now(),error:'',intakePolicy:policy};
       state.publication=publication;state.revision++;
     });
     return publication;
@@ -77,7 +83,8 @@ export class NaverParticipationStore extends JsonStore {
     await this.update(state=>{
       const pending=state.publication;
       if(!pending||pending.id!==id||pending.status!=='pending')throw Object.assign(new Error('메모 게시 상태가 변경되었습니다. 새로고침 후 다시 확인해 주세요.'),{status:409});
-      state.session={id:randomUUID(),status:'open',cafeId:pending.cafeId,menuId:pending.menuId,articleId:articleId==null?null:String(articleId),articleUrl:String(articleUrl||'').slice(0,1000),subject:String(subject||'칼바람 시참').slice(0,200),openedAt:Date.now()};
+      const intakePolicy=readSessionIntakePolicy(pending,{legacy:LEGACY_NAVER_INTAKE_POLICY});
+      state.session={id:randomUUID(),status:'open',cafeId:pending.cafeId,menuId:pending.menuId,articleId:articleId==null?null:String(articleId),articleUrl:String(articleUrl||'').slice(0,1000),subject:String(subject||'칼바람 시참').slice(0,200),openedAt:Date.now(),intakePolicy};
       state.publication=null;state.entries=[];state.revision++;
     });
     return this.summary();
@@ -87,11 +94,18 @@ export class NaverParticipationStore extends JsonStore {
     await this.update(state=>{
       if(!state.session)throw Object.assign(new Error('먼저 칼바람 시참 열기 버튼으로 접수를 시작해 주세요.'),{status:409});
       if(state.session.status!=='open')throw Object.assign(new Error('현재 칼바람 시참 접수는 마감되었습니다. 초기화 후 새 접수를 시작해 주세요.'),{status:409});
+      const intakePolicy=readSessionIntakePolicy(state.session,{legacy:LEGACY_NAVER_INTAKE_POLICY});
       const duplicate=state.entries.find(entry=>entry.status==='queued'&&entry.displayName.toLocaleLowerCase('ko-KR')===displayName.toLocaleLowerCase('ko-KR'));
-      if(duplicate)throw Object.assign(new Error(`${displayName}님은 이미 ${duplicate.order}번으로 등록되어 있습니다.`),{status:409});
+      if(duplicate){
+        if(intakePolicy.duplicatePolicy==='reject')throw Object.assign(new Error(`${displayName}님은 이미 ${duplicate.order}번으로 등록되어 있습니다.`),{status:409});
+        created={...duplicate};return;
+      }
+      assertIntakeAdmission(intakePolicy,state.entries.filter(entry=>entry.status==='queued').length);
       const order=state.entries.reduce((max,entry)=>Math.max(max,entry.order),0)+1;
       created={id:randomUUID(),order,displayName,status:'queued',registeredAt:Date.now()};
       state.entries.push(created);state.revision++;
+      if(intakePolicy.closeOnCapacity&&intakeAtCapacity(intakePolicy,state.entries.filter(entry=>entry.status==='queued').length))
+        state.session={...state.session,status:'closed',closedAt:Date.now(),closeReason:'capacity'};
     });
     return created;
   }

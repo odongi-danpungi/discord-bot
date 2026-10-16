@@ -1,8 +1,55 @@
-# Current handoff — v5.1.0
+# 현재 인수인계 — v5.2.7 배포 후보
 
-The complete baseline is v4.17.5 Step 6, with v4.17.6 monitoring and v4.18.0 community/hierarchical-dashboard improvements preserved. Data schema remains 2.
+검토일은 2026-10-15 (Asia/Seoul)입니다. 직전 개발 기준은 v5.2.6 / e77cb921711489b472a29d443c67c8be641e7dfb이며 main·실제 Railway 기준은 v5.1.7 / 7898f1d98b2df3164a2427503ff373a213af4403입니다. 기존 초안 PR #11에서 개발하며 운영 환경변수·트래픽은 변경하지 않습니다. [v5.2.7 검토 보고서](docs/workspace-review-v527.md)와 [계정·복구 안내](docs/workspace-accounts.md)를 참조합니다.
 
-See README.md and docs/PRODUCTION_CHECKLIST.md. Historical v5.0 skeleton claims are archived in docs/github-import-history and do not establish production readiness.
+v5.2.7은 사용자 포털 참가자의 네이버 계정 소유 확인 기록을 추가합니다. 운영자 카페 연결과 별도 최소 정보 앱을 사용하며 NAVER_PARTICIPANT_CLIENT_ID·NAVER_PARTICIPANT_CLIENT_SECRET은 선택 설정입니다. 빈 값·부분 설정은 해당 기능만 준비 전으로 두고 NAVER_CLIENT_ID/SECRET으로 대체하지 않습니다. PUBLIC_BASE_URL origin + /naver/participant/callback을 참가자 앱에 등록합니다. 기존 운영자 /naver/callback·카페 쓰기 권한·토큰 저장 경로는 유지합니다. NAVER_TOKEN_KEY는 기존 키를 유지하며 설정된 키의 64HEX 또는 정규 32바이트 Base64 형식을 검증합니다.
 
-Local Windows / Node 24.19.0: 225 JavaScript files checked; full suite 490 passed, 0 failed, 0 skipped. Actual Discord, Naver, CHZZK and Railway production verification is PENDING without credentials. CI results must be checked independently.
+참가자 연결은 현재 Discord 로그인 세션·사용자·서버·revision, 명시적 동의와 10분 일회용 state를 사용합니다. 외부 응답 뒤 현재 로그인·서버 멤버십을 확인하고 저장 직전 운영 잠금을 재확인합니다. 재연결·로컬 연결 해제는 이전 진행 중 동의를 무효화합니다. 참가자 조회는 본인의 최소 연결 요약만 읽고 외부 API나 Queue 변경을 수행하지 않습니다. 로컬 해제는 네이버 측 동의 철회가 아니며 외부 삭제 요청을 하지 않습니다.
 
+서버별 Operations 파일 디렉터리의 participant-identities.json을 별도로 저장합니다. 파일 version은 1, 기존 Operations 스키마는 2입니다. Discord 사용자 ID, 서버·앱 범위 HMAC 식별값, 앱/키 구분값, 연결 시각을 원자 저장과 revision으로 보호합니다. 원본 네이버 ID·이름·닉네임·이메일·OAuth access/refresh token은 영속화하지 않습니다. 기존 접수 이름을 역으로 식별하거나 서로 다른 앱의 ID를 합치지 않습니다. Queue 자동 병합·참가 순서 변경·카페 회원 확인·CHZZK 역할 부여는 추가하지 않습니다.
+
+전체 /app/data·workspaces와 기존 암호화 키를 보존합니다. Operations 복원 지점에는 이 별도 파일이 포함되지 않습니다. 이전 코드로 롤백하면 파일을 무시하며 이미 한 로컬 해제를 외부에서 되돌리지 않습니다. 전체 볼륨 복원으로 해제 전 연결이 돌아올 수 있으므로 참가자의 동의 의사와 재연결을 확인하고, 복원 기록을 현재 외부 연결 성공 증거로 사용하지 않습니다. 키 또는 앱이 바뀌면 기존 연결은 재연결 대상으로 처리합니다.
+
+MULTI_WORKSPACE_ENABLED 기본 false, JSON 단일 프로세스 replica 1을 유지합니다. 실제 참가자 OAuth·동의 거절·서버 A/B·별도 계정 충돌·외부 네이버 동의 철회 이후 표시와 CHZZK 역할 E2E는 PENDING입니다. 사용자는 별도 참가자 계정이 없으며 로컬 테스트 성공을 실제 인증 성공이라고 표현하지 않습니다. 실제 실행 결과·CI·Release·ZIP 근거는 v5.2.7 보고서와 최종 전달 보고서에 기록합니다.
+
+---
+
+# v5.2.6 인수인계 기록
+
+검토일은 2026-10-15 (Asia/Seoul)입니다. main 기준은 v5.1.7, commit 7898f1d98b2df3164a2427503ff373a213af4403입니다. 이번 개발의 직전 기준은 v5.2.5, commit 87152b06850dc4534459c4e82304f31f86a17bc1입니다. 기존 Discord·네이버·CHZZK 모듈과 제작자 기능을 유지합니다. 데이터 스키마는 2이며 새 운영 공간은 서버별 파일을 사용하고 제작자 데이터는 기존 경로에 유지합니다.
+
+현재 사용자 결정은 각 운영자가 자기 Discord 서버와 자기 방송 채널을 운영하는 것입니다. 과거 공통 방송 채널 설계는 기존 단일 서버 모드에만 유지합니다. 제작자 점검·배포·복구 API는 사용자 포털에 공개하지 않습니다.
+
+[계정·운영·복구 안내](docs/workspace-accounts.md)와 [v5.2.6 검토 보고서](docs/workspace-review-v526.md)를 먼저 읽습니다. MULTI_WORKSPACE_ENABLED는 기본 false입니다. 실제 OAuth, 서버별 방송 연결 E2E와 팔로워 역할 부여는 계속 PENDING입니다. 사용자는 별도 참가자 테스트 계정이 없으므로 검증을 통과했다고 표현하지 않습니다. Railway 운영은 v5.1.7이며 이번 개발에서 운영 환경변수·트래픽을 변경하지 않습니다.
+
+v5.2.6은 본인 호출 응답의 재확인입니다. 기존 패스 receipt를 현재 Operations 모집 id/game/round와 본인 Discord Queue 항목 id/session/game/round/callAttempt에 정확히 연결해 queue.callResponse로 최소 요약합니다. appliedAt=null이면 confirming, 반영 확인이 있으면 recorded입니다. recorded는 과거 Queue 저장의 확인이며 현재 예약이나 Discord 전달 성공이 아닙니다. 취소된 예약을 다시 만들거나 완료 기록을 join 증거로 바꾸지 않습니다. 참가 확인은 현재 Queue 상태만 표시합니다.
+
+필드 부재·최근 200건 밖으로 정리된 기록·다른 호출·다른 회차는 null, 즉 알 수 없음입니다. 기록 손상과 같은 호출 문맥의 중복 충돌은 participant_call_result_unavailable 503과 고정 안내로 차단합니다. 조회 과정에는 상태 변경·receipt 확인 저장·복구 투영·외부 쓰기가 없습니다. 호출 토큰·digest·타 참가자 식별 정보는 이 요약에 포함하지 않습니다.
+
+연결 중단·해석 불가능한 호출 응답 뒤에는 결과 불확실 안내와 상태 다시 확인 GET을 사용합니다. 자동 POST 재전송이나 새 폴링은 없습니다. 새 Viewer는 expectedCall의 entryId/attempt/sessionId를 전송하고 서버가 현재 호출과 검사합니다. 필드 없는 기존 HTTP 클라이언트는 기존 경로와 호환합니다. Discord 내 시참의 새 호출 버튼은 호출 문맥 digest에 결합하며 원본 토큰은 포함하지 않습니다. 이전 community:act:call_join/call_pass 버튼은 내 시참을 다시 열도록 안내하고 재호출에 임의 응답하지 않습니다. 기존 queuecall 토큰 버튼은 유지합니다.
+
+새 환경변수·권한·Gateway Intent·영구 파일·스키마 변경은 없습니다. v5.2.5의 아래 저장 복구·자동 진행·전체 볼륨 백업 및 롤백 제한을 유지합니다. 로컬 검증·CI·Release·ZIP 결과는 v5.2.6 보고서와 전달 보고서에 실제 실행 결과로 기록합니다.
+
+v5.2.5는 추첨 전 현재 Discord 모집의 호출 패스를 접수 중·마감·접수 시간 경과 상태에서 지원합니다. 정확한 호출 토큰·본인·회차·게임·실제 응답 기한과 잠금을 Queue → Operations 순서의 저장 잠금 안에서 검사합니다. 추첨·참석 확인·종료 뒤에는 409로 거절하고 당첨자·참석·팀을 지우지 않습니다. 일반 모집 버튼의 미루기는 접수 중 제한을 유지합니다. 현재 모집과 무관한 수동 호출은 기존 Queue 전용 패스를 유지하며 임의의 회차 예약을 만들지 않습니다.
+
+예약·postponed·callPassReceipts는 Operations에 함께 저장하고, Queue의 내부 적용·자동 진행 기록으로 반영을 확인합니다. 이는 여러 JSON 파일의 원자적 트랜잭션이 아닙니다. Queue 저장 실패 시 이미 수락한 결정을 재생하고 예약을 다시 계산하지 않습니다. 오래된 스냅샷 대신 저장 잠금 안에서 최신 Operations를 읽고 취소되거나 새 회차에서 소비한 예약을 되살리지 않습니다. 호출별 자동 진행은 같은 대상을 재사용하고 수동 진행 인계·재시작·새 모집 경계를 검사해 다다음 참가자까지 중복 호출하지 않게 합니다. Queue flush는 후속 결정 확인 저장까지 기다립니다.
+
+패스 반영 확인 중 화면에서는 새 응답·예약 변경을 막습니다. 기존 Viewer의 고정 호출 버튼 핸들러를 연결했으며 참가자 응답은 본인 결과만 전달합니다. 다음 참가자 이름·ID, 호출 토큰, 내부 결정·진행 기록과 원시 저장 오류를 참가자 응답에 넣지 않습니다. 기존 단일 서버 서비스에도 최신 종료·운영 잠금 검사를 연결했습니다.
+
+복원 지점에는 Operations의 예약과 결정 기록이 포함되지만 Queue 파일은 포함되지 않습니다. 미완료 결정과 Queue 증거가 맞지 않으면 fail-closed로 중단하며, 기록 삭제나 예약 추측으로 해결하지 않습니다. 전체 /app/data와 기존 키를 보존하고 서로 일치하는 파일을 복구해야 합니다. 이전 코드는 이 결정 복구 절차를 모르므로 롤백 전 요청을 중지하고 미완료 결정·진행을 확인합니다. 이는 운영 절차이며 새 자동 롤백 차단 게이트를 구현한 것은 아닙니다. v5.2.5의 실제 검증 결과는 [직전 검토 보고서](docs/workspace-review-v525.md)에 보존합니다.
+
+v5.2.4는 참가자 내 참가 화면의 정원·남은 자리·마감 안내를 추가합니다. 현재 Discord session snapshot만 집계하며 타인 식별 정보·네이버 합계·수동 Queue를 노출하거나 혼합하지 않습니다. 조회 실패·시간 만료·이전 모집 링크에서 참가 동작을 차단합니다. 멤버십을 새로 확인하고 저장 대기 중 마감 경계도 재확인합니다. 실제 OAuth·E2E는 계속 PENDING입니다.
+
+v5.2.3은 접수 정원(0~1000명, 0 무제한), 중복 처리(기존 순번 유지/거절), 정원 자동 마감을 개별 화면으로 제공합니다. 자동 마감에는 1명 이상의 정원이 필요합니다. revision 충돌을 검사해 서버별 operations에 저장하며 다음 모집부터 적용합니다. 현재 모집 정책과 Queue·예약은 보존합니다. 네이버 게시 시작 시에도 정책을 고정해 늦은 응답이 새 설정을 사용하지 않게 합니다.
+
+접수 정원은 Discord와 네이버에 각각 적용하며 합산 정원이 아닙니다. 별도 수동 Queue 등록은 범위 밖입니다. Discord ID와 네이버 접수 이름의 검증된 계정 매핑이 없으므로 닉네임만으로 사람을 합치지 않습니다. 접수 조건이 아직 저장되지 않은 네이버 서버는 기존 중복 거절을 유지합니다. 추첨 인원은 정원 이하로 제한하고 정원이 줄어도 이월 예약을 삭제하지 않습니다. Discord 다시 열기는 해당 회차 정책을 유지하며, 네이버는 기존 초기화 후 새 모집 흐름을 유지합니다.
+
+새 접수 조건은 기존 operations 파일에 저장되어 Queue/회차 복원 지점에 포함됩니다. 네이버 접수 정책은 네이버 접수 저장소·전체 볼륨 백업으로 보존합니다. 정책 필드가 없는 구형 데이터는 허용하되 명시적으로 잘못된 정책은 저장·복원 경계에서 거절합니다. 코드 롤백은 기존 파일을 보존하지만 이전 코드가 새 접수 정원을 집행하지 않으므로 운영 조건을 다시 확인해야 합니다. 참가자 API는 409·503 상태를 보존하고 저장소·내부 오류의 상세 메시지를 숨깁니다.
+
+v5.2.2 기록: 서버별 참가 선발 규칙·호출 시간과 6단계 가상 운영 연습을 추가했습니다. 기존 역할·채널·현재 모집 정책과 호출 마감을 보존하며 오래된 저장을 거절합니다. 호출 설정은 별도 추가 파일에 저장합니다. 연습은 실제 참가자 데이터를 읽거나 쓰지 않으며 화면·서버 변경 시 초기화합니다. 상세 기록은 [v5.2.2 보고서](docs/workspace-review-v522.md)에 있습니다.
+
+v5.2.1 기록: 운영자 전용 /w/:guildId/readiness는 저장된 설정으로 운영 시작 안내와 개인정보 없는 인수인계 요약을 제공합니다. 토큰 존재를 Production Acceptance 통과로 해석하지 않습니다. 화면 조회는 커넥터 검사·토큰 갱신·역할 변경·글 게시·상태 변경을 실행하지 않고 Discord 권한은 기존 인증 경로에서 확인합니다. 문서까지 포함하는 전체 ZIP이 기준 산출물이며 v2 Update JSON은 허용 목록상 문서를 제외하고 무서명입니다. 서명 필수 정책을 낮추지 않습니다.
+
+사용자 준비: Discord OAuth2에 PUBLIC_BASE_URL origin + /portal/auth/callback을 등록하고 DISCORD_CLIENT_SECRET은 Railway Variables에 저장합니다. 기존 토큰·암호화 키와 /app/data 볼륨을 보존합니다. replica는 1로 유지하고 workspaces/를 포함하는 전체 볼륨을 백업합니다. 실제 계정 검증 전에 포털을 활성화하지 않습니다. v5.2.6만을 위한 새 환경변수나 권한은 없습니다.
+
+Node 요구사항은 >=22.22.2입니다. npm ci, npm run env:check, npm run verify:final을 배포 준비에 사용합니다. 로컬 데모·가상 API·가상 OAuth 테스트는 실제 운영 인증정보를 증명하지 않습니다.

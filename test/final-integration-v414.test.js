@@ -6,6 +6,7 @@ import os from 'node:os';
 import { ParticipationQueueStore } from '../src/participation-queue-store.js';
 import { ParticipationCallService } from '../src/participation-call-service.js';
 import { RecoveryStore } from '../src/recovery-store.js';
+import { OperationsStore } from '../src/operations.js';
 import { performParticipantSelfServiceAction } from '../src/participant-self-service.js';
 import { sanitizeOperatorSnapshot } from '../src/dashboard-access.js';
 import { buildMobileControlModel } from '../public/mobile-control-model.js';
@@ -17,11 +18,6 @@ async function fixture(t){
   const root=await mkdtemp(path.join(os.tmpdir(),'dd-v414-final-'));
   t.after(()=>rm(root,{recursive:true,force:true}));
   return root;
-}
-
-function fakeOperations(initial){
-  const state=structuredClone(initial);
-  return {read:()=>state,async update(fn){return fn(state);}};
 }
 
 const openOperations=()=>({session:{id:'s1',round:7,game:'lol',mode:'aram',phase:'open',count:10,title:'최종 통합 검증',description:'v4.14 final',closeAt:null,applicants:['u1'],postponed:[],winners:[],confirmed:[],excluded:[],teams:[],createdAt:1},reservations:[],history:[],sessionArchive:[],rounds:{lol:7},revision:4});
@@ -54,19 +50,24 @@ test('v4.14 final: delegated mobile snapshot keeps least privilege and removes s
 test('v4.14 final: viewer self-service call pass remains private, updates operations reservation, and survives queue restart',async t=>{
   const root=await fixture(t),queueFile=path.join(root,'queue.json');
   const queue=new ParticipationQueueStore(queueFile);await queue.init();
+  const operationsFile=path.join(root,'operations.json'),operations=new OperationsStore(operationsFile);await operations.init();await operations.write(openOperations());
+  queue.bindOperations(operations);
   const entry=(await queue.register({source:'discord',displayName:'방울이',discordUserId:'u1',sessionId:'s1',game:'lol',mode:'aram',round:7})).entry;
   const discord={participationCall:async()=>({channelId:'c',id:'m'}),completeParticipationCall:async()=>{}};
   const calls=new ParticipationCallService({queue,discord,timeoutSeconds:60});await calls.start();await calls.callEntry(entry.id);
   const rawBefore=queue.read().entries.find(item=>item.id===entry.id);assert.ok(rawBefore.callToken);
-  const operations=fakeOperations(openOperations());
   const result=await performParticipantSelfServiceAction({action:'call_pass',userId:'u1',profile,operations,participationQueue:queue,participationCalls:calls,records:[profile],now:Date.now()});
   assert.equal(result.state.queue.entry.status,'postponed_next');
   assert.equal(JSON.stringify(result).includes(rawBefore.callToken),false);
   assert.ok(operations.read().reservations.some(item=>item.userId==='u1'&&item.round===8));
   calls.stop();
-  const rebooted=new ParticipationQueueStore(queueFile);await rebooted.init();
+  await queue.flush();await operations.flush();
+  const rebootedOperations=new OperationsStore(operationsFile);await rebootedOperations.init();
+  const rebooted=new ParticipationQueueStore(queueFile);await rebooted.init();rebooted.bindOperations(rebootedOperations);await rebooted.recoverCallPasses();
   const restored=rebooted.summary().entries.find(item=>item.id===entry.id);
   assert.equal(restored.status,'postponed_next');assert.equal('callToken' in restored,false);
+  assert.deepEqual(rebootedOperations.read().reservations,[{game:'lol',userId:'u1',round:8}]);
+  assert.equal(rebootedOperations.read().callPassReceipts.length,1);assert.ok(rebootedOperations.read().callPassReceipts[0].appliedAt);
 });
 
 test('v4.14 final: emergency lock and participant-call pause survive restart and preserve response time',async t=>{

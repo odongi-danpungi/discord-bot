@@ -75,7 +75,7 @@ test('a committed pass stays successful when automatic next-call delivery fails'
     await calls.callNext();const raw=queue.read().entries.find(entry=>entry.id===a.id);
     const result=await calls.respond({entryId:a.id,token:raw.callToken,userId:'100',action:'pass'});
     assert.equal(result.entry.status,'postponed_next');
-    assert.match(result.advanceError,/Discord 전송 실패/);
+    assert.match(result.advanceError,/다음 참가자 자동 호출에 실패/);
     assert.equal(result.next,null);
     assert.equal(queue.read().entries.find(entry=>entry.id===b.id).status,'waiting');
     assert.equal(queue.summary().currentCall,null);

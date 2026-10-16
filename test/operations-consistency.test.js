@@ -8,6 +8,14 @@ import { reconcileOperationsState } from '../src/operations-consistency.js';
 
 const baseSession=()=>({id:'s1',round:2,game:'lol',mode:'rift',title:'test',description:'test',count:2,phase:'open',applicants:['a','b'],postponed:[],winners:[],confirmed:[],excluded:[],teams:[],createdAt:1,closeAt:null});
 
+test('closing records deadline only after the actual closeAt and preserves earlier manual closure',()=>{
+  for(const [closeAt,now,expected]of [[2000,1999,'manual'],[2000,2000,'deadline'],[2000,2001,'deadline'],[null,3000,'manual']]){
+    const state={session:{...baseSession(),closeAt},revision:0};
+    applyAction(state,'close',{reason:'untrusted deadline label'},now);
+    assert.equal(state.session.phase,'closed');assert.equal(state.session.closeReason,expected);
+  }
+});
+
 test('reconciliation restores reservation/session links and keeps latest duplicate reservation',()=>{
   const state={session:baseSession(),history:[],reservations:[
     {game:'lol',userId:'a',round:3},
