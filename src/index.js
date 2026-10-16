@@ -4,13 +4,14 @@ import { createViewerAuth } from './viewer.js';
 import { ChzzkVerification, ChzzkVerificationStore } from './chzzk-verification.js';
 import { installChzzkVerificationDiscord } from './chzzk-verification-discord.js';
 import 'dotenv/config';
-import { Client, Events, GatewayIntentBits, PermissionFlagsBits, REST, Routes } from 'discord.js';
+import { Client, Events, GatewayIntentBits, REST, Routes } from 'discord.js';
 import { RegistrationStore } from './store.js';
 import { OperationsStore } from './operations.js';
 import { RecoveryStore } from './recovery-store.js';
 import { loadConfig } from './config.js';
 import { DiscordService, DemoDiscordService } from './discord-service.js';
 import { installInteractions } from './interactions.js';
+import { introductionCommands, setupCommand } from './discord-commands.js';
 import { createApp } from './app.js';
 import { buildLocalSelfCheck } from './recovery-audit.js';
 import { hasMeaningfulOperations, migrateOperationsState } from './operations-guard.js';
@@ -142,15 +143,15 @@ async function main(){
     const ready=new Promise(resolve=>client.once(Events.ClientReady,resolve));
     await client.login(config.token);await ready;
     if(client.user.id!==config.clientId)throw Error('토큰과 애플리케이션 ID가 서로 다릅니다.');
-    const settingCommand={name:'setting',description:'카테고리·채널과 연동 패널을 자동 설정합니다'};
-    if(!config.adminRoleId)settingCommand.default_member_permissions=PermissionFlagsBits.ManageGuild.toString();
+    const settingCommand=setupCommand({adminRoleId:config.adminRoleId});
+    const introductionCommandList=introductionCommands({adminRoleId:config.adminRoleId});
     await new REST({version:'10'}).setToken(config.token).put(Routes.applicationGuildCommands(config.clientId,config.guildId),{body:[
       {name:'연동',description:'내 치지직·게임 정보를 등록하거나 수정합니다'},
-      settingCommand
+      settingCommand,...introductionCommandList
     ]});
     if(config.multiWorkspaceEnabled){
       const rest=new REST({version:'10'}).setToken(config.token);
-      for(const command of [{name:'연동',description:'내 치지직·게임 정보를 등록하거나 수정합니다'},settingCommand])await rest.post(Routes.applicationCommands(config.clientId),{body:{...command,contexts:[0],integration_types:[0]}});
+      for(const command of [{name:'연동',description:'내 치지직·게임 정보를 등록하거나 수정합니다'},settingCommand,...introductionCommandList])await rest.post(Routes.applicationCommands(config.clientId),{body:{...command,contexts:[0],integration_types:[0]}});
     }
     console.log('Discord bot ready: '+client.user.username);
   }
@@ -168,7 +169,7 @@ async function main(){
       if (shuttingDown || recovery.emergencyState().locked) throw Object.assign(Error('인증 작업이 운영 잠금 상태입니다.'), { status: 423 });
     } });
   }
-  if(!config.demo)cleanupInteractions=installInteractions({client,config,store,operations,discord,viewerAuth,chzzkVerification,participationQueue:participationQueueStore,participationCalls,emergencyState:()=>recovery.emergencyState()});
+  if(!config.demo)cleanupInteractions=installInteractions({client,config,store,operations,discord,viewerAuth,chzzkVerification,participationQueue:participationQueueStore,participationCalls,emergencyState:()=>recovery.emergencyState(),operationGuard:callGuard});
   const naverMonitor=new NaverCafeMonitor({store:naverMonitorStore,naver,discord,reporter:event=>runtimeHealth.recordApi({method:'NAVER',path:`naver:${event.operation||'monitor'}`,status:event.ok?200:(Number(event.status)||502),durationMs:Number(event.durationMs)||0}),audit:event=>recovery.audit({...event,actor:'system'})});
   const chzzkLiveMonitor=new ChzzkLiveMonitor({store:chzzkLiveStore,chzzk,discord,reporter:event=>runtimeHealth.recordApi({method:'CHZZK',path:`chzzk:${event.operation||'live-scan'}`,status:event.ok?(Number(event.status)||200):(Number(event.status)||502),durationMs:Number(event.durationMs)||0}),audit:event=>recovery.audit({...event,actor:'system'})});
   if(naverMonitorPending){await recovery.audit({category:'naver',action:'monitor_recovery',summary:`이전 실행의 네이버 Discord 알림 ${naverMonitorPending}건을 미확정 상태로 복구`,actor:'system',details:{uncertain:naverMonitorPending}});runtimeHealth.recordIncident({severity:'warn',source:'naver',code:'naver_monitor_uncertain',summary:'네이버 카페 알림 전송 결과 미확정',detail:`${naverMonitorPending}건은 중복 알림 방지를 위해 자동 재전송하지 않았습니다.`,persist:false});}

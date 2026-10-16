@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildDiscordDriftPlan, discordFixTargetKey, validateSafeFixSelection } from '../src/discord-drift-fix.js';
 import { DISCORD_RECOMMENDED_INSTALL_PERMISSIONS } from '../src/discord-permission-audit.js';
+import { introductionCommands, setupCommand } from '../src/discord-commands.js';
 
 const channels={
   registration:{exists:true,name:'🎟️・시참',permissions:['ViewChannel','SendMessages','ReadMessageHistory','EmbedLinks'],required:['ViewChannel','SendMessages','ReadMessageHistory','EmbedLinks'],parentSynced:true},
@@ -15,7 +16,9 @@ function audit(extra={}){
     {id:'install-commands',status:'pass'},{id:'install-permissions',status:'pass'},{id:'guild-install',status:'pass'},
     {id:'role-hierarchy',status:'pass'}
   ];
-  return {connected:true,demo:false,status:'pass',checks,guild:{id:'g1'},bot:{basePermissions:['ManageChannels','ManageNicknames','ViewChannel','SendMessages','EmbedLinks','ReadMessageHistory']},channels:structuredClone(channels),commands:[{name:'연동',description:'내 치지직·게임 정보를 등록하거나 수정합니다',defaultMemberPermissions:null},{name:'setting',description:'카테고리·채널과 연동 패널을 자동 설정합니다',defaultMemberPermissions:'32'}],manageGuildPermissionValue:'32',adminRole:{id:'',exists:true,name:''},requiredPermissions:[...DISCORD_RECOMMENDED_INSTALL_PERMISSIONS],...extra};
+  const commandPayloads=[{name:'연동',description:'내 치지직·게임 정보를 등록하거나 수정합니다'},setupCommand(),...introductionCommands()];
+  const commands=commandPayloads.map(command=>({...command,defaultMemberPermissions:command.default_member_permissions??null}));
+  return {connected:true,demo:false,status:'pass',checks,guild:{id:'g1'},bot:{basePermissions:['ManageChannels','ManageNicknames','ViewChannel','SendMessages','EmbedLinks','ReadMessageHistory']},channels:structuredClone(channels),commands,manageGuildPermissionValue:'32',adminRole:{id:'',exists:true,name:''},requiredPermissions:[...DISCORD_RECOMMENDED_INSTALL_PERMISSIONS],...extra};
 }
 
 test('clean Discord configuration produces no safe fixes',()=>{
@@ -23,6 +26,41 @@ test('clean Discord configuration produces no safe fixes',()=>{
   assert.equal(plan.status,'pass');
   assert.equal(plan.counts.safe,0);
   assert.equal(plan.canApply,false);
+});
+
+test('missing introduction commands are bounded repairs and preserve unrelated commands',()=>{
+  const input=audit();input.commands=input.commands.filter(command=>!['소개','동동'].includes(command.name));
+  input.commands.push({name:'다른앱명령',description:'운영자가 유지하는 다른 명령',defaultMemberPermissions:'8'});
+  const before=structuredClone(input.commands),plan=buildDiscordDriftPlan(input),repair=plan.items.find(item=>item.action==='sync-guild-commands');
+  assert.deepEqual(repair.changes,['/소개 생성','/동동 생성']);
+  assert.match(repair.detail,/\/연동, \/setting, \/소개, \/동동/);
+  assert.deepEqual(input.commands,before);
+});
+
+test('stale setup and introduction options are detected without removing management permissions',()=>{
+  const input=audit();input.commands.find(command=>command.name==='setting').options=[];
+  input.commands.find(command=>command.name==='소개').options[0].required=false;
+  input.commands.find(command=>command.name==='동동').defaultMemberPermissions=null;
+  const repair=buildDiscordDriftPlan(input).items.find(item=>item.action==='sync-guild-commands');
+  assert.deepEqual(repair.changes,['/setting 옵션 동기화','/소개 옵션 동기화','/동동 기본 권한 없음 → 32']);
+  assert.equal(repair.changes.some(change=>/기본 권한 제한 해제/.test(change)),false);
+});
+
+test('delegated admin-role permissions remain compatible for all management commands',()=>{
+  const input=audit({adminRole:{id:'role1',exists:true,name:'위임운영자'}});
+  for(const command of input.commands)command.defaultMemberPermissions=null;
+  assert.equal(buildDiscordDriftPlan(input).status,'pass');
+  input.commands.find(command=>command.name==='소개').defaultMemberPermissions='32';
+  assert.deepEqual(buildDiscordDriftPlan(input).items.find(item=>item.action==='sync-guild-commands').changes,['/소개 기본 권한 제한 해제']);
+});
+
+test('fetched camelCase options compare equal while obsolete choices and autocomplete are repaired',()=>{
+  const input=audit();
+  for(const command of input.commands)command.options=(command.options||[]).map(({min_length,max_length,...option})=>({...option,minLength:min_length,maxLength:max_length}));
+  assert.equal(buildDiscordDriftPlan(input).status,'pass');
+  input.commands.find(command=>command.name==='소개').options[0].choices=[{name:'고정이름',value:'fixed'}];
+  input.commands.find(command=>command.name==='setting').options[0].autocomplete=true;
+  assert.deepEqual(buildDiscordDriftPlan(input).items.find(item=>item.action==='sync-guild-commands').changes,['/setting 옵션 동기화','/소개 옵션 동기화']);
 });
 
 test('missing core channel and command drift become bounded SAFE actions',()=>{

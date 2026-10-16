@@ -94,7 +94,7 @@ export async function createWorkspaceRuntime({ baseConfig, entry, root, client, 
       if(calls.paused&&calls.pauseReason==='workspace-guard')await calls.resume('workspace-resume');
       await tick();
     };
-    cleanup=installInteractions({...context,client:interactionBus,emergencyState:()=>{try{operationGuard();return recovery.emergencyState();}catch{return {locked:true};}}});
+    cleanup=installInteractions({...context,client:interactionBus,operationGuard:guard,emergencyState:()=>{try{operationGuard();return recovery.emergencyState();}catch{return {locked:true};}}});
     await calls.start();await lock.update({phase:'running',revision:Number(operations.read().revision)||0});
     return {runtime,context,async close(){
       runtime.beginShutdown('workspace-shutdown');calls.stop();cleanup();runtime.close();

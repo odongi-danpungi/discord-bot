@@ -14,7 +14,7 @@ function field(id,label,placeholder,value='',required=false,max=100){
   if(value)input.setValue(value.slice(0,max));return new ActionRowBuilder().addComponents(input);
 }
 const row=(id,label,style=ButtonStyle.Primary)=>new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(id).setLabel(label).setStyle(style));
-export function installInteractions({client,config,store,operations,discord,viewerAuth,chzzkVerification=null,participationQueue=null,participationCalls=null,emergencyState=()=>({locked:false})}){
+export function installInteractions({client,config,store,operations,discord,viewerAuth,chzzkVerification=null,participationQueue=null,participationCalls=null,emergencyState=()=>({locked:false}),operationGuard=()=>{}}){
   const drafts=new Map();let syncTimer;
   const queueSync=()=>{clearTimeout(syncTimer);syncTimer=setTimeout(()=>discord.sync('sync').catch(()=>{}),900);syncTimer.unref();};
   const prune=setInterval(()=>{for(const [key,value] of drafts)if(value.expiresAt<Date.now())drafts.delete(key)},60000);prune.unref();
@@ -34,10 +34,18 @@ export function installInteractions({client,config,store,operations,discord,view
         const service=communityFor({operations,config,discord});
         if(await handleCommunityInteraction(interaction,{operations,config,discord,service,store,viewerAuth,participationQueue,participationCalls}))return;
       }
-      if(interaction.isChatInputCommand()&&interaction.commandName==='setting'){
+      if(interaction.isChatInputCommand()&&['setting','소개','동동'].includes(interaction.commandName)){
         const memberRoles=interaction.member?.roles,hasRole=Array.isArray(memberRoles)?memberRoles.includes(config.adminRoleId):memberRoles?.cache?.has(config.adminRoleId);
         if(!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)&&!(config.adminRoleId&&hasRole))return interaction.reply({content:'서버 관리 권한이 필요합니다.',...ephemeral});
-        await interaction.deferReply(ephemeral);await discord.setup();return interaction.editReply('카테고리·채널과 사용자 연동 패널을 설정했습니다. 반복 실행해도 기존 패널을 갱신합니다.');
+        const guard=()=>{operationGuard();if(emergencyState?.().locked)throw Error('방송 운영이 긴급 잠금 상태입니다. 잠금을 해제한 뒤 다시 시도해 주세요.');};
+        const name=interaction.commandName==='동동'?'동동':interaction.options?.getString('이름',interaction.commandName==='소개');
+        await interaction.deferReply(ephemeral);
+        if(interaction.commandName==='setting'){
+          await discord.setup({...(name==null?{}:{introductionName:name}),guard});
+          return interaction.editReply('카테고리·채널과 사용자 연동 패널을 설정했습니다. 소개 채널의 지정한 이름도 유지됩니다.');
+        }
+        const result=await discord.renameIntroduction(name,{guard});
+        return interaction.editReply({content:`소개 채널을 ${result.name}(으)로 설정했습니다. <#${result.channelId}>`,allowedMentions:{parse:[]}});
       }
       if(interaction.isButton()&&interaction.customId==='avatar_access'){
         if(!current())return interaction.reply({content:'먼저 /연동으로 게임 정보를 등록해 주세요.',...ephemeral});
