@@ -29,20 +29,21 @@ test('clean Discord configuration produces no safe fixes',()=>{
 });
 
 test('missing introduction commands are bounded repairs and preserve unrelated commands',()=>{
-  const input=audit();input.commands=input.commands.filter(command=>!['소개','동동'].includes(command.name));
+  const input=audit();input.commands=input.commands.filter(command=>command.name!=='소개');
   input.commands.push({name:'다른앱명령',description:'운영자가 유지하는 다른 명령',defaultMemberPermissions:'8'});
   const before=structuredClone(input.commands),plan=buildDiscordDriftPlan(input),repair=plan.items.find(item=>item.action==='sync-guild-commands');
-  assert.deepEqual(repair.changes,['/소개 생성','/동동 생성']);
-  assert.match(repair.detail,/\/연동, \/setting, \/소개, \/동동/);
+  assert.deepEqual(repair.changes,['/소개 생성']);
+  assert.match(repair.detail,/\/연동, \/setting, \/소개/);
+  assert.doesNotMatch(repair.detail,/\/동동/);
   assert.deepEqual(input.commands,before);
 });
 
 test('stale setup and introduction options are detected without removing management permissions',()=>{
   const input=audit();input.commands.find(command=>command.name==='setting').options=[];
   input.commands.find(command=>command.name==='소개').options[0].required=false;
-  input.commands.find(command=>command.name==='동동').defaultMemberPermissions=null;
+  input.commands.find(command=>command.name==='소개').defaultMemberPermissions=null;
   const repair=buildDiscordDriftPlan(input).items.find(item=>item.action==='sync-guild-commands');
-  assert.deepEqual(repair.changes,['/setting 옵션 동기화','/소개 옵션 동기화','/동동 기본 권한 없음 → 32']);
+  assert.deepEqual(repair.changes,['/setting 옵션 동기화','/소개 옵션 동기화','/소개 기본 권한 없음 → 32']);
   assert.equal(repair.changes.some(change=>/기본 권한 제한 해제/.test(change)),false);
 });
 

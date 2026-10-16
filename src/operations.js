@@ -6,6 +6,7 @@ import { assertOperationsStateConsistency, reconcileOperationsState } from './op
 import { activeIntakeCount, assertIntakeAdmission, assertIntakeOperationsState, intakeAtCapacity, readIntakeSettings, readSessionIntakePolicy } from './intake-policy.js';
 import { acceptCallPass, acknowledgeCallPasses, assertCallPassOperationsState } from './call-pass.js';
 import { readIntroductionSettings } from './discord-introduction.js';
+import { readSetupTemplate } from './discord-setup-template.js';
 
 export function sample(items, count) {
   const pool = [...items];
@@ -184,7 +185,7 @@ export function applyAction(state, action, data = {}, now = Date.now()) {
 export class OperationsStore extends JsonStore {
   constructor(file) {
     super(file, {session:null,history:[],reservations:[],sessionArchive:[],rounds:{},revision:0}, value => {
-      try{readIntroductionSettings(value);return Boolean(value && Array.isArray(value.history) && (!value.reservations || Array.isArray(value.reservations)) && (!value.sessionArchive || Array.isArray(value.sessionArchive)) && (!value.session || (Array.isArray(value.session.applicants) && Array.isArray(value.session.winners) && Array.isArray(value.session.confirmed) && Array.isArray(value.session.teams))) && assertIntakeOperationsState(value) && assertCallPassOperationsState(value));}
+      try{readIntroductionSettings(value);readSetupTemplate(value);return Boolean(value && Array.isArray(value.history) && (!value.reservations || Array.isArray(value.reservations)) && (!value.sessionArchive || Array.isArray(value.sessionArchive)) && (!value.session || (Array.isArray(value.session.applicants) && Array.isArray(value.session.winners) && Array.isArray(value.session.confirmed) && Array.isArray(value.session.teams))) && assertIntakeOperationsState(value) && assertCallPassOperationsState(value));}
       catch{return false;}
     });
     this.consistencyRecovered=false;this.consistencyChanges=[];
@@ -206,10 +207,12 @@ export class OperationsStore extends JsonStore {
       assertIntakeOperationsState(state);
       assertCallPassOperationsState(state);
       readIntroductionSettings(state);
+      readSetupTemplate(state);
       const result=await fn(state);
       assertIntakeOperationsState(state);
       assertCallPassOperationsState(state);
       readIntroductionSettings(state);
+      readSetupTemplate(state);
       const reconciled=reconcileOperationsState(state);
       assertIntakeOperationsState(reconciled.state);
       for(const key of Object.keys(state))delete state[key];Object.assign(state,reconciled.state);

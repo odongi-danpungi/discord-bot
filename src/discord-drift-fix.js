@@ -57,7 +57,7 @@ export function buildDiscordDriftPlan(audit={}){
     const desired=expected.default_member_permissions??null;
     if(actual!==desired)commandDrift.push(desired===null?`/${expected.name} 기본 권한 제한 해제`:`/${expected.name} 기본 권한 ${actual??'없음'} → ${desired}`);
   }
-  if(commandDrift.length)addSafe(items,{id:'sync-guild-commands',action:'sync-guild-commands',title:'Guild Slash Command 동기화',detail:'프로젝트가 소유한 /연동, /setting, /소개, /동동 명령만 생성·수정합니다. 다른 명령은 삭제하지 않습니다.',changes:commandDrift});
+  if(commandDrift.length)addSafe(items,{id:'sync-guild-commands',action:'sync-guild-commands',title:'Guild Slash Command 동기화',detail:'프로젝트가 소유한 /연동, /setting, /소개 명령만 생성·수정합니다. 다른 명령은 삭제하지 않습니다.',changes:commandDrift});
 
   if(checkBy(audit,'administrator')?.status==='warn')addManual(items,{id:'manual-administrator',title:'Administrator 제거 검토',detail:'고위험 서버 권한은 자동으로 제거하지 않습니다. 봇 역할에서 필요한 최소 권한만 남기세요.'});
   if(checkBy(audit,'privileged-intents')?.status==='warn'||checkBy(audit,'portal-intents')?.status==='warn')addManual(items,{id:'manual-intents',title:'Privileged Intent 정리',detail:'Gateway Intent와 Developer Portal 토글은 실행 설정에 영향을 주므로 자동 변경하지 않습니다. 현재 기능은 Guilds Intent만 사용합니다.'});

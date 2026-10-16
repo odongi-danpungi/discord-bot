@@ -3,26 +3,23 @@ import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, EmbedBuilder
 import { buildDiscordPermissionAudit, DISCORD_RECOMMENDED_INSTALL_PERMISSIONS } from './discord-permission-audit.js';
 import { buildDiscordDriftPlan, validateSafeFixSelection, DISCORD_EXPECTED_COMMANDS } from './discord-drift-fix.js';
 import { recruitmentCard, attendanceCard, resultCard, registrationPanel, actionLabels } from './messages.js';
-import { INTRODUCTION_CATEGORY, normalizeIntroductionName, readIntroductionSettings, introductionChannelName, resolveIntroduction, assertIntroductionTarget, saveIntroductionSettings } from './discord-introduction.js';
+import { normalizeIntroductionName, readIntroductionSettings, introductionChannelName, resolveIntroduction, assertIntroductionTarget, saveIntroductionSettings } from './discord-introduction.js';
 import { canonicalCommandOptions, introductionCommands, setupCommand } from './discord-commands.js';
+import { prepareSetupTemplate,saveSetupTemplate } from './discord-setup-template.js';
 
 async function ensureSetupChannels(guild,operations,{introductionName,guard=()=>{}}={}) {
   guard();
-  const previous=readIntroductionSettings(operations.read());
-  const settings={name:introductionName===undefined?(previous?.name??null):normalizeIntroductionName(introductionName),channelId:previous?.channelId??null,categoryId:previous?.categoryId??null};
   const channels = await guild.channels.fetch();
   guard();
-  const introduction=resolveIntroduction(channels,previous);
-  const desiredName=introductionChannelName(settings);
-  if(introduction.channel)assertIntroductionTarget(channels,introduction.category,introduction.channel,desiredName,guild.members.me);
+  const plan=prepareSetupTemplate(channels,operations.read(),introductionName,guild.members.me),names=plan.names;
   // Save desired naming before Discord writes so a partial setup can be retried.
-  await saveIntroductionSettings(operations,settings,{guard});
+  await saveSetupTemplate(operations,plan,guard);
   const layout = [
-    { name: INTRODUCTION_CATEGORY, channels: [
+    { name:names.welcomeCategory, key:'welcomeCategory', channels: [
       ['📢・공지사항', '게임 추첨 결과와 서버 공지 채널입니다.'],
       ['📃・이용규칙', '서버 이용 규칙을 안내하는 채널입니다.'],
-      [desiredName, '새로 온 멤버를 환영하는 채널입니다.'],
-      ['🐱・방울2', '방울 커뮤니티 안내 채널입니다.'],
+      [names.introduction, '새로 온 멤버를 환영하는 채널입니다.','introduction'],
+      [names.communityInfo, `${plan.name??'방울'} 커뮤니티 안내 채널입니다.`,'communityInfo'],
       ['⭐・어서와요', '새로 온 멤버를 환영하는 채널입니다.']
     ]},
     { name: '📣 ᭄༄・방송 일정', channels: [
@@ -40,29 +37,25 @@ async function ensureSetupChannels(guild,operations,{introductionName,guard=()=>
       ['⚔️・내전', '시청자 내전 모집과 팀 안내 채널입니다.'],
       ['📜・로그', '시참 및 내전 진행 로그 채널입니다.']
     ]},
-    { name: '🔔・방울', channels: [
-      ['방울・방울방울', '커뮤니티 봇 안내 채널입니다.']
+    { name:names.botCategory, key:'botCategory', channels: [
+      [names.botInfo, '커뮤니티 봇 안내 채널입니다.','botInfo']
     ]}
   ];
   const result = {};
   for (const group of layout) {
     guard();
     const categoryAliases = group.name === '🎮 시참' ? ['🎮 ꧁༺ · 시참'] : [];
-    const isIntroductionGroup=group.name===INTRODUCTION_CATEGORY;
-    let category = (isIntroductionGroup&&introduction.category)||channels.find(c => c?.type === ChannelType.GuildCategory && [group.name, ...categoryAliases].includes(c.name));
+    let category = (group.key&&plan.resolved[group.key])||channels.find(c => c?.type === ChannelType.GuildCategory && [group.name, ...categoryAliases].includes(c.name));
     if (!category) category = await guild.channels.create({ name: group.name, type: ChannelType.GuildCategory, reason: 'Game roster bot setup' });
-    else if (category.name !== group.name&&!isIntroductionGroup) await category.setName(group.name, 'Match reference server layout');
-    for (const [name, topic] of group.channels) {
+    if(group.key){plan.ids[group.key]=category.id;await saveSetupTemplate(operations,plan,guard);}
+    if(category.name!==group.name&&(!group.key||plan.rename)){guard();await category.setName(group.name,'Apply server name template');}
+    for (const [name, topic, templateKey] of group.channels) {
       guard();
-      const isIntroduction=isIntroductionGroup&&name===desiredName;
       const aliases = name === '🎟️・시참' ? ['시참', '🎮・시참'] : name === '⚔️・내전' ? ['내전'] : name === '📜・로그' ? ['로그'] : [];
-      let channel = (isIntroduction&&introduction.channel)||channels.find(c => c?.parentId === category.id && [name, ...aliases].includes(c.name) && c.type === ChannelType.GuildText);
+      let channel = (templateKey&&plan.resolved[templateKey])||channels.find(c => c?.parentId === category.id && [name, ...aliases].includes(c.name) && c.type === ChannelType.GuildText);
       if (!channel) channel = await guild.channels.create({ name, type: ChannelType.GuildText, parent: category.id, topic, reason: 'Game roster bot setup' });
-      if(isIntroduction){
-        guard();
-        await saveIntroductionSettings(operations,{...settings,channelId:channel.id,categoryId:category.id},{guard});
-      }
-      if (channel.name !== name) {guard();await channel.setName(name, 'Match reference server layout');}
+      if(templateKey){plan.ids[templateKey]=channel.id;await saveSetupTemplate(operations,plan,guard);}
+      if (channel.name !== name&&(!templateKey||plan.rename||templateKey==='introduction')) {guard();await channel.setName(name, 'Apply server name template');}
       if (name === '🎟️・시참') result.registration = channel;
       if (name === '📢・공지사항') result.results = channel;
       if (name === '⚔️・내전') result.teams = channel;

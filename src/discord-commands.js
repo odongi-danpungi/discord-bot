@@ -5,16 +5,16 @@ const administrativeCommand = (name, description, adminRoleId) => new SlashComma
   .setDescription(description)
   .setDefaultMemberPermissions(adminRoleId ? null : PermissionFlagsBits.ManageGuild);
 
-const introductionName = required => option => option
+const introductionName = (required, description = '소개 채널에 사용할 이름 (예: 시리 → 시리소개)') => option => option
   .setName('이름')
-  .setDescription('소개 채널에 사용할 이름 (예: 동동 → 동동소개)')
+  .setDescription(description)
   .setRequired(required)
   .setMinLength(1)
   .setMaxLength(32);
 
 export function setupCommand({ adminRoleId = '' } = {}) {
   return administrativeCommand('setting', '카테고리·채널과 연동 패널을 자동 설정합니다', adminRoleId)
-    .addStringOption(introductionName(false))
+    .addStringOption(introductionName(false, '자동 생성 채널·카테고리의 XX에 넣을 이름 (예: 시리)'))
     .toJSON();
 }
 
@@ -22,8 +22,6 @@ export function introductionCommands({ adminRoleId = '' } = {}) {
   return [
     administrativeCommand('소개', '자동 설정된 소개 채널의 이름을 변경합니다', adminRoleId)
       .addStringOption(introductionName(true))
-      .toJSON(),
-    administrativeCommand('동동', '자동 설정된 소개 채널을 동동소개로 변경합니다', adminRoleId)
       .toJSON()
   ];
 }

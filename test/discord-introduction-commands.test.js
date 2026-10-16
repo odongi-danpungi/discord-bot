@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { ApplicationCommandOptionType, PermissionFlagsBits } from 'discord.js';
 import { canonicalCommandOptions, introductionCommands, setupCommand } from '../src/discord-commands.js';
 
-test('intro and shortcut commands require server management by default', () => {
+test('generic introduction command requires server management without fixed-name shortcuts', () => {
   const commands = introductionCommands();
-  assert.deepEqual(commands.map(command => command.name), ['소개', '동동']);
+  assert.deepEqual(commands.map(command => command.name), ['소개']);
   for (const command of [...commands, setupCommand()]) {
     assert.equal(command.default_member_permissions, PermissionFlagsBits.ManageGuild.toString());
     assert.ok(command.description.length >= 1 && command.description.length <= 100);
@@ -16,15 +16,21 @@ test('intro and shortcut commands require server management by default', () => {
   assert.equal(option.required, true);
   assert.equal(option.min_length, 1);
   assert.equal(option.max_length, 32);
-  assert.equal(commands[1].options.length, 0);
+  assert.equal(option.choices, undefined);
 });
 
-test('setup preserves the existing description and accepts an optional introduction name', () => {
+test('setup accepts an optional free-form XX template name', () => {
   const command = setupCommand();
   assert.equal(command.name, 'setting');
   assert.equal(command.description, '카테고리·채널과 연동 패널을 자동 설정합니다');
   assert.equal(command.options.length, 1);
-  assert.deepEqual({ ...command.options[0], required: true }, introductionCommands()[0].options[0]);
+  const option = command.options[0];
+  assert.equal(option.name, '이름');
+  assert.equal(option.description, '자동 생성 채널·카테고리의 XX에 넣을 이름 (예: 시리)');
+  assert.equal(option.type, ApplicationCommandOptionType.String);
+  assert.equal(option.min_length, 1);
+  assert.equal(option.max_length, 32);
+  assert.equal(option.choices, undefined);
   assert.equal(command.options[0].required, false);
 });
 
@@ -38,9 +44,9 @@ test('configured admin roles use runtime role checks without an incompatible Dis
 test('command payloads remain independent when reused for guild and global registration', () => {
   const original = introductionCommands();
   original[0].options[0].max_length = 100;
-  original[1].name = 'changed';
+  original[0].name = 'changed';
   assert.equal(introductionCommands()[0].options[0].max_length, 32);
-  assert.equal(introductionCommands()[1].name, '동동');
+  assert.equal(introductionCommands()[0].name, '소개');
   assert.equal(setupCommand().options[0].max_length, 32);
 });
 

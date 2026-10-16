@@ -13,7 +13,7 @@ import { INTRODUCTION_CATEGORY,DEFAULT_INTRODUCTION_CHANNEL,normalizeIntroductio
 async function fixture(t){
   const dir=await mkdtemp(path.join(tmpdir(),'dd-introduction-')),file=path.join(dir,'operations.json');
   const operations=new OperationsStore(file);await operations.init();
-  const cache=new Collection(),renames=[],creates=[];let next=100,failRename=false,canManage=true;
+  const cache=new Collection(),renames=[],creates=[];let next=100,failRename=false,canManage=true,canCreate=true;
   function channel(name,type=ChannelType.GuildText,parentId=null){
     const messages=new Map();const c={id:String(++next),name,type,parentId,
       permissionsFor:()=>({has:()=>canManage}),
@@ -22,11 +22,11 @@ async function fixture(t){
       async send(){const m={id:String(++next),async edit(){}};messages.set(m.id,m);return m;}
     };cache.set(c.id,c);return c;
   }
-  const guild={id:'123456789012345678',members:{me:{id:'bot'}},channels:{async fetch(){return cache;},async create(data){creates.push(data);return channel(data.name,data.type,data.parent);}}};
+  const guild={id:'123456789012345678',members:{me:{id:'bot',permissions:{has:()=>canCreate}}},channels:{async fetch(){return cache;},async create(data){creates.push(data);return channel(data.name,data.type,data.parent);}}};
   const client={user:{id:'bot'},guilds:{async fetch(id){assert.equal(id,guild.id);return guild;}}};
   const service=new DiscordService(client,guild.id,operations);
   t.after(async()=>{await operations.flush();await rm(dir,{recursive:true,force:true});});
-  return {file,operations,cache,channel,guild,client,service,creates,renames,set canManage(value){canManage=value;},set failRename(value){failRename=value;}};
+  return {file,operations,cache,channel,guild,client,service,creates,renames,set canManage(value){canManage=value;},set canCreate(value){canCreate=value;},set failRename(value){failRename=value;}};
 }
 
 test('requested name renames the managed introduction and repeated setup preserves its ID',async t=>{
@@ -134,7 +134,7 @@ function interactionFixture(t){
   const discord={async renameIntroduction(name,{guard}){guard();calls.push({action:'rename',name});return {name:name+'소개',channelId:'123'};},async setup(options){options.guard();calls.push({action:'setup',name:options.introductionName});}};
   const cleanup=installInteractions({client,config,store:{read:()=>[]},operations:{},discord,viewerAuth:{},emergencyState:()=>state,operationGuard(){if(state.blocked)throw Error('운영 재시작 대기 중입니다.');}});t.after(cleanup);
   const handler=client.listeners(Events.InteractionCreate)[0];
-  async function run({command='동동',name='단풍',guildId='guild',manage=true,roles=[]}={}){
+  async function run({command='소개',name='시리',guildId='guild',manage=true,roles=[]}={}){
     const replies=[],i={commandName:command,guildId,user:{id:'user'},member:{roles},memberPermissions:{has:p=>manage&&p===PermissionFlagsBits.ManageGuild},options:{getString:()=>name},isButton:()=>false,isModalSubmit:()=>false,isChatInputCommand:()=>true,deferred:false,replied:false,
       async deferReply(payload){assert.equal(payload.flags,MessageFlags.Ephemeral);this.deferred=true;},async reply(p){replies.push(p.content);this.replied=true;},async editReply(p){replies.push(typeof p==='string'?p:p.content);this.replied=true;},async followUp(p){replies.push(p.content);}};
     await handler(i);return replies;
@@ -142,9 +142,9 @@ function interactionFixture(t){
   return {calls,state,config,run};
 }
 
-test('/동동, generic /소개 and named /setting route through the existing administrative boundary',async t=>{
-  const f=interactionFixture(t);assert.match((await f.run())[0],/동동소개/);await f.run({command:'소개',name:'단풍'});await f.run({command:'setting',name:'봄이'});
-  assert.deepEqual(f.calls,[{action:'rename',name:'동동'},{action:'rename',name:'단풍'},{action:'setup',name:'봄이'}]);
+test('generic /소개 and named /setting accept user-provided names without fixed slash shortcuts',async t=>{
+  const f=interactionFixture(t);assert.match((await f.run())[0],/시리소개/);await f.run({command:'소개',name:'후리나기'});await f.run({command:'setting',name:'봄이'});await f.run({command:'동동'});
+  assert.deepEqual(f.calls,[{action:'rename',name:'시리'},{action:'rename',name:'후리나기'},{action:'setup',name:'봄이'}]);
 });
 
 test('unauthorized, different-server and emergency commands do not mutate channels',async t=>{
@@ -156,5 +156,56 @@ test('configured operator role remains compatible with introduction commands',as
 });
 
 test('runtime draining and restart gates block every introduction or setup command',async t=>{
-  const f=interactionFixture(t);f.state.blocked=true;for(const command of ['동동','소개','setting'])assert.match((await f.run({command}))[0],/재시작 대기/);assert.equal(f.calls.length,0);
+  const f=interactionFixture(t);f.state.blocked=true;for(const command of ['소개','setting'])assert.match((await f.run({command}))[0],/재시작 대기/);assert.equal(f.calls.length,0);
+});
+
+test('one free-form XX value applies to every branded template while generic channels retain their names',async t=>{
+  const f=await fixture(t);await f.service.setup();const original=f.operations.read().discordSetupTemplate.ids,count=f.cache.size;
+  const generic=[...f.cache.values()].filter(c=>!Object.values(original).includes(c.id)).map(c=>({id:c.id,name:c.name}));
+  for(const name of ['동동','시리','후리나기']){
+    await f.service.setup({introductionName:name});const saved=f.operations.read().discordSetupTemplate;
+    assert.equal(saved.name,name);assert.deepEqual(saved.ids,original);
+    assert.equal(f.cache.get(saved.ids.introduction).name,name+'소개');
+    assert.equal(f.cache.get(saved.ids.welcomeCategory).name,`🔔 ᭄༄・${name}! 안내방`);
+    assert.equal(f.cache.get(saved.ids.communityInfo).name,`🐱・${name}2`);
+    assert.equal(f.cache.get(saved.ids.botCategory).name,`🔔・${name}`);
+    assert.equal(f.cache.get(saved.ids.botInfo).name,`${name}・${name}${name}`);
+    for(const c of generic)assert.equal(f.cache.get(c.id).name,c.name);
+    await f.service.setup();assert.equal(f.cache.size,count);assert.equal(f.cache.get(saved.ids.introduction).name,name+'소개');
+  }
+});
+
+test('free-form template persists across restart and migrates previous introduction-only settings',async t=>{
+  const f=await fixture(t),cat=f.channel(INTRODUCTION_CATEGORY,ChannelType.GuildCategory),intro=f.channel('동동소개',ChannelType.GuildText,cat.id);
+  await f.operations.update(s=>{s.discordIntroduction={name:'동동',channelId:intro.id,categoryId:cat.id};});
+  await f.service.setup({introductionName:'시리'});const saved=f.operations.read().discordSetupTemplate;assert.equal(saved.ids.introduction,intro.id);
+  const restored=new OperationsStore(f.file);await restored.init();const service=new DiscordService(f.client,f.guild.id,restored);await service.setup();
+  assert.deepEqual(restored.read().discordSetupTemplate,saved);assert.equal(f.cache.get(saved.ids.botCategory).name,'🔔・시리');
+});
+
+test('all branded targets are preflighted before saving or changing the first category',async t=>{
+  const f=await fixture(t);await f.service.setup();f.channel('🔔・시리',ChannelType.GuildCategory);const before=f.operations.read(),names=[...f.cache.values()].map(c=>c.name);
+  await assert.rejects(f.service.setup({introductionName:'시리'}),/이미 있습니다/);assert.deepEqual(f.operations.read(),before);assert.deepEqual([...f.cache.values()].map(c=>c.name),names);assert.equal(f.renames.length,0);
+});
+
+test('partial Discord template failure retries every branded target by the same IDs',async t=>{
+  const f=await fixture(t);await f.service.setup();const ids=f.operations.read().discordSetupTemplate.ids,count=f.cache.size;f.failRename=true;
+  await assert.rejects(f.service.setup({introductionName:'후리나기'}),/unavailable/);assert.equal(f.operations.read().discordSetupTemplate.name,'후리나기');
+  await f.service.setup();assert.deepEqual(f.operations.read().discordSetupTemplate.ids,ids);assert.equal(f.cache.size,count);
+  assert.equal(f.cache.get(ids.introduction).name,'후리나기소개');assert.equal(f.cache.get(ids.botCategory).name,'🔔・후리나기');
+});
+
+test('invalid template ID maps cannot be persisted',async t=>{
+  const f=await fixture(t);await assert.rejects(f.operations.update(s=>{s.discordSetupTemplate={name:'시리',ids:{unknown:'123'}};}));assert.equal(f.operations.read().discordSetupTemplate,undefined);
+});
+
+test('template logical targets reject duplicate physical channel IDs',async t=>{
+  const f=await fixture(t);await f.service.setup();const before=f.operations.read();
+  await assert.rejects(f.operations.update(s=>{s.discordSetupTemplate.ids.botCategory=s.discordSetupTemplate.ids.welcomeCategory;}),/같은 채널 ID/);
+  assert.deepEqual(f.operations.read(),before);
+});
+
+test('missing category create permission fails before any earlier target is renamed',async t=>{
+  const f=await fixture(t),category=f.channel(INTRODUCTION_CATEGORY,ChannelType.GuildCategory);f.channel(DEFAULT_INTRODUCTION_CHANNEL,ChannelType.GuildText,category.id);f.canCreate=false;
+  await assert.rejects(f.service.setup({introductionName:'시리'}),/생성할 채널 관리 권한/);assert.equal(f.renames.length,0);assert.equal(f.creates.length,0);assert.equal(f.operations.read().discordSetupTemplate,undefined);
 });

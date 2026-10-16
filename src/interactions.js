@@ -34,15 +34,15 @@ export function installInteractions({client,config,store,operations,discord,view
         const service=communityFor({operations,config,discord});
         if(await handleCommunityInteraction(interaction,{operations,config,discord,service,store,viewerAuth,participationQueue,participationCalls}))return;
       }
-      if(interaction.isChatInputCommand()&&['setting','소개','동동'].includes(interaction.commandName)){
+      if(interaction.isChatInputCommand()&&['setting','소개'].includes(interaction.commandName)){
         const memberRoles=interaction.member?.roles,hasRole=Array.isArray(memberRoles)?memberRoles.includes(config.adminRoleId):memberRoles?.cache?.has(config.adminRoleId);
         if(!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)&&!(config.adminRoleId&&hasRole))return interaction.reply({content:'서버 관리 권한이 필요합니다.',...ephemeral});
         const guard=()=>{operationGuard();if(emergencyState?.().locked)throw Error('방송 운영이 긴급 잠금 상태입니다. 잠금을 해제한 뒤 다시 시도해 주세요.');};
-        const name=interaction.commandName==='동동'?'동동':interaction.options?.getString('이름',interaction.commandName==='소개');
+        const name=interaction.options?.getString('이름',interaction.commandName==='소개');
         await interaction.deferReply(ephemeral);
         if(interaction.commandName==='setting'){
           await discord.setup({...(name==null?{}:{introductionName:name}),guard});
-          return interaction.editReply('카테고리·채널과 사용자 연동 패널을 설정했습니다. 소개 채널의 지정한 이름도 유지됩니다.');
+          return interaction.editReply('카테고리·채널과 사용자 연동 패널을 설정했습니다. 입력한 이름을 XX소개 등 이름 템플릿에 적용하고 다음 설정에도 유지합니다.');
         }
         const result=await discord.renameIntroduction(name,{guard});
         return interaction.editReply({content:`소개 채널을 ${result.name}(으)로 설정했습니다. <#${result.channelId}>`,allowedMentions:{parse:[]}});
