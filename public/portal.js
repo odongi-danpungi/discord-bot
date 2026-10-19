@@ -67,7 +67,7 @@ async function page(id){
   const assertCurrent=()=>{if(!current())throw Object.assign(Error('서버 또는 화면이 변경되었습니다. 다시 선택해 주세요.'),{stale:true});};
   notice('');$('title').textContent=titles[id]||'내 참가 상태';$('intro').textContent=workspace.name+' · 운영자';
   const group=menu.find(([,mid])=>mid.some(([,leaves])=>leaves.includes(id))),mid=group?.[1].find(([,leaves])=>leaves.includes(id));$('breadcrumb').textContent=[group?.[0],mid?.[0],titles[id]].filter(Boolean).join(' / ');
-  for(const b of document.querySelectorAll('[data-page]')){b.classList.toggle('active',b.dataset.page===id);if(b.dataset.page===id){b.parentElement.open=true;b.parentElement.parentElement.open=true;}}
+  for(const b of document.querySelectorAll('[data-page]')){b.classList.toggle('active',b.dataset.page===id);if(b.dataset.page===id)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');if(b.dataset.page===id){b.parentElement.open=true;b.parentElement.parentElement.open=true;}}
   const p=el('div');$('panel').replaceChildren(el('p','불러오는 중…','muted'));
   const request=async(endpoint,body)=>{assertCurrent();try{const result=await api(scope+endpoint,body);assertCurrent();return result;}catch(error){assertCurrent();throw error;}};
   const snap=async()=>snapshot=await request('/api/snapshot');

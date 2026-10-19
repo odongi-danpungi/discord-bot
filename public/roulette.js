@@ -45,7 +45,7 @@ function preview(){
  $('custom-fields').hidden=source()!=='custom';$('queue-help').hidden=source()!=='queue';let entries=[];
  try{entries=candidates();$('validation').textContent=entries.length+'개 항목 · 각 항목 '+(100/entries.length).toLocaleString('ko-KR',{maximumFractionDigits:2})+'%';}catch(error){$('validation').textContent=error.message;}
  $('entries-summary').textContent='추첨 항목 '+entries.length+'개';$('entries').replaceChildren(...entries.map(e=>node('li',e.label)));
- $('wheel').style.transition='none';rotation=0;$('wheel').style.transform='rotate(0deg)';wheel(entries);$('wheel-note').textContent=entries.length>16?'항목이 많아 이름은 전체 항목 목록에 표시합니다.':'위쪽 보라색 화살표가 가리키는 항목이 당첨됩니다.';controls();
+ $('wheel').style.transition='none';rotation=0;$('wheel').style.transform='rotate(0deg)';wheel(entries);$('wheel-note').textContent=entries.length>16?'항목이 많아 이름은 전체 항목 목록에 표시합니다.':'위쪽 화살표가 가리키는 항목이 당첨됩니다.';controls();
 }
 function dateText(at){const date=new Date(at);return Number.isFinite(date.getTime())?date.toLocaleString('ko-KR'):'시각 확인 불가';}
 function announce(result,replayed=false){$('winner').textContent=result.winner.label;$('result-detail').textContent=dateText(result.at)+' · '+(result.source==='queue'?'Queue 대기 참가자':'직접 입력')+' · '+result.entries.length+'개 항목';message(replayed?'이미 저장된 같은 요청의 결과를 확인했습니다. 새 추첨을 실행하지 않았습니다.':'추첨 결과를 저장했습니다. Queue 상태는 변경하지 않았습니다.');}
