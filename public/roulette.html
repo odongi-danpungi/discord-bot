@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="ko">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>룰렛 · 댕댕봇</title><link rel="stylesheet" href="roulette.css"><script type="module" src="roulette.js"></script></head>
+<body>
+<a class="skip" href="#content">본문으로 이동</a>
+<header><a class="brand" id="home" href="./">🐾 댕댕봇</a><span>통합 운영 / 방송 도구 / 룰렛</span></header>
+<main id="content">
+ <div class="heading"><div><p class="eyebrow">BROADCAST TOOLS</p><h1>룰렛</h1><p class="muted">오늘의 선택을, 한 번의 룰렛으로.</p></div><a class="button secondary" id="back" href="./">운영 화면으로</a></div>
+ <p class="guidance">모든 항목의 당첨 확률은 같습니다. 서버에 결과를 먼저 저장한 뒤 룰렛을 재생합니다. Queue 순서·참가 상태는 바뀌지 않으며, 외부 서비스에 메시지를 보내지 않습니다.</p>
+ <p id="status" class="status" role="status" aria-live="polite">저장된 상태를 불러오는 중…</p>
+ <div class="layout">
+  <section class="card setup" aria-labelledby="setup-title"><h2 id="setup-title">추첨할 항목</h2>
+   <fieldset id="source-options"><legend>항목 가져오기</legend><label class="choice"><input type="radio" name="source" value="custom" checked>직접 입력</label><label class="choice"><input type="radio" name="source" value="queue">Queue 대기 참가자</label></fieldset>
+   <div id="custom-fields"><label for="items">한 줄에 항목 하나</label><textarea id="items" rows="7" maxlength="17000" placeholder="예: 달콩&#10;봄이&#10;구름" aria-describedby="item-help validation"></textarea><p id="item-help" class="muted small">서로 다른 항목 2~100개 · 각 항목 1~80자</p></div>
+   <p id="queue-help" class="muted" hidden>지금 대기 중인 참가자를 가져옵니다. 새 접수나 상태 변경이 있으면 상태를 다시 불러오세요.</p>
+   <p id="validation" class="small"></p>
+   <details><summary id="entries-summary">추첨 항목 0개</summary><ol id="entries" class="entries"></ol></details>
+   <div class="actions"><button id="spin" type="button" disabled>룰렛 돌리기</button><button id="refresh" type="button" class="secondary" disabled>상태 다시 확인</button><button id="retry" type="button" class="retry" hidden>같은 요청 확인</button></div>
+   <p id="uncertain-help" class="small warning" hidden>결과가 저장되었을 수 있습니다. 새 추첨은 잠시 잠그고, 같은 요청을 확인합니다. 화면을 새로 열었다면 최근 기록을 먼저 확인하세요.</p>
+  </section>
+  <section class="card stage" aria-label="룰렛과 추첨 결과"><div class="wheel-wrap"><span class="pointer" aria-hidden="true"></span><svg id="wheel" viewBox="0 0 400 400" role="img" aria-label="룰렛 항목을 입력해 주세요"></svg><span class="hub" aria-hidden="true">🐾</span></div><p id="wheel-note" class="muted small">항목을 준비하면 룰렛이 표시됩니다.</p><div class="result"><span>추첨 결과</span><strong id="winner" aria-live="polite" aria-atomic="true">아직 추첨하지 않았습니다.</strong><small id="result-detail"></small></div></section>
+ </div>
+ <section class="card history" aria-labelledby="history-title"><div class="history-heading"><h2 id="history-title">최근 추첨 기록</h2><span class="muted small">저장된 결과 · 자동 새로고침 없음</span></div><ol id="history" class="history-list"></ol><p id="history-empty" class="muted">저장된 추첨 기록이 없습니다.</p></section>
+</main>
+</body></html>

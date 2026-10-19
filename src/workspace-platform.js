@@ -214,7 +214,7 @@ export async function createWorkspacePlatform({config,client,fetchImpl=fetch,run
     // Express accepts a trailing slash and case variants for these routes.
     // Apply the same fresh authorization to every spelling of the handler.
     const accessPath=req.path.replace(/\/+$/,'').toLowerCase();
-    const {auth,member}=await authorize(req,guildId,!(req.path==='/viewer'||req.path.startsWith('/viewer/')),['/readiness','/call-settings','/intake-settings','/viewer/api/participation','/viewer/api/account-link'].includes(accessPath));
+    const {auth,member}=await authorize(req,guildId,!(req.path==='/viewer'||req.path.startsWith('/viewer/')),['/readiness','/call-settings','/intake-settings','/api/roulette','/viewer/api/participation','/viewer/api/account-link'].includes(accessPath));
     const target=await runtimeFor(guildId),ctx=target.context;
     if(req.path==='/readiness'&&req.method==='GET'){
       let paused=false;try{legacy?.runtime.operationGuard();target.runtime.operationGuard();}catch{paused=true;}

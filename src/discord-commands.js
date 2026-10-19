@@ -26,6 +26,10 @@ export function introductionCommands({ adminRoleId = '' } = {}) {
   ];
 }
 
+export function rouletteCommand({ adminRoleId = '' } = {}) {
+  return administrativeCommand('룰렛', '내 서버의 방송 룰렛 운영 화면을 엽니다', adminRoleId).toJSON();
+}
+
 // Discord.js exposes fetched command options in camelCase; REST payloads use
 // snake_case. Compare their supported behavior rather than their wire shape.
 export function canonicalCommandOptions(options = []) {

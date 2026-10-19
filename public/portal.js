@@ -39,7 +39,7 @@ function form(fields,submit,label='저장',confirmation=''){
 }
 function table(rows,columns){const t=el('table'),head=el('tr');for(const [,label]of columns)head.append(el('th',label));t.append(head);for(const row of rows||[]){const tr=el('tr');for(const [key]of columns)tr.append(el('td',String(row[key]??'—')));t.append(tr);}return t;}
 const menu=[
-  ['통합 운영',[['방송',['home','queue','open','round','ready','undo']],['운영 준비',['onboarding','handoff']],['참가 설정',['intake-capacity','intake-duplicates','intake-close','recruitment-rules','call-settings']],['방송 도구',['presets','schedule','poll','studio','obs','practice']],['방송 기록',['archive','timeline','stats','notifications']],['커뮤니티',['subscriptions','recruitment','my-panel','recap','publication','guide','tickets']]]],
+  ['통합 운영',[['방송',['home','queue','open','round','ready','undo']],['운영 준비',['onboarding','handoff']],['참가 설정',['intake-capacity','intake-duplicates','intake-close','recruitment-rules','call-settings']],['방송 도구',['presets','schedule','poll','studio','roulette','obs','practice']],['방송 기록',['archive','timeline','stats','notifications']],['커뮤니티',['subscriptions','recruitment','my-panel','recap','publication','guide','tickets']]]],
   ['네이버 카페',[['계정·게시판',['naver','cafe']],['카페 운영',['search','write','memo','monitor']]]],
   ['Discord',[['서버 운영',['discord','members']]]],
   ['CHZZK',[['방송 계정',['chzzk','live']],['팔로워 인증',['panel']]]]
@@ -50,6 +50,7 @@ Object.assign(titles,{presets:'모집 프리셋',timeline:'방송 타임라인',
 Object.assign(titles,{onboarding:'운영 시작 안내',handoff:'운영 인수인계'});
 Object.assign(titles,{'recruitment-rules':'참가 선발 규칙','call-settings':'호출 응답 시간'});
 Object.assign(titles,{'intake-capacity':'접수 인원 제한','intake-duplicates':'중복 접수 처리','intake-close':'정원 도달 마감'});
+Object.assign(titles,{roulette:'룰렛'});
 const knownPage=id=>id==='fairness'||typeof id==='string'&&menu.some(([,middle])=>middle.some(([,leaves])=>leaves.includes(id)));
 const safeText=(value,limit=600)=>typeof value==='string'?value.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g,'').slice(0,limit):'';
 const readinessStatuses={configured:'설정 완료',attention:'확인 필요',pending:'검증 대기',optional:'선택 사항'};
@@ -172,8 +173,8 @@ async function page(id){
   }else if(id==='round'){
     const data=await snap(),s=data.state?.session;p.append(el('h2',s?.title||'진행 중인 모집이 없습니다.'),el('p',s?`${s.round}회차 · ${s.phase} · 신청 ${s.applicants?.length||0}명`:'참가 모집 시작 메뉴에서 모집을 열어 주세요.'));
     const a=el('div',undefined,'actions');for(const [action,label]of [['close','모집 마감'],['reopen','다시 모집'],['draw','랜덤 추첨'],['attendance','참석 확인 시작'],['replace','미응답자 교체'],['teams','팀 배정'],['reshuffle','팀 다시 배정'],['publish','Discord에 게시'],['end','방송 종료']])a.append(button(label,async()=>{if(!confirm(label+' 작업을 실행할까요?'))return;await op(action);await page('round');},action==='end'?'secondary':''));p.append(a);
-  }else if(['ready','undo','community','studio','subscriptions','recruitment','my-panel','recap','publication','guide','tickets'].includes(id)){
-    const files={ready:'operation-tools.html?feature=ready',undo:'operation-tools.html?feature=undo',studio:'game-studio.html'};p.append(el('p','현재 선택한 서버의 전용 화면에서 작업합니다.'),link(titles[id]+' 열기',scope+'/'+(files[id]||'community.html?feature='+encodeURIComponent(id))));
+  }else if(['ready','undo','community','studio','roulette','subscriptions','recruitment','my-panel','recap','publication','guide','tickets'].includes(id)){
+    const files={ready:'operation-tools.html?feature=ready',undo:'operation-tools.html?feature=undo',studio:'game-studio.html',roulette:'roulette.html'};p.append(el('p','현재 선택한 서버의 전용 화면에서 작업합니다.'),link(titles[id]+' 열기',scope+'/'+(files[id]||'community.html?feature='+encodeURIComponent(id))));
   }else if(id==='discord'){
     p.append(el('p','이 서버에 모집·참가 안내 채널과 패널을 준비합니다. 봇에 필요한 채널·메시지 권한이 있어야 합니다.'));actions(button('서버 채널 준비',async()=>{if(confirm('현재 서버에 운영 채널과 안내 패널을 생성·갱신할까요?'))await op('setup');}));
   }else if(id==='members'){

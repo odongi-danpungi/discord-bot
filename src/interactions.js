@@ -28,6 +28,21 @@ export function installInteractions({client,config,store,operations,discord,view
       if(interaction.guildId!==config.guildId)return;
       const userId=interaction.user.id,key=`${config.guildId}:${userId}`;
       const current=()=>store.read().find(r=>r.guildId===config.guildId&&r.discordId===userId);
+      if(interaction.isChatInputCommand()&&interaction.commandName==='룰렛'){
+        const reply=content=>interaction.reply({content,allowedMentions:{parse:[]},...ephemeral});
+        const memberRoles=interaction.member?.roles,hasRole=Array.isArray(memberRoles)?memberRoles.includes(config.adminRoleId):memberRoles?.cache?.has(config.adminRoleId);
+        if(!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)&&!(config.adminRoleId&&hasRole))return reply('서버 관리 권한이 필요합니다.');
+        try{operationGuard();if(emergencyState?.().locked)throw Error('locked');}
+        catch{return reply('방송 운영이 잠겨 있거나 재시작 대기 중입니다. 운영자에게 상태를 확인해 주세요.');}
+        let url;
+        try{
+          const base=new URL(config.publicBaseUrl);
+          if(base.protocol!=='https:'||base.username||base.password||base.search||base.hash||base.pathname!=='/'||!base.hostname.includes('.')||/^(?:\[|\d+\.)/.test(base.hostname)||/(?:^|\.)(?:localhost|local|internal)\.?$/i.test(base.hostname))throw Error('origin');
+          url=new URL(config.multiWorkspaceEnabled?'/portal/':'/roulette.html',base);
+          if(config.multiWorkspaceEnabled){url.searchParams.set('server',config.guildId);url.searchParams.set('page','roulette');}
+        }catch{return reply('룰렛 운영 화면을 열려면 운영자가 PUBLIC_BASE_URL에 공개 HTTPS 기본 주소를 설정해야 합니다.');}
+        return reply(`룰렛 운영 화면: ${url.href}\n운영 계정으로 로그인한 뒤 이용해 주세요. 이 명령은 룰렛을 실행하지 않습니다.`);
+      }
       const emergency=emergencyState?.()||{};const readOnlyInteraction=(interaction.isButton()&&['avatar_access','profile_view','reservation_view','community:home','community:guide','community:history','community:tickets','community:subscriptions'].includes(interaction.customId))||(interaction.isButton()&&interaction.customId.startsWith('guide:')&&!interaction.customId.startsWith('guide:ack'));
       if(emergency.locked&&!readOnlyInteraction){const content='방송 운영이 긴급 잠금 상태입니다. 진행자가 잠금을 해제한 뒤 다시 시도해 주세요.';if(interaction.deferred&&!interaction.replied)return interaction.editReply({content}).catch(()=>{});return interaction.reply({content,...ephemeral});}
       if((interaction.isButton()||interaction.isModalSubmit())&&interaction.customId?.startsWith('community:')){

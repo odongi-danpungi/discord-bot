@@ -22,6 +22,7 @@ export function classifyRuntimeError(error){
   if(['ENOSPC','EACCES','EPERM','EROFS','EIO','EMFILE','ENFILE','EDATA_CORRUPT'].includes(code))return {status:500,kind:'storage',message:'데이터 저장소에 접근하지 못했습니다. 디스크 용량과 파일 권한을 확인해 주세요.'};
   if(typeof code==='number'||['DiscordAPIError','HTTPError','RateLimitError'].includes(error?.name))return {status:502,kind:'discord',message:'Discord 요청 처리에 실패했습니다. 연결과 봇 권한을 확인해 주세요.'};
   if(error?.statusCode===409)return {status:409,kind:'conflict',message:errorText(error)};
+  if(error?.status===503||error?.statusCode===503)return {status:503,kind:'unavailable',message:'현재 운영 데이터를 안전하게 처리할 수 없습니다. 저장소와 운영 상태를 확인한 뒤 다시 시도해 주세요.'};
   if(Number.isInteger(error?.status)&&error.status>=400&&error.status<500)return {status:error.status,kind:'validation',message:errorText(error)};
   if(error?.type==='entity.parse.failed')return {status:400,kind:'validation',message:'JSON 요청 형식을 확인해 주세요.'};
   if(error?.type==='entity.too.large')return {status:413,kind:'validation',message:'요청 데이터가 너무 큽니다.'};

@@ -5,7 +5,7 @@ import { discordId } from './workspace-policy.js';
 const root=new URL('../public/',import.meta.url),cache=new Map();
 const viewer=new Set(['viewer.html','viewer.js','viewer.css','avatar.js','art.js','community-viewer.js']);
 const raceAssets=['live-director.js','avatar.js','avatar-legacy.js','art.js','maps.js','draw-engine.js','race-engine.js','race-renderer.js','race-renderer-legacy.js','replay.js'];
-const product=new Set(['community.html','community-panel.js','community.css','operation-tools.html','operation-tools.js','practice.html','practice.js','practice-model.js','game-studio.html','game-studio.js','studio-core.js','studio.css','login.css',...raceAssets]);
+const product=new Set(['community.html','community-panel.js','community.css','operation-tools.html','operation-tools.js','practice.html','practice.js','practice-model.js','game-studio.html','game-studio.js','studio-core.js','studio.css','login.css','roulette.html','roulette.js','roulette.css',...raceAssets]);
 const broadcast=new Set(['broadcast.html','broadcast.js','broadcast.css','overlay.html','overlay.js','overlay.css',...raceAssets]);
 const productTheme='\n:root{background:#e8ede8;color:#253e3b}body{background:#e8ede8;color:#253e3b}section,article,.card{background:#f6f6f0;border-color:#cbd7cf}p,small{color:#5c706a}button{background:#326b60}a{color:#326b60}header{background:#326b60}header a{color:#fff}input:not([type=checkbox]),select,textarea{background:#fafbf6;color:#253e3b;border-color:#bccfc2}[hidden]{display:none!important}\n';
 export async function workspaceAsset(req,res,guildId){

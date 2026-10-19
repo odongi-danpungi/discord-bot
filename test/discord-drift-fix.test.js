@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildDiscordDriftPlan, discordFixTargetKey, validateSafeFixSelection } from '../src/discord-drift-fix.js';
 import { DISCORD_RECOMMENDED_INSTALL_PERMISSIONS } from '../src/discord-permission-audit.js';
-import { introductionCommands, setupCommand } from '../src/discord-commands.js';
+import { introductionCommands, setupCommand, rouletteCommand } from '../src/discord-commands.js';
 
 const channels={
   registration:{exists:true,name:'🎟️・시참',permissions:['ViewChannel','SendMessages','ReadMessageHistory','EmbedLinks'],required:['ViewChannel','SendMessages','ReadMessageHistory','EmbedLinks'],parentSynced:true},
@@ -16,7 +16,7 @@ function audit(extra={}){
     {id:'install-commands',status:'pass'},{id:'install-permissions',status:'pass'},{id:'guild-install',status:'pass'},
     {id:'role-hierarchy',status:'pass'}
   ];
-  const commandPayloads=[{name:'연동',description:'내 치지직·게임 정보를 등록하거나 수정합니다'},setupCommand(),...introductionCommands()];
+  const commandPayloads=[{name:'연동',description:'내 치지직·게임 정보를 등록하거나 수정합니다'},setupCommand(),...introductionCommands(),rouletteCommand()];
   const commands=commandPayloads.map(command=>({...command,defaultMemberPermissions:command.default_member_permissions??null}));
   return {connected:true,demo:false,status:'pass',checks,guild:{id:'g1'},bot:{basePermissions:['ManageChannels','ManageNicknames','ViewChannel','SendMessages','EmbedLinks','ReadMessageHistory']},channels:structuredClone(channels),commands,manageGuildPermissionValue:'32',adminRole:{id:'',exists:true,name:''},requiredPermissions:[...DISCORD_RECOMMENDED_INSTALL_PERMISSIONS],...extra};
 }

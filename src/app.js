@@ -5,6 +5,7 @@ import { workspaceRouteAllowed, workspacePublicSnapshot } from './workspace-poli
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { readFile } from 'node:fs/promises';
 import { installOperationTools } from './operation-tools.js';
+import { installRouletteRoutes } from './roulette-routes.js';
 import { fairSelect } from './community.js';
 import { createViewerRouter,createViewerAuth } from './viewer.js';
 import { createBroadcastRouter } from './broadcast.js';
@@ -166,7 +167,7 @@ export function createApp({config,store,operations,recovery,discord,discordPolic
     return buildBroadcastPreflight({state:current,records:store.read().filter(record=>record.guildId===config.guildId),participationQueue:queueSummary,participationCalls:callSummary,chzzkLive:chzzkSummary,broadcastOps:broadcastOpsSummary(),runtime:runtimeState,incidents:incidentSummary,emergency:emergencyState(),discord:discordDiagnostics,discordPolicy:policySummary,naver:naverStatus,naverParticipation:naverSummary,demo:config.demo,now:Date.now()});
   };
   const snapshot=async(includeCsrf=true,identity=requestScope.getStore()?.dashboardIdentity||{role:'admin',user:config.dashboardUser||'admin',capabilities:['*']})=>{
-    const current=operations.read();delete current.callPassReceipts;current.broadcastSettings=normalizeBroadcastSettings(current.broadcastSettings);current.broadcastPresets=normalizeBroadcastPresets(current.broadcastPresets);current.broadcastAutomation=normalizeBroadcastAutomation(current.broadcastAutomation,current.broadcastPresets);const policySummary=policyStore.summary(),incidentSummary=incidentStore.summary();
+    const current=operations.read();delete current.callPassReceipts;delete current.roulette;current.broadcastSettings=normalizeBroadcastSettings(current.broadcastSettings);current.broadcastPresets=normalizeBroadcastPresets(current.broadcastPresets);current.broadcastAutomation=normalizeBroadcastAutomation(current.broadcastAutomation,current.broadcastPresets);const policySummary=policyStore.summary(),incidentSummary=incidentStore.summary();
     const full={state:current,records:await records(),...(includeCsrf?{csrf}:{}),demo:config.demo,profile:config.profile,version:APP_VERSION,revision:Number(current.revision)||0,serverTime:Date.now(),access:publicDashboardAccess(identity),emergency:emergencyState(),policyMonitor:{baseline:Boolean(policySummary.baseline),settings:policySummary.monitor,state:policySummary.monitorState,maintenance:policySummary.maintenance,acknowledgement:policySummary.acknowledgement},incidentWorkflow:{status:incidentSummary.status,counts:incidentSummary.counts},participationQueue:participationQueue?.summary?.()||{entries:[],counts:{},activeCount:0,currentCall:null},participationCalls:participationCalls?.state?.()||{timeoutSeconds:60,current:null,calledCount:0},chzzkLive:chzzkLiveMonitor?.summary?.()||{settings:{enabled:false,channelId:'',intervalMinutes:2,discordAlerts:true,maxPages:50},state:{lastStatus:'idle',lastKnownLive:null,baselineReady:false},currentLive:null,events:[],connector:{configured:false}},broadcastOps:broadcastOpsSummary(),broadcastPreflight:broadcastPreflightSnapshot(),recovered:hasRecoveredStore()};
     if(identity?.role==='workspace'){try{participantOperationGuard();}catch{full.emergency={...full.emergency,locked:true};}}
     return identity?.role==='workspace'?workspacePublicSnapshot(full,identity):identity?.role==='operator'?sanitizeOperatorSnapshot(full,identity):full;
@@ -280,7 +281,15 @@ export function createApp({config,store,operations,recovery,discord,discordPolic
   });
   const emergencyMutationAllowed=path=>path.startsWith('/api/broadcast-runbook/')||path==='/api/connector-verification/probe'||path==='/api/production-acceptance/verify'||path==='/api/production-cutover/verify'||path==='/api/production-monitoring/probe'||path==='/api/guard/prepare'||path==='/api/emergency/lock'||path==='/api/emergency/unlock'||path==='/api/recovery/checkpoint'||path==='/api/recovery/restore'||path==='/api/recovery/delete'||path==='/api/backup/verify'||path==='/api/backup/restore'||path==='/api/runtime/client-metric'||path.startsWith('/api/incidents/');
   app.use((req,res,next)=>{if(req.method==='GET'||!req.path.startsWith('/api'))return next();const emergency=emergencyState();if(!emergency.locked||emergencyMutationAllowed(req.path))return next();return res.status(423).json({error:'방송 운영이 긴급 잠금 상태입니다. Recovery 탭에서 상태를 확인한 뒤 잠금을 해제해 주세요.',code:'EMERGENCY_LOCKED',emergency:{locked:true,lockedAt:emergency.lockedAt,reason:emergency.reason}});});
-  app.use('/api',apiIdempotency.middleware({scope:req=>`dashboard:${req.dashboardIdentity?.role||'admin'}:${req.dashboardIdentity?.user||config.dashboardUser||'admin'}`}));
+  const dashboardIdempotency=apiIdempotency.middleware({scope:req=>`dashboard:${req.dashboardIdentity?.role||'admin'}:${req.dashboardIdentity?.user||config.dashboardUser||'admin'}`});
+  app.use('/api',(req,res,next)=>{
+    if(req.method==='POST'&&req.path.replace(/\/+$/,'').toLowerCase()==='/roulette/spin'){
+      const canonicalBase=req.baseUrl==='/api'||/^\/w\/\d{17,20}\/api$/.test(req.baseUrl);
+      if(!canonicalBase||req.path!=='/roulette/spin')return res.status(404).json({error:'지원하지 않는 API 경로입니다.'});
+      return next();
+    }
+    return dashboardIdempotency(req,res,next);
+  });
   app.use('/api',async(req,res,next)=>{
     if(req.method==='GET')return next();
     let expected;
@@ -299,6 +308,7 @@ export function createApp({config,store,operations,recovery,discord,discordPolic
   app.use('/api/operation-tools',(req,_res,next)=>{try{if(req.method!=='GET')participantOperationGuard();next();}catch(e){next(e);}});
   installChzzkVerificationAdminRoutes(app,chzzkVerification,participantOperationGuard);
   installOperationTools({app,operations,participationQueue});
+  installRouletteRoutes({app,operations,participationQueue,guard:participantOperationGuard,csrf});
   app.get(['/', '/index.html'],async(req,res,next)=>{
     if(!config.multiWorkspaceEnabled||req.dashboardIdentity?.role!=='admin')return next();
     try{const html=await readFile(new URL('../public/index.html',import.meta.url),'utf8');

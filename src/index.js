@@ -11,7 +11,7 @@ import { RecoveryStore } from './recovery-store.js';
 import { loadConfig } from './config.js';
 import { DiscordService, DemoDiscordService } from './discord-service.js';
 import { installInteractions } from './interactions.js';
-import { introductionCommands, setupCommand } from './discord-commands.js';
+import { introductionCommands, setupCommand, rouletteCommand } from './discord-commands.js';
 import { createApp } from './app.js';
 import { buildLocalSelfCheck } from './recovery-audit.js';
 import { hasMeaningfulOperations, migrateOperationsState } from './operations-guard.js';
@@ -145,13 +145,14 @@ async function main(){
     if(client.user.id!==config.clientId)throw Error('토큰과 애플리케이션 ID가 서로 다릅니다.');
     const settingCommand=setupCommand({adminRoleId:config.adminRoleId});
     const introductionCommandList=introductionCommands({adminRoleId:config.adminRoleId});
+    const roulette=rouletteCommand({adminRoleId:config.adminRoleId});
     await new REST({version:'10'}).setToken(config.token).put(Routes.applicationGuildCommands(config.clientId,config.guildId),{body:[
       {name:'연동',description:'내 치지직·게임 정보를 등록하거나 수정합니다'},
-      settingCommand,...introductionCommandList
+      settingCommand,...introductionCommandList,roulette
     ]});
     if(config.multiWorkspaceEnabled){
       const rest=new REST({version:'10'}).setToken(config.token);
-      for(const command of [{name:'연동',description:'내 치지직·게임 정보를 등록하거나 수정합니다'},settingCommand,...introductionCommandList])await rest.post(Routes.applicationCommands(config.clientId),{body:{...command,contexts:[0],integration_types:[0]}});
+      for(const command of [{name:'연동',description:'내 치지직·게임 정보를 등록하거나 수정합니다'},settingCommand,...introductionCommandList,roulette])await rest.post(Routes.applicationCommands(config.clientId),{body:{...command,contexts:[0],integration_types:[0]}});
     }
     console.log('Discord bot ready: '+client.user.username);
   }

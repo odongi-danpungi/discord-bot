@@ -4,7 +4,7 @@ import { buildDiscordPermissionAudit, DISCORD_RECOMMENDED_INSTALL_PERMISSIONS } 
 import { buildDiscordDriftPlan, validateSafeFixSelection, DISCORD_EXPECTED_COMMANDS } from './discord-drift-fix.js';
 import { recruitmentCard, attendanceCard, resultCard, registrationPanel, actionLabels } from './messages.js';
 import { normalizeIntroductionName, readIntroductionSettings, introductionChannelName, resolveIntroduction, assertIntroductionTarget, saveIntroductionSettings } from './discord-introduction.js';
-import { canonicalCommandOptions, introductionCommands, setupCommand } from './discord-commands.js';
+import { canonicalCommandOptions, introductionCommands, setupCommand, rouletteCommand } from './discord-commands.js';
 import { prepareSetupTemplate,saveSetupTemplate } from './discord-setup-template.js';
 
 async function ensureSetupChannels(guild,operations,{introductionName,guard=()=>{}}={}) {
@@ -97,7 +97,7 @@ async function ensureCoreChannelsOnly(guild){
 
 async function syncProjectGuildCommands(guild,{adminRoleId=''}={}){
   const current=await guild.commands.fetch(),changes=[];
-  const expectedCommands=[...DISCORD_EXPECTED_COMMANDS.filter(command=>command.name!=='setting'),setupCommand({adminRoleId}),...introductionCommands({adminRoleId})];
+  const expectedCommands=[...DISCORD_EXPECTED_COMMANDS.filter(command=>command.name!=='setting'),setupCommand({adminRoleId}),...introductionCommands({adminRoleId}),rouletteCommand({adminRoleId})];
   for(const expected of expectedCommands){
     const data={name:expected.name,description:expected.description,defaultMemberPermissions:expected.default_member_permissions??null,options:expected.options||[]};
     const existing=[...current.values()].find(command=>command.name===expected.name);

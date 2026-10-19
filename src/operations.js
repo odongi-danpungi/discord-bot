@@ -7,6 +7,7 @@ import { activeIntakeCount, assertIntakeAdmission, assertIntakeOperationsState, 
 import { acceptCallPass, acknowledgeCallPasses, assertCallPassOperationsState } from './call-pass.js';
 import { readIntroductionSettings } from './discord-introduction.js';
 import { readSetupTemplate } from './discord-setup-template.js';
+import { readRoulette } from './roulette.js';
 
 export function sample(items, count) {
   const pool = [...items];
@@ -185,7 +186,7 @@ export function applyAction(state, action, data = {}, now = Date.now()) {
 export class OperationsStore extends JsonStore {
   constructor(file) {
     super(file, {session:null,history:[],reservations:[],sessionArchive:[],rounds:{},revision:0}, value => {
-      try{readIntroductionSettings(value);readSetupTemplate(value);return Boolean(value && Array.isArray(value.history) && (!value.reservations || Array.isArray(value.reservations)) && (!value.sessionArchive || Array.isArray(value.sessionArchive)) && (!value.session || (Array.isArray(value.session.applicants) && Array.isArray(value.session.winners) && Array.isArray(value.session.confirmed) && Array.isArray(value.session.teams))) && assertIntakeOperationsState(value) && assertCallPassOperationsState(value));}
+      try{readIntroductionSettings(value);readSetupTemplate(value);readRoulette(value);return Boolean(value && Array.isArray(value.history) && (!value.reservations || Array.isArray(value.reservations)) && (!value.sessionArchive || Array.isArray(value.sessionArchive)) && (!value.session || (Array.isArray(value.session.applicants) && Array.isArray(value.session.winners) && Array.isArray(value.session.confirmed) && Array.isArray(value.session.teams))) && assertIntakeOperationsState(value) && assertCallPassOperationsState(value));}
       catch{return false;}
     });
     this.consistencyRecovered=false;this.consistencyChanges=[];
@@ -194,7 +195,9 @@ export class OperationsStore extends JsonStore {
     await super.init();
     assertIntakeOperationsState(this.read());
     assertCallPassOperationsState(this.read());
+    readRoulette(this.read());
     const result=reconcileOperationsState(this.read());
+    readRoulette(result.state);
     if(result.changed){
       await super.write(result.state);
       this.consistencyRecovered=true;this.consistencyChanges=result.changes;
@@ -208,13 +211,16 @@ export class OperationsStore extends JsonStore {
       assertCallPassOperationsState(state);
       readIntroductionSettings(state);
       readSetupTemplate(state);
+      readRoulette(state);
       const result=await fn(state);
       assertIntakeOperationsState(state);
       assertCallPassOperationsState(state);
       readIntroductionSettings(state);
       readSetupTemplate(state);
+      readRoulette(state);
       const reconciled=reconcileOperationsState(state);
       assertIntakeOperationsState(reconciled.state);
+      readRoulette(reconciled.state);
       for(const key of Object.keys(state))delete state[key];Object.assign(state,reconciled.state);
       if(reconciled.changed)this.notify({type:'consistency-recovery',detail:`저장 직전 상태 일관성 정규화 · ${reconciled.changes.join(' · ')}`});
       return result;
