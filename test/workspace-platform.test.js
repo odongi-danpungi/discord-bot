@@ -541,3 +541,25 @@ test('creator workspace management requires the original dashboard administrator
   for(let i=0;i<15;i++)assert.equal((await f.request('/creator/api/workspaces',basic('bad-user','bad-password'))).status,403);
   assert.equal((await f.request('/creator/api/workspaces',basic('bad-user','bad-password'))).status,429,'creator alias must not bypass password attempt throttling');
 });
+
+test('cheese donation roulette settings are per server, manager-only, and the OBS feed needs that server token',async t=>{
+  const f=await fixture(t),admin=await f.login(owner),participant=await f.login(person);
+  for(const id of [A,B])assert.equal((await f.request('/portal/api/servers/'+id,admin,{})).status,200);
+  const loaded=await f.request('/w/'+A+'/api/donation-roulette',admin);assert.equal(loaded.status,200,await loaded.clone().text());
+  const initial=await loaded.json();assert.deepEqual(initial.settings,{enabled:false,tiers:[]});assert.equal(initial.revision,0);
+  assert.equal(initial.status.verification,'pending','a subscription is never reported as verified delivery');
+  assert.equal((await f.request('/w/'+A+'/api/donation-roulette',participant)).status,403);
+  assert.equal((await f.request('/w/'+A+'/api/donation-roulette',{...admin,'X-CSRF-Token':'bad'},{enabled:true,tiers:[{minAmount:1000,items:['a','b']}],revision:0})).status,403);
+  const saved=await f.request('/w/'+A+'/api/donation-roulette',admin,{enabled:true,tiers:[{minAmount:1000,items:['물 마시기','스쿼트']}],revision:0});
+  assert.equal(saved.status,200,await saved.clone().text());assert.equal((await saved.json()).revision,1);
+  assert.equal((await(await f.request('/w/'+B+'/api/donation-roulette',admin)).json()).revision,0,'other server keeps its own settings');
+  const obs=await(await f.request('/w/'+A+'/obs',admin)).json();
+  assert.match(obs.donationRouletteUrl,new RegExp('/w/'+A+'/broadcast/donation-roulette\\?token='));
+  const feed=new URL(obs.donationRouletteUrl);feed.pathname=feed.pathname.replace('/donation-roulette','/api/donation-roulette');
+  assert.equal((await fetch(f.base+feed.pathname)).status,403);
+  const ok=await fetch(f.base+feed.pathname+feed.search);assert.equal(ok.status,200);assert.deepEqual((await ok.json()).events,[]);
+  const otherToken=new URL((await(await f.request('/w/'+B+'/obs',admin)).json()).donationRouletteUrl).search;
+  assert.equal((await fetch(f.base+feed.pathname+otherToken)).status,403,'another server token cannot read this feed');
+  const page=await fetch(f.base+new URL(obs.donationRouletteUrl).pathname+feed.search);assert.equal(page.status,200);
+  assert.match(await page.text(),new RegExp('/w/'+A+'/broadcast/donation-roulette\\.js'));
+});
