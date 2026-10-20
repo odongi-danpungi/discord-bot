@@ -39,7 +39,8 @@ function form(fields,submit,label='저장',confirmation=''){
 }
 function table(rows,columns){const t=el('table'),head=el('tr');for(const [,label]of columns)head.append(el('th',label));t.append(head);for(const row of rows||[]){const tr=el('tr');for(const [key]of columns)tr.append(el('td',String(row[key]??'—')));t.append(tr);}return t;}
 const menu=[
-  ['통합 운영',[['방송',['home','queue','open','round','ready','undo']],['운영 준비',['onboarding','handoff']],['참가 설정',['intake-capacity','intake-duplicates','intake-close','recruitment-rules','call-settings']],['방송 도구',['presets','schedule','poll','studio','roulette','donation-roulette','obs','practice']],['방송 기록',['archive','timeline','stats','notifications']],['커뮤니티',['subscriptions','recruitment','my-panel','recap','publication','guide','tickets']]]],
+  ['통합 운영',[['방송',['home','queue','open','round','ready','undo']],['운영 준비',['onboarding','handoff']],['참가 설정',['intake-capacity','intake-duplicates','intake-close','recruitment-rules','call-settings']],['방송 도구',['presets','schedule','poll','studio','obs','practice']],['방송 기록',['archive','timeline','stats','notifications']],['커뮤니티',['subscriptions','recruitment','my-panel','recap','publication','guide','tickets']]]],
+  ['방송',[['룰렛',['roulette','donation-roulette']]]],
   ['네이버 카페',[['계정·게시판',['naver','cafe']],['카페 운영',['search','write','memo','monitor']]]],
   ['Discord',[['서버 운영',['discord','members']]]],
   ['CHZZK',[['방송 계정',['chzzk','live']],['팔로워 인증',['panel']]]]
@@ -50,7 +51,7 @@ Object.assign(titles,{presets:'모집 프리셋',timeline:'방송 타임라인',
 Object.assign(titles,{onboarding:'운영 시작 안내',handoff:'운영 인수인계'});
 Object.assign(titles,{'recruitment-rules':'참가 선발 규칙','call-settings':'호출 응답 시간'});
 Object.assign(titles,{'intake-capacity':'접수 인원 제한','intake-duplicates':'중복 접수 처리','intake-close':'정원 도달 마감'});
-Object.assign(titles,{roulette:'룰렛','donation-roulette':'치즈 후원 룰렛'});
+Object.assign(titles,{roulette:'직접 입력 룰렛','donation-roulette':'치즈 후원 룰렛'});
 const knownPage=id=>id==='fairness'||typeof id==='string'&&menu.some(([,middle])=>middle.some(([,leaves])=>leaves.includes(id)));
 const safeText=(value,limit=600)=>typeof value==='string'?value.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g,'').slice(0,limit):'';
 const readinessStatuses={configured:'설정 완료',attention:'확인 필요',pending:'검증 대기',optional:'선택 사항'};
@@ -68,6 +69,8 @@ async function page(id){
   notice('');$('title').textContent=titles[id]||'내 참가 상태';$('intro').textContent=workspace.name+' · 운영자';
   const group=menu.find(([,mid])=>mid.some(([,leaves])=>leaves.includes(id))),mid=group?.[1].find(([,leaves])=>leaves.includes(id));$('breadcrumb').textContent=[group?.[0],mid?.[0],titles[id]].filter(Boolean).join(' / ');
   for(const b of document.querySelectorAll('[data-page]')){b.classList.toggle('active',b.dataset.page===id);if(b.dataset.page===id)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');if(b.dataset.page===id){b.parentElement.open=true;b.parentElement.parentElement.open=true;}}
+  // Expand only the selected path right away (toggle events are asynchronous), across top-level categories too.
+  const holds=node=>[...node.querySelectorAll('[data-page]')].some(item=>item.dataset.page===id);for(const top of $('menu').querySelectorAll(':scope>details')){const has=holds(top);top.open=has;if(has)for(const mid of top.querySelectorAll(':scope>details'))mid.open=holds(mid);}
   const p=el('div');$('panel').replaceChildren(el('p','불러오는 중…','muted'));
   const request=async(endpoint,body)=>{assertCurrent();try{const result=await api(scope+endpoint,body);assertCurrent();return result;}catch(error){assertCurrent();throw error;}};
   const snap=async()=>snapshot=await request('/api/snapshot');

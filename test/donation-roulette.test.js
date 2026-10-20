@@ -248,7 +248,9 @@ test('portal donation screen saves tiers with the loaded revision and never clai
   await dom.window.eval('(async()=>{' + source.replace(/^import \{newPractice,practiceAction\} from '\.\/practice-model\.js';\r?\n/, '') + ';globalThis.portalTest={page};})()');
   await dom.window.portalTest.page('donation-roulette');
   const doc = dom.window.document, panel = doc.getElementById('panel');
-  assert.equal(doc.getElementById('breadcrumb').textContent, '통합 운영 / 방송 도구 / 치즈 후원 룰렛');
+  assert.equal(doc.getElementById('breadcrumb').textContent, '방송 / 룰렛 / 치즈 후원 룰렛');
+  assert.deepEqual([...doc.querySelectorAll('#menu>details>summary')].map(s => s.textContent), ['통합 운영', '방송', '네이버 카페', 'Discord', 'CHZZK']);
+  assert.equal(doc.querySelector('#menu [data-page=donation-roulette]').closest('#menu>details').querySelector('summary').textContent, '방송');
   assert.match(panel.textContent, /후원 구독 요청 완료/); assert.match(panel.textContent, /실제 후원 수신 검증 대기/);
   assert.match(panel.textContent, /<b>봄이<\/b>/); assert.equal(panel.querySelector('td b'), null, 'donor nickname stays inert text');
   doc.querySelector('[name=enabled]').checked = true;

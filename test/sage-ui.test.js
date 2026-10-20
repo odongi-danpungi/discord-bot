@@ -55,7 +55,7 @@ test('portal marks only the selected leaf as the current page and keeps its pare
   assert.deepEqual(current.map(b => b.dataset.page), ['roulette']);
   assert.equal(current[0].parentElement.open, true);
   assert.equal(current[0].parentElement.parentElement.open, true);
-  assert.equal(doc.getElementById('breadcrumb').textContent, '통합 운영 / 방송 도구 / 룰렛');
+  assert.equal(doc.getElementById('breadcrumb').textContent, '방송 / 룰렛 / 직접 입력 룰렛');
   await dom.window.portalTest.page('queue');
   assert.deepEqual([...doc.querySelectorAll('[aria-current="page"]')].map(b => b.dataset.page), ['queue']);
   assert.equal([...doc.querySelectorAll('#menu>details')].filter(d => d.open).length, 1, 'only the selected top group stays expanded');

@@ -17,7 +17,7 @@ Discord·네이버 카페·CHZZK를 연결하는 방송 운영 봇. 여러 방�
 ## UI (세이지 워크스페이스)
 - 토큰: 배경 #E9EEE7, 카드 #F5F7F1, 사이드바 #E0E7DD, 글자 #25372C, 보조 #5B6E60, 구분선 #CDD7CA, 강조 #456B59. (`public/portal.css`, `login.css`, `roulette.css`)
 - 로고는 `public/brand-logo.svg`(사용자 제공 선화). 임의 새 로고 금지.
-- 대분류 → 중분류 → 소분류, 한 화면에 한 기능. 포털 메뉴 정의: `public/portal.js`의 `menu`/`titles`.
+- 대분류 → 중분류 → 소분류, 한 화면에 한 기능. 포털 메뉴 정의: `public/portal.js`의 `menu`/`titles`. 대분류: 통합 운영 · 방송(룰렛: 직접 입력 룰렛, 치즈 후원 룰렛) · 네이버 카페 · Discord · CHZZK.
 - 확인 크기: PC 1440×1024, 모바일 390×844, 360폭.
 - 2차 통일 대상(아직 기존 색): `index.html`+`style.css`/`business-theme.css`, `mobile-control.*`, `community.*`, `viewer.*`, `broadcast.*`/`overlay.*`.
 
