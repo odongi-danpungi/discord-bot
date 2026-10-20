@@ -1,6 +1,6 @@
 import { createHash, randomInt, randomUUID } from 'node:crypto';
 import { JsonStore } from './json-store.js';
-import { normalizeRouletteItems, readRoulette, spinRoulette } from './roulette.js';
+import { ROULETTE_LIMITS, STORED_ROULETTE_LIMITS, normalizeRouletteItems, readRoulette, spinRoulette } from './roulette.js';
 import { ChzzkDonationSession } from './chzzk-session.js';
 
 // CHZZK cheese donation -> roulette. Each donation at or above a tier's minimum
@@ -17,12 +17,12 @@ const SPIN_MODES = ['once', 'repeat'];
 const MIN_AMOUNT = 1, MAX_AMOUNT = 100000000;
 const EVENT_STATUSES = ['spun', 'skipped'];
 
-function tiers(value) {
+function tiers(value, limits = ROULETTE_LIMITS) {
   if (!Array.isArray(value) || value.length < 1 || value.length > DONATION_TIER_LIMIT) throw fail(`금액 구간은 1~${DONATION_TIER_LIMIT}개로 설정해 주세요.`);
   const result = value.map(tier => {
     if (!plain(tier) || Object.keys(tier).length !== 2 || !Object.hasOwn(tier, 'minAmount') || !Object.hasOwn(tier, 'items')) throw fail('금액 구간 형식을 확인해 주세요.');
     if (!Number.isSafeInteger(tier.minAmount) || tier.minAmount < MIN_AMOUNT || tier.minAmount > MAX_AMOUNT) throw fail('최소 후원 금액은 1~100,000,000치즈 사이의 정수로 입력해 주세요.');
-    return { minAmount: tier.minAmount, items: normalizeRouletteItems(tier.items).map(entry => entry.label) };
+    return { minAmount: tier.minAmount, items: normalizeRouletteItems(tier.items, limits).map(entry => entry.label) };
   }).sort((a, b) => a.minAmount - b.minAmount);
   for (let i = 1; i < result.length; i++) if (result[i].minAmount === result[i - 1].minAmount) throw fail('같은 최소 금액의 구간을 두 번 만들 수 없습니다.');
   return result;
@@ -75,7 +75,8 @@ function validate(state) {
   if (state.settings.tiers.length === 0 && state.settings.enabled) return false;
   if (Object.hasOwn(state.settings, 'spinMode') && !SPIN_MODES.includes(state.settings.spinMode)) return false;
   if (Object.hasOwn(state.settings, 'maxSpins') && !validMaxSpins(state.settings.maxSpins)) return false;
-  if (state.settings.tiers.length) { try { if (JSON.stringify(tiers(state.settings.tiers)) !== JSON.stringify(state.settings.tiers)) return false; } catch { return false; } }
+  // Saved settings stay readable under the earlier 100-item / 80-character rule; new saves use the stricter one.
+  if (state.settings.tiers.length) { try { if (JSON.stringify(tiers(state.settings.tiers, STORED_ROULETTE_LIMITS)) !== JSON.stringify(state.settings.tiers)) return false; } catch { return false; } }
   return state.events.every(validEvent);
 }
 

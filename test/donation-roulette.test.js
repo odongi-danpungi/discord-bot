@@ -324,3 +324,19 @@ test('OBS page labels test donations and shows which spin of a multi-spin donati
   const donor = dom.window.document.getElementById('donor').textContent;
   assert.match(donor, /^\[테스트\] 테스트님 2,000치즈/); assert.match(donor, /1\/2회/); assert.match(donor, /테스트 후원/);
 });
+
+test('donation tiers follow the 99-item / 30-character rule but older saved tiers still load', async t => {
+  const store = await tempStore(t);
+  await assert.rejects(store.configure({ enabled: true, tiers: [{ minAmount: 1000, items: Array.from({ length: 100 }, (_, i) => 'x' + i) }], revision: 0 }), /2~99개/);
+  await assert.rejects(store.configure({ enabled: true, tiers: [{ minAmount: 1000, items: ['가'.repeat(31), 'b'] }], revision: 0 }), /1~30자/);
+  const saved = await store.configure({ enabled: true, tiers: [{ minAmount: 1000, items: Array.from({ length: 99 }, (_, i) => 'x' + i) }], revision: 0 });
+  assert.equal(saved.settings.tiers[0].items.length, 99);
+  // A file written before the limit change (100 items, 80-character item) must keep loading.
+  const { writeFile } = await import('node:fs/promises');
+  const legacy = { version: 1, revision: 3, settings: { enabled: true, tiers: [{ minAmount: 500, items: ['가'.repeat(80), ...Array.from({ length: 99 }, (_, i) => 'y' + i)] }] }, events: [] };
+  await writeFile(store.file, JSON.stringify(legacy));
+  const reloaded = new DonationRouletteStore(store.file.replace(/\.donation-roulette\.json$/, '') + '-copy');
+  await writeFile(reloaded.file, JSON.stringify(legacy));
+  await reloaded.init();
+  assert.equal(reloaded.snapshot().settings.tiers[0].items.length, 100);
+});

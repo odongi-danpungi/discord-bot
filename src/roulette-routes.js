@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { canDashboard } from './dashboard-access.js';
-import { normalizeRouletteItems, readRoulette, replayRoulette, spinRoulette } from './roulette.js';
+import { ROULETTE_LIMITS, normalizeRouletteItems, readRoulette, replayRoulette, spinRoulette } from './roulette.js';
 
 const fail=(message,status=400)=>Object.assign(Error(message),{status});
 const revision=value=>Number.isSafeInteger(value)&&value>=0;
@@ -22,7 +22,7 @@ function pool(participationQueue){
   const snapshot=participationQueue.read();
   if(!revision(snapshot.revision)||!Array.isArray(snapshot.entries))throw fail('Queue 상태를 확인할 수 없습니다.',503);
   const waiting=snapshot.entries.filter(entry=>entry.status==='waiting').sort((a,b)=>a.position-b.position||a.sequence-b.sequence);
-  return {revision:snapshot.revision,count:waiting.length,entries:waiting.length>100?[]:waiting.map(entry=>({id:entry.id,label:entry.displayName}))};
+  return {revision:snapshot.revision,count:waiting.length,entries:waiting.length>ROULETTE_LIMITS.maxItems?[]:waiting.map(entry=>({id:entry.id,label:entry.displayName}))};
 }
 
 /** Routes inherit dashboard/workspace authentication, CSRF and capability checks.
@@ -34,7 +34,7 @@ export function installRouletteRoutes({app,operations,participationQueue,guard,c
       const state=readRoulette(operations.read()),allowed=mayReadQueue(req.dashboardIdentity);
       let queue={revision:null,count:0,entries:[]},queueMessage='Queue가 준비되지 않았습니다. 직접 입력을 사용해 주세요.';
       if(!allowed)queueMessage='Queue 참가자를 보려면 Queue 운영 권한이 필요합니다.';
-      else if(participationQueue){queue=pool(participationQueue);queueMessage=queue.count>100?'Queue 대기 참가자가 100명을 초과했습니다. 임의로 일부를 추첨하지 않습니다.':queue.count<2?'Queue 대기 참가자가 2명 이상이어야 합니다.':'대기 중인 참가자만 포함하며 Queue 순서와 상태는 변경하지 않습니다.';}
+      else if(participationQueue){queue=pool(participationQueue);queueMessage=queue.count>ROULETTE_LIMITS.maxItems?`Queue 대기 참가자가 ${ROULETTE_LIMITS.maxItems}명을 초과했습니다. 임의로 일부를 추첨하지 않습니다.`:queue.count<2?'Queue 대기 참가자가 2명 이상이어야 합니다.':'대기 중인 참가자만 포함하며 Queue 순서와 상태는 변경하지 않습니다.';}
       res.set('Cache-Control','no-store').json({csrf:req.dashboardIdentity?.role==='workspace'?req.dashboardIdentity.csrf:csrf,revision:state.revision,queueRevision:queue.revision,queueEntries:queue.entries,queueCount:queue.count,queueMessage,history:allowed?state.history:state.history.filter(result=>result.source!=='queue')});
     }catch(error){next(error);}
   });
@@ -51,7 +51,7 @@ export function installRouletteRoutes({app,operations,participationQueue,guard,c
         if(input.source==='queue'){
           const queue=pool(participationQueue);
           if(queue.revision!==req.body.queueRevision)throw fail('Queue가 변경됐습니다. 최신 참가자를 확인한 뒤 다시 실행하세요.',409);
-          if(queue.count<2||queue.count>100)throw fail('Queue 대기 참가자는 2~100명이어야 합니다.');
+          if(queue.count<2||queue.count>ROULETTE_LIMITS.maxItems)throw fail(`Queue 대기 참가자는 2~${ROULETTE_LIMITS.maxItems}명이어야 합니다.`);
           input.entries=queue.entries;
         }
         // Pool capture and winner selection are synchronous. No Queue write or

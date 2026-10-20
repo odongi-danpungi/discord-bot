@@ -132,7 +132,7 @@ test('Queue absent and oversized pools fail closed without blocking custom roule
     for(let i=0;i<101;i++)state.entries.push({id:randomUUID(),sequence:i+1,position:i+1,source:'dashboard',status:'waiting',identityKey:'test:'+i,displayName:'참가자 '+i,createdAt:1,updatedAt:1});
     state.revision=1;state.nextSequence=102;
   });
-  const crowded=await large.view();assert.equal(crowded.data.queueCount,101);assert.deepEqual(crowded.data.queueEntries,[]);assert.match(crowded.data.queueMessage,/100명/);
+  const crowded=await large.view();assert.equal(crowded.data.queueCount,101);assert.deepEqual(crowded.data.queueEntries,[]);assert.match(crowded.data.queueMessage,/99명/);
   assert.equal((await large.spin({requestId:randomUUID(),expectedRevision:0,source:'queue',queueRevision:1})).status,400);assert.equal(Object.hasOwn(large.operations.read(),'roulette'),false);
 });
 

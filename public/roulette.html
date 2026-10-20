@@ -11,7 +11,7 @@
  <div class="layout">
   <section class="card setup" aria-labelledby="setup-title"><h2 id="setup-title">추첨할 항목</h2>
    <fieldset id="source-options"><legend>항목 가져오기</legend><label class="choice"><input type="radio" name="source" value="custom" checked>직접 입력</label><label class="choice"><input type="radio" name="source" value="queue">Queue 대기 참가자</label></fieldset>
-   <div id="custom-fields"><label for="items">한 줄에 항목 하나</label><textarea id="items" rows="7" maxlength="17000" placeholder="예: 달콩&#10;봄이&#10;구름" aria-describedby="item-help validation"></textarea><p id="item-help" class="muted small">서로 다른 항목 2~100개 · 각 항목 1~80자</p></div>
+   <div id="custom-fields"><label for="items">한 줄에 항목 하나</label><textarea id="items" rows="7" maxlength="4000" placeholder="예: 달콩&#10;봄이&#10;구름" aria-describedby="item-help validation"></textarea><p id="item-help" class="muted small">서로 다른 항목 2~99개 · 각 항목 1~30자 (공백 포함)</p></div>
    <p id="queue-help" class="muted" hidden>지금 대기 중인 참가자를 가져옵니다. 새 접수나 상태 변경이 있으면 상태를 다시 불러오세요.</p>
    <p id="validation" class="small"></p>
    <details><summary id="entries-summary">추첨 항목 0개</summary><ol id="entries" class="entries"></ol></details>

@@ -12,10 +12,10 @@ function validEntries(entries){return Array.isArray(entries)&&entries.length<=10
 function validResult(result){return result&&typeof result.id==='string'&&['custom','queue'].includes(result.source)&&validEntries(result.entries)&&result.entries.length>=2&&Number.isInteger(result.winnerIndex)&&result.winnerIndex>=0&&result.winnerIndex<result.entries.length&&result.winner?.id===result.entries[result.winnerIndex].id&&result.winner?.label===result.entries[result.winnerIndex].label&&Number.isFinite(new Date(result.at).getTime());}
 function customEntries(){
  const raw=$('items').value.split(/\r?\n/).filter(s=>s.trim());
- if(raw.some(s=>s.length>320||/[\p{Cc}\p{Cf}\p{Cs}]/u.test(s)))throw Error('각 항목은 제어 문자 없이 1~80자로 입력해 주세요.');
+ if(raw.some(s=>s.length>120||/[\p{Cc}\p{Cf}\p{Cs}]/u.test(s)))throw Error('각 항목은 제어 문자 없이 1~30자로 입력해 주세요.');
  const labels=raw.map(s=>s.normalize('NFC').trim());
- if(labels.length<2||labels.length>100)throw Error('서로 다른 항목을 2~100개 입력해 주세요.');
- if(labels.some(s=>Array.from(s).length>80))throw Error('각 항목은 제어 문자 없이 1~80자로 입력해 주세요.');
+ if(labels.length<2||labels.length>99)throw Error(`서로 다른 항목을 2~99개 입력해 주세요. (현재 ${labels.length}개)`);
+ if(labels.some(s=>Array.from(s).length>30))throw Error('각 항목은 제어 문자 없이 1~30자로 입력해 주세요.');
  if(new Set(labels.map(s=>s.toLowerCase())).size!==labels.length)throw Error('중복된 항목을 제거해 주세요. 같은 항목으로 확률을 늘릴 수 없습니다.');
  return labels.map((label,i)=>({id:'preview-'+i,label}));
 }
@@ -43,7 +43,7 @@ function wheel(entries,winnerIndex){
 }
 function preview(){
  $('custom-fields').hidden=source()!=='custom';$('queue-help').hidden=source()!=='queue';let entries=[];
- try{entries=candidates();$('validation').textContent=entries.length+'개 항목 · 각 항목 '+(100/entries.length).toLocaleString('ko-KR',{maximumFractionDigits:2})+'%';}catch(error){$('validation').textContent=error.message;}
+ try{entries=candidates();$('validation').textContent=entries.length+'/99개 항목 · 각 항목 '+(100/entries.length).toLocaleString('ko-KR',{maximumFractionDigits:2})+'%';}catch(error){$('validation').textContent=error.message;}
  $('entries-summary').textContent='추첨 항목 '+entries.length+'개';$('entries').replaceChildren(...entries.map(e=>node('li',e.label)));
  $('wheel').style.transition='none';rotation=0;$('wheel').style.transform='rotate(0deg)';wheel(entries);$('wheel-note').textContent=entries.length>16?'항목이 많아 이름은 전체 항목 목록에 표시합니다.':'위쪽 화살표가 가리키는 항목이 당첨됩니다.';controls();
 }

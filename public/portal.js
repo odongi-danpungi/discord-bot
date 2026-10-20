@@ -213,7 +213,9 @@ async function page(id){
     const list=el('div',undefined,'donation-tiers'),add=el('button','금액 구간 추가','secondary');add.type='button';
     const tierRow=(tier={minAmount:1000,items:[]})=>{const row=el('fieldset',undefined,'intake-setting-card donation-tier'),legend=el('legend','금액 구간');row.append(legend);
       const amount=field(row,'minAmount','최소 후원 금액 (치즈)',tier.minAmount,'number');amount.min='1';amount.max='100000000';amount.step='1';amount.required=true;
-      const items=field(row,'items','룰렛 항목 (한 줄에 하나, 2~100개)',tier.items.join('\n'),'textarea');items.required=true;
+      const items=field(row,'items','룰렛 항목 (한 줄에 하나, 2~99개 · 항목당 1~30자)',tier.items.join('\n'),'textarea');items.required=true;items.maxLength=4000;
+      const counter=el('span','','field-help donation-count');counter.setAttribute('aria-live','polite');items.parentElement.append(counter);
+      const recount=()=>{const lines=items.value.split('\n').map(v=>v.trim()).filter(Boolean),long=lines.filter(v=>[...v].length>30).length;counter.textContent=`${lines.length}/99개`+(long?` · 30자를 넘는 항목 ${long}개`:'');counter.classList.toggle('over',lines.length>99||long>0);};items.addEventListener('input',recount);recount();
       const remove=el('button','이 구간 삭제','secondary');remove.type='button';remove.onclick=()=>{if(list.children.length>1){row.remove();add.disabled=false;}else message.textContent='금액 구간은 1개 이상 필요합니다.';};row.append(remove);list.append(row);add.disabled=list.children.length>=5;};
     for(const tier of s.tiers.length?s.tiers:[{minAmount:1000,items:[]}])tierRow(tier);
     add.onclick=()=>{if(list.children.length<5)tierRow({minAmount:(Math.max(0,...[...list.querySelectorAll('input[name=minAmount]')].map(i=>Number(i.value)||0))+1000),items:[]});};
@@ -226,7 +228,9 @@ async function page(id){
     f.onsubmit=event=>{event.preventDefault();if(busy)return;void run(async()=>{assertCurrent();
       const tiers=[...list.querySelectorAll('.donation-tier')].map(row=>({minAmount:Number(row.querySelector('[name=minAmount]').value),items:row.querySelector('[name=items]').value.split('\n').map(v=>v.trim()).filter(Boolean)}));
       if(tiers.some(t=>!Number.isSafeInteger(t.minAmount)||t.minAmount<1||t.minAmount>100000000))throw Error('최소 후원 금액은 1~100,000,000치즈 사이의 정수로 입력해 주세요.');
-      if(tiers.some(t=>t.items.length<2||t.items.length>100))throw Error('각 구간의 룰렛 항목은 2~100개로 입력해 주세요.');
+      if(tiers.some(t=>t.items.length<2||t.items.length>99))throw Error('각 구간의 룰렛 항목은 2~99개로 입력해 주세요.');
+      if(tiers.some(t=>t.items.some(v=>[...v].length>30)))throw Error('룰렛 항목은 하나에 30자까지 입력할 수 있습니다.');
+      if(tiers.some(t=>new Set(t.items.map(v=>v.normalize('NFC').toLowerCase())).size!==t.items.length))throw Error('한 구간 안에 같은 항목을 두 번 넣을 수 없습니다.');
       const spins=mode.value==='repeat'?Number(maxSpins.value):1;if(!Number.isInteger(spins)||spins<1||spins>10)throw Error('한 후원당 최대 횟수는 1~10회로 입력해 주세요.');
       await request('/api/donation-roulette',{enabled:enabled.checked,tiers,spinMode:mode.value,maxSpins:spins,revision:data.revision});await page(id);});};
     p.append(f);
