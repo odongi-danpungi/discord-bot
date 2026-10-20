@@ -21,4 +21,14 @@ export function installDonationRouletteRoutes({ app, store, service, guard }) {
       res.set('Cache-Control', 'no-store').json({ ...result, status: service ? service.status() : { state: 'unavailable', verification: 'pending' } });
     } catch (error) { next(error); }
   });
+  // Operator test donation: shown on the log and OBS as a test, never written to roulette history.
+  app.post('/api/donation-roulette/test', async (req, res, next) => {
+    try {
+      if (!store || !service) throw fail('치즈 후원 룰렛을 준비하지 못했습니다.', 503);
+      guard();
+      const result = await service.test(req.body);
+      const events = (Array.isArray(result) ? result : result ? [result] : []).map(event => event.id);
+      res.set('Cache-Control', 'no-store').json({ ok: true, events });
+    } catch (error) { next(error); }
+  });
 }

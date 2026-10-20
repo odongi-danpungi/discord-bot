@@ -13,7 +13,7 @@ const reads = new Set([
   '/api/naver/profile', '/api/naver/search', '/api/broadcast-settings', '/api/broadcast-export'
 ]);
 const writes = new Set([
-  '/api/chzzk/verification/owner/start', '/api/chzzk/verification/panel', '/api/roulette/spin', '/api/donation-roulette',
+  '/api/chzzk/verification/owner/start', '/api/chzzk/verification/panel', '/api/roulette/spin', '/api/donation-roulette', '/api/donation-roulette/test',
   '/api/naver/oauth/start', '/api/naver/disconnect', '/api/naver/join',
   '/api/naver/articles', '/api/naver/monitor/settings', '/api/naver/monitor/run', '/api/naver/monitor/retry',
   '/api/naver/participation/register', '/api/naver/participation/cancel',

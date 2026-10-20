@@ -546,7 +546,7 @@ test('cheese donation roulette settings are per server, manager-only, and the OB
   const f=await fixture(t),admin=await f.login(owner),participant=await f.login(person);
   for(const id of [A,B])assert.equal((await f.request('/portal/api/servers/'+id,admin,{})).status,200);
   const loaded=await f.request('/w/'+A+'/api/donation-roulette',admin);assert.equal(loaded.status,200,await loaded.clone().text());
-  const initial=await loaded.json();assert.deepEqual(initial.settings,{enabled:false,tiers:[]});assert.equal(initial.revision,0);
+  const initial=await loaded.json();assert.deepEqual(initial.settings,{enabled:false,tiers:[],spinMode:'once',maxSpins:1});assert.equal(initial.revision,0);
   assert.equal(initial.status.verification,'pending','a subscription is never reported as verified delivery');
   assert.equal((await f.request('/w/'+A+'/api/donation-roulette',participant)).status,403);
   assert.equal((await f.request('/w/'+A+'/api/donation-roulette',{...admin,'X-CSRF-Token':'bad'},{enabled:true,tiers:[{minAmount:1000,items:['a','b']}],revision:0})).status,403);
@@ -560,6 +560,10 @@ test('cheese donation roulette settings are per server, manager-only, and the OB
   const ok=await fetch(f.base+feed.pathname+feed.search);assert.equal(ok.status,200);assert.deepEqual((await ok.json()).events,[]);
   const otherToken=new URL((await(await f.request('/w/'+B+'/obs',admin)).json()).donationRouletteUrl).search;
   assert.equal((await fetch(f.base+feed.pathname+otherToken)).status,403,'another server token cannot read this feed');
+  const tested=await f.request('/w/'+A+'/api/donation-roulette/test',admin,{nickname:'테스트',amount:1000});assert.equal(tested.status,200,await tested.clone().text());
+  assert.equal((await f.request('/w/'+A+'/api/donation-roulette/test',participant,{amount:1000})).status,403);
+  const testFeed=await(await fetch(f.base+feed.pathname+feed.search)).json();assert.equal(testFeed.events.length,1);assert.equal(testFeed.events[0].test,true);
+  assert.equal((await(await f.request('/w/'+B+'/api/donation-roulette',admin)).json()).events.length,0,'test donations stay in their own server');
   const page=await fetch(f.base+new URL(obs.donationRouletteUrl).pathname+feed.search);assert.equal(page.status,200);
   assert.match(await page.text(),new RegExp('/w/'+A+'/broadcast/donation-roulette\\.js'));
 });

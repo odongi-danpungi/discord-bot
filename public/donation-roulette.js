@@ -27,7 +27,8 @@ function draw(entries) {
 async function play(event) {
   playing = true;
   const stage = $('stage'), result = $('result'), donor = $('donor'), wheel = $('wheel');
-  donor.replaceChildren(document.createTextNode(`${event.nickname}님 ${Number(event.amount).toLocaleString('ko-KR')}치즈`), Object.assign(document.createElement('small'), { textContent: `${Number(event.tierMin).toLocaleString('ko-KR')}치즈 이상 룰렛` }));
+  const count = event.spins > 1 ? ` · ${event.spin}/${event.spins}회` : '';
+  donor.replaceChildren(document.createTextNode(`${event.test ? '[테스트] ' : ''}${event.nickname}님 ${Number(event.amount).toLocaleString('ko-KR')}치즈`), Object.assign(document.createElement('small'), { textContent: `${Number(event.tierMin).toLocaleString('ko-KR')}치즈 이상 룰렛${count}${event.test ? ' · 테스트 후원' : ''}` }));
   result.hidden = true; draw(event.entries);
   wheel.style.transition = 'none'; rotation = 0; wheel.style.transform = 'rotate(0deg)'; stage.hidden = false;
   await sleep(60);
@@ -37,7 +38,8 @@ async function play(event) {
   wheel.style.transform = `rotate(${rotation}deg)`;
   await sleep(reduced() ? 300 : 5200);
   result.textContent = `결과 · ${event.winner}`; result.hidden = false;
-  await sleep(6000);
+  // Several spins of one donation follow each other with a shorter pause.
+  await sleep(event.spins > 1 && event.spin < event.spins ? 2500 : 6000);
   stage.hidden = true; playing = false;
   void next();
 }
@@ -53,7 +55,7 @@ function accept(events) {
   }
   if (seen.size > 500) { const keep = [...seen].slice(-200); seen.clear(); keep.forEach(id => seen.add(id)); }
   primed = true;
-  queue.push(...fresh.slice(-20));
+  queue.push(...fresh.slice(-30));
   void next();
 }
 

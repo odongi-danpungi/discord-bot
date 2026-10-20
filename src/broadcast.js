@@ -41,7 +41,7 @@ export function createBroadcastRouter({config,store,operations,version,participa
   // OBS donation roulette feed: completed spins only (no skipped entries, no donor channel ids).
   router.get('/api/donation-roulette',(_req,res)=>{
     if(!donationRouletteStore)return res.status(404).json({error:'치즈 후원 룰렛이 준비되지 않았습니다.'});
-    const events=publicDonationEvents(donationRouletteStore.snapshot().events).filter(event=>event.status==='spun').slice(0,10);
+    const events=publicDonationEvents(donationRouletteStore.snapshot().events).filter(event=>event.status==='spun').slice(0,30);
     res.json({serverTime:Date.now(),events});
   });
   router.get('/api/draw/:id',(req,res)=>{

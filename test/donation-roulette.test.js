@@ -259,6 +259,68 @@ test('portal donation screen saves tiers with the loaded revision and never clai
   await settle();
   const saved = calls.find(c => c.url === '/w/' + A + '/api/donation-roulette' && c.options?.method === 'POST');
   assert.ok(saved);
-  assert.deepEqual(JSON.parse(saved.options.body), { enabled: true, tiers: [{ minAmount: 1000, items: ['물 마시기', '스쿼트'] }, { minAmount: 10000, items: ['노래', '춤'] }], revision: 4 });
+  assert.deepEqual(JSON.parse(saved.options.body), { enabled: true, tiers: [{ minAmount: 1000, items: ['물 마시기', '스쿼트'] }, { minAmount: 10000, items: ['노래', '춤'] }], spinMode: 'once', maxSpins: 1, revision: 4 });
   assert.equal(saved.options.headers['X-CSRF-Token'], 'fixture');
+});
+
+test('repeat mode spins once per tier minimum up to the cap and commits every spin together', async t => {
+  const store = await tempStore(t), operations = fakeOperations();
+  let updates = 0; const update = operations.update; operations.update = fn => { updates++; return update(fn); };
+  await store.configure({ enabled: true, tiers: [{ minAmount: 1000, items: ['a', 'b'] }, { minAmount: 10000, items: ['x', 'y', 'z'] }], spinMode: 'repeat', maxSpins: 3, revision: 0 });
+  const service = new DonationRouletteService({ store, operations, chzzkVerification: fakeVerification(), sessionFactory: () => ({ start() {}, stop() {}, status: () => ({ status: 'subscribed' }) }) });
+  await service.enqueue({ channelId: CHANNEL, donationType: 'CHAT', nickname: '봄이', amount: 2500 });
+  assert.equal(updates, 1, 'one atomic Operations update per donation');
+  let events = store.snapshot().events;
+  assert.deepEqual(events.map(e => [e.spin, e.spins]), [[2, 2], [1, 2]], 'newest first; OBS replays oldest first');
+  assert.equal(readRoulette(operations.read()).history.length, 2);
+  await service.enqueue({ channelId: CHANNEL, donationType: 'CHAT', nickname: '달콩', amount: 99000 });
+  events = store.snapshot().events;
+  assert.equal(events.filter(e => e.nickname === '달콩').length, 3, 'capped at maxSpins');
+  assert.ok(events.filter(e => e.nickname === '달콩').every(e => e.tierMin === 10000 && e.entries.length === 3));
+  await store.configure({ enabled: true, tiers: store.snapshot().settings.tiers, revision: store.snapshot().revision });
+  assert.deepEqual([store.snapshot().settings.spinMode, store.snapshot().settings.maxSpins], ['once', 1], 'older 3-field saves keep one spin per donation');
+  await service.enqueue({ channelId: CHANNEL, donationType: 'CHAT', nickname: '여름', amount: 99000 });
+  const once = store.snapshot().events.filter(e => e.nickname === '여름');
+  assert.equal(once.length, 1); assert.equal(once[0].spins, undefined);
+  assert.throws(() => validateDonationRouletteInput({ enabled: true, tiers: [{ minAmount: 1, items: ['a', 'b'] }], spinMode: 'many', maxSpins: 2, revision: 0 }));
+  assert.throws(() => validateDonationRouletteInput({ enabled: true, tiers: [{ minAmount: 1, items: ['a', 'b'] }], spinMode: 'repeat', maxSpins: 11, revision: 0 }));
+  await service.close();
+});
+
+test('test donations need no CHZZK connection, never touch roulette history and are labelled everywhere', async t => {
+  const store = await tempStore(t), operations = fakeOperations(); let clock = 10000, locked = false;
+  const service = new DonationRouletteService({ store, operations, chzzkVerification: fakeVerification(CHANNEL, false), now: () => clock,
+    guard: () => { if (locked) throw Object.assign(Error('locked'), { status: 423 }); }, sessionFactory: () => { throw Error('no session expected'); } });
+  await assert.rejects(service.test({ amount: 1000 }), e => e.status === 409, 'tiers must be saved first');
+  await store.configure({ enabled: false, tiers: [{ minAmount: 1000, items: ['a', 'b', 'c'] }], spinMode: 'repeat', maxSpins: 5, revision: 0 });
+  await assert.rejects(service.test({ amount: 999 }), e => e.status === 400);
+  await assert.rejects(service.test({ amount: 1000, extra: 1 }), e => e.status === 400);
+  const created = await service.test({ nickname: ' 방송 테스트\u0007 ', amount: 3000 });
+  assert.equal(created.length, 3);
+  assert.ok(created.every(e => e.test === true && e.nickname === '방송 테스트' && e.resultId === undefined));
+  assert.deepEqual(operations.read(), { revision: 0 }, 'no roulette history or Operations write');
+  await assert.rejects(service.test({ amount: 1000 }), e => e.status === 429, 'test spam is throttled');
+  clock += 5000; locked = true;
+  await assert.rejects(service.test({ amount: 1000 }), e => e.status === 423);
+  const view = publicDonationEvents(store.snapshot().events);
+  assert.ok(view.every(e => e.test === true)); assert.deepEqual(view.map(e => e.spin), [3, 2, 1]);
+  assert.equal(workspaceRouteAllowed('POST', '/api/donation-roulette/test'), true);
+  assert.equal(dashboardCapabilityForRequest('POST', '/api/donation-roulette/test'), 'broadcast');
+  await service.close();
+});
+
+test('OBS page labels test donations and shows which spin of a multi-spin donation is playing', async t => {
+  const html = await readFile(new URL('../public/donation-roulette.html', import.meta.url), 'utf8'), source = await readFile(new URL('../public/donation-roulette.js', import.meta.url), 'utf8');
+  const dom = new JSDOM(html, { url: 'https://example.invalid/broadcast/donation-roulette?token=abc', runScripts: 'outside-only', pretendToBeVisual: true });
+  t.after(() => dom.window.close());
+  let events = [], pending = [];
+  dom.window.fetch = async () => ({ ok: true, json: async () => ({ events }) });
+  dom.window.matchMedia = () => ({ matches: true });
+  dom.window.setTimeout = (fn, ms) => { pending.push({ fn, ms }); return pending.length; };
+  dom.window.eval(source); await settle();
+  const spin = n => ({ id: 'donation-t-' + n, at: 5, status: 'spun', test: true, nickname: '테스트', amount: 2000, tierMin: 1000, spin: n, spins: 2, entries: ['a', 'b'], winnerIndex: 1, winner: 'b' });
+  events = [spin(2), spin(1)];
+  const poll = pending.find(p => p.ms >= 2000); pending = []; poll.fn(); await settle();
+  const donor = dom.window.document.getElementById('donor').textContent;
+  assert.match(donor, /^\[테스트\] 테스트님 2,000치즈/); assert.match(donor, /1\/2회/); assert.match(donor, /테스트 후원/);
 });

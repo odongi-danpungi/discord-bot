@@ -205,7 +205,7 @@ async function page(id){
     const states={unavailable:['준비 안 됨','readiness-optional'],not_connected:['방송 계정 연결 필요','readiness-attention'],disabled:['사용 안 함','readiness-optional'],stopped:['중지','readiness-optional'],connecting:['연결 중','readiness-pending'],subscribing:['구독 요청 중','readiness-pending'],subscribed:['후원 구독 요청 완료','readiness-configured'],reconnecting:['재연결 대기','readiness-attention'],auth_required:['후원 조회 권한 동의 필요','readiness-attention']};
     const [label,cls]=states[st.state]||['상태 확인 필요','readiness-attention'],evidence=el('div',undefined,'readiness-evidence');
     evidence.append(el('span',label,'badge '+cls),el('span','실제 후원 수신 검증 대기','badge readiness-pending'));
-    p.append(el('p','치지직에서 정한 금액 이상 치즈 후원이 들어오면, 후원 금액이 해당하는 가장 높은 구간의 목록으로 룰렛을 1회 돌립니다. 결과는 룰렛 기록과 OBS 후원 룰렛 화면에 후원자 닉네임과 함께 표시됩니다. Queue는 바뀌지 않습니다.','settings-guidance'),evidence);
+    p.append(el('p','치지직에서 정한 금액 이상 치즈 후원이 들어오면, 후원 금액이 해당하는 가장 높은 구간의 목록으로 룰렛을 돌립니다. 결과는 룰렛 기록과 OBS 후원 룰렛 화면에 후원자 닉네임과 함께 표시됩니다. Queue는 바뀌지 않습니다.','settings-guidance'),evidence);
     if(st.detail)p.append(el('p',safeText(st.detail,200),'muted'));
     if(st.state==='not_connected')p.append(el('p','CHZZK → 방송 계정 연결에서 이 서버의 방송 계정을 먼저 연결해 주세요. 후원 조회 권한(후원 조회 Scope)에 동의해야 합니다.','muted'));
     const f=el('form',undefined,'form settings-form donation-form'),message=el('p','','settings-feedback');message.setAttribute('role','status');
@@ -217,18 +217,32 @@ async function page(id){
       const remove=el('button','이 구간 삭제','secondary');remove.type='button';remove.onclick=()=>{if(list.children.length>1){row.remove();add.disabled=false;}else message.textContent='금액 구간은 1개 이상 필요합니다.';};row.append(remove);list.append(row);add.disabled=list.children.length>=5;};
     for(const tier of s.tiers.length?s.tiers:[{minAmount:1000,items:[]}])tierRow(tier);
     add.onclick=()=>{if(list.children.length<5)tierRow({minAmount:(Math.max(0,...[...list.querySelectorAll('input[name=minAmount]')].map(i=>Number(i.value)||0))+1000),items:[]});};
-    f.append(list,add,el('p','금액이 여러 구간에 해당하면 최소 금액이 가장 높은 구간 하나만 돌립니다. 저장한 뒤 들어오는 후원부터 적용됩니다.','field-help'));
+    f.append(list,add,el('p','금액이 여러 구간에 해당하면 최소 금액이 가장 높은 구간 하나만 사용합니다. 저장한 뒤 들어오는 후원부터 적용됩니다.','field-help'));
+    const mode=field(f,'spinMode','돌리는 방식',s.spinMode||'once','select',[['once','후원 1건에 1회'],['repeat','금액만큼 여러 번 (구간 최소 금액당 1회)']]);
+    const maxSpins=field(f,'maxSpins','한 후원당 최대 횟수',s.maxSpins||1,'number');maxSpins.min='1';maxSpins.max='10';maxSpins.step='1';maxSpins.required=true;
+    const modeHelp=el('span','','field-help');maxSpins.parentElement.append(modeHelp);
+    const describeMode=()=>{const repeat=mode.value==='repeat';maxSpins.disabled=!repeat;modeHelp.textContent=repeat?'예: 1,000치즈 구간에 3,500치즈를 후원하면 3회 돌립니다. 1~10회까지 정할 수 있습니다.':'금액과 관계없이 후원 1건에 한 번만 돌립니다.';};mode.onchange=describeMode;describeMode();
     const save=el('button','설정 저장');save.type='submit';f.append(save,message);
     f.onsubmit=event=>{event.preventDefault();if(busy)return;void run(async()=>{assertCurrent();
       const tiers=[...list.querySelectorAll('.donation-tier')].map(row=>({minAmount:Number(row.querySelector('[name=minAmount]').value),items:row.querySelector('[name=items]').value.split('\n').map(v=>v.trim()).filter(Boolean)}));
       if(tiers.some(t=>!Number.isSafeInteger(t.minAmount)||t.minAmount<1||t.minAmount>100000000))throw Error('최소 후원 금액은 1~100,000,000치즈 사이의 정수로 입력해 주세요.');
       if(tiers.some(t=>t.items.length<2||t.items.length>100))throw Error('각 구간의 룰렛 항목은 2~100개로 입력해 주세요.');
-      await request('/api/donation-roulette',{enabled:enabled.checked,tiers,revision:data.revision});await page(id);});};
+      const spins=mode.value==='repeat'?Number(maxSpins.value):1;if(!Number.isInteger(spins)||spins<1||spins>10)throw Error('한 후원당 최대 횟수는 1~10회로 입력해 주세요.');
+      await request('/api/donation-roulette',{enabled:enabled.checked,tiers,spinMode:mode.value,maxSpins:spins,revision:data.revision});await page(id);});};
     p.append(f);
+    const testBox=el('section',undefined,'intake-setting-card donation-test');testBox.append(el('h2','테스트 후원'),el('p','실제 치즈 없이 저장된 설정으로 룰렛을 돌려 OBS 화면과 기록을 확인합니다. 기록과 OBS에 "테스트"로 표시되며 룰렛 기록·운영 기록에는 남지 않습니다. 치지직 연결이나 사용 설정과 관계없이 동작합니다.','muted'));
+    const tf=el('form',undefined,'form donation-test-form'),tName=field(tf,'nickname','표시할 닉네임','테스트'),tAmount=field(tf,'amount','후원 금액 (치즈)',s.tiers[0]?.minAmount||1000,'number');tName.maxLength=20;tAmount.min='1';tAmount.max='100000000';tAmount.step='1';
+    const tSend=el('button','테스트 후원 보내기');tSend.type='submit';tf.append(tSend);
+    if(!s.tiers.length){tSend.disabled=true;tf.append(el('span','금액 구간을 먼저 저장해 주세요.','field-help'));}
+    tf.onsubmit=event=>{event.preventDefault();if(busy)return;void run(async()=>{assertCurrent();const amount=Number(tAmount.value);if(!Number.isSafeInteger(amount)||amount<1||amount>100000000)throw Error('테스트 후원 금액은 1~100,000,000치즈 사이의 정수로 입력해 주세요.');
+      await request('/api/donation-roulette/test',{nickname:tName.value,amount});await page(id);});};
+    testBox.append(tf);p.append(testBox);
     actions(button('OBS 후원 룰렛 주소 복사',async()=>{const obs=await request('/obs');if(!obs.donationRouletteUrl)throw Error('OBS 주소를 확인하지 못했습니다.');await navigator.clipboard.writeText(obs.donationRouletteUrl);}),button('룰렛 기록 보기',()=>page('roulette'),'secondary'));
     p.append(el('h2','최근 후원 룰렛'));
     const events=Array.isArray(data.events)?data.events:[];
-    if(events.length)p.append(table(events.slice(0,30).map(e=>({time:new Date(e.at).toLocaleString('ko-KR'),nickname:safeText(e.nickname,20),amount:Number(e.amount).toLocaleString('ko-KR')+'치즈',result:e.status==='spun'?safeText(e.winner,80):'돌리지 않음 · '+safeText(e.reason,200)})),[['time','일시'],['nickname','후원자'],['amount','후원'],['result','결과']]));
+    const shortTime=at=>{const d=new Date(at);return Number.isFinite(d.getTime())?d.toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:false}):'—';};
+    const logBox=el('div',undefined,'donation-log');
+    if(events.length){logBox.append(table(events.slice(0,60).map(e=>({time:shortTime(e.at),nickname:(e.test?'[테스트] ':'')+safeText(e.nickname,20),amount:Number(e.amount).toLocaleString('ko-KR')+'치즈'+(e.spins>1?` · ${e.spin}/${e.spins}회`:''),result:e.status==='spun'?safeText(e.winner,80):'돌리지 않음 · '+safeText(e.reason,200)})),[['time','일시'],['nickname','후원자'],['amount','후원'],['result','결과']]));p.append(logBox);}
     else p.append(el('p','아직 기록된 후원 룰렛이 없습니다.','muted'));
   }else if(id==='obs'){
     p.append(el('p','OBS 브라우저 소스에 사용할 주소를 복사합니다. 참가자에게 공유하지 마세요.'));actions(button('OBS 주소 복사',async()=>{const data=await request('/obs');await navigator.clipboard.writeText(data.url);}));

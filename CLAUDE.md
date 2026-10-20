@@ -36,8 +36,8 @@ npm run demo              # 연습 모드(외부 연결 없음). 데모 성공 �
 - 실제 Discord·네이버·CHZZK 연결이나 Railway 배포를 확인하지 못한 항목은 PENDING으로 남긴다.
 
 ## 진행 중 작업 (2026-10-20)
-- 브랜치 `feat/sage-ui-unification` (기준 `feat/creator-user-workspaces` @ 65d0a8d 위 커밋 2개)
+- 브랜치 `feat/sage-ui-unification` (기준 `feat/creator-user-workspaces` @ 65d0a8d 위)
   1. 세이지 1차 UI 통일 + 로고 + 포털 제작자 링크 제거
-  2. 치즈 후원 룰렛 — `src/chzzk-session.js`, `src/donation-roulette*.js`, `public/donation-roulette.*`. 실제 후원 수신 PENDING, 안내: `docs/chzzk-donation-roulette.md`
+  2. 치즈 후원 룰렛 — `src/chzzk-session.js`, `src/donation-roulette*.js`, `public/donation-roulette.*`. 1회/금액만큼 여러 번, 테스트 후원 포함. 실제 후원 수신 PENDING, 안내: `docs/chzzk-donation-roulette.md`
 - SOOP 연동: 보류(사용자 결정). 조사: `docs/soop-integration-research.md`. 구현 완료로 표시하지 않는다.
 - 상세 인수인계: 핸드오프 폴더의 `CLAUDE_HANDOFF.md`.
