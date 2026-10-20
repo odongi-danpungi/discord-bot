@@ -24,16 +24,23 @@
 
     <section id="viewerParticipation" class="participation-card">
       <div class="section-head"><div><p class="eyebrow">LIVE PARTICIPATION</p><h2 id="participationTitle">시참 상태</h2></div><button id="participationRefresh" class="secondary compact">새로고침</button></div>
+      <section id="recruitmentSummary" class="recruitment-summary" aria-labelledby="recruitmentHeading">
+        <div class="recruitment-heading"><h3 id="recruitmentHeading">Discord 접수 현황</h3><span id="recruitmentStatus" class="recruitment-badge" role="status" aria-live="polite">확인 중</span></div>
+        <strong id="recruitmentRemaining" class="recruitment-remaining">모집 상태를 확인하고 있습니다.</strong>
+        <p id="recruitmentDetail"></p><p id="recruitmentDeadline"></p>
+        <p class="recruitment-scope">현재 Discord 모집 기준입니다. 네이버 카페·수동 Queue의 인원은 합산하지 않습니다.</p>
+      </section>
       <div class="participation-metrics">
         <article><span>회차</span><strong id="participationRound">—</strong></article>
         <article><span>게임</span><strong id="participationGame">—</strong></article>
         <article><span>내 상태</span><strong id="participationState">대기</strong></article>
         <article><span>내 순번</span><strong id="participationPosition">—</strong></article>
       </div>
-      <div id="participationCall" class="call-panel" hidden>
-        <strong>진행자가 지금 호출했습니다.</strong>
+      <div id="participationCall" class="call-panel" aria-labelledby="participationCallTitle" hidden>
+        <strong id="participationCallTitle">진행자가 지금 호출했습니다.</strong>
         <span id="participationCallTimer">응답 시간을 확인 중입니다.</span>
-        <div class="button-row"><button data-participation-action="call_join">✓ 참가할게요</button><button class="secondary" data-participation-action="call_pass">↪ 이번판 패스</button></div>
+        <div id="participationCallActions" class="button-row"><button data-participation-action="call_join">✓ 참가할게요</button><button class="secondary" data-participation-action="call_pass">↪ 이번판 패스</button></div>
+        <button id="participationCallRefresh" class="secondary compact" hidden>상태 다시 확인</button>
       </div>
       <p id="participationHint" class="participation-hint">현재 시참 상태를 불러오는 중입니다.</p>
       <div id="participationActions" class="participation-actions"></div>
@@ -41,6 +48,20 @@
       <div id="participantReady" class="call-panel" hidden><strong>경기 준비 확인</strong><p id="participantReadyStatus" role="status"></p><button id="participantReadyAnswer">준비 완료</button></div>
       <p id="participationStatus" class="inline-status" role="status" aria-live="polite"></p>
     </section>
+
+    <details id="viewerAccountLink" class="account-link" hidden>
+      <summary><span>계정 연결</span><span id="accountLinkBadge" class="account-link-badge">확인 중</span></summary>
+      <div class="account-link-content">
+        <div class="section-head"><h2>네이버 계정 연결</h2><button id="accountLinkRefresh" class="secondary compact" type="button">상태 새로고침</button></div>
+        <p>내 Discord 계정에 본인의 네이버 계정을 연결합니다. 진행자의 카페 운영용 네이버 계정과는 별도입니다.</p>
+        <p class="account-link-scope">연결만으로 카페 가입이나 게시글 작성자 신원이 확인되지는 않습니다. 기존 참가 순서·예약·닉네임 기반 Queue는 자동으로 합쳐지지 않습니다.</p>
+        <p id="accountLinkState">내 연결 상태를 확인하고 있습니다.</p>
+        <label id="accountLinkConsentLabel" class="account-link-consent"><input id="accountLinkConsent" type="checkbox">본인의 네이버 계정을 연결하는 데 동의합니다.</label>
+        <div class="button-row"><button id="accountLinkStart" type="button" disabled>네이버로 연결</button><button id="accountLinkDisconnect" class="secondary" type="button" hidden>연결 해제</button></div>
+        <div id="accountLinkConfirm" class="account-link-confirm" hidden><p>이 방송 공간에 저장한 내 계정 연결을 해제할까요? 기존 참가 순서와 예약은 그대로 유지됩니다.</p><div class="button-row"><button id="accountLinkConfirmDisconnect" type="button">연결 해제 확인</button><button id="accountLinkCancelDisconnect" class="secondary" type="button">취소</button></div></div>
+        <p id="accountLinkStatus" class="inline-status" role="status" aria-live="polite"></p>
+      </div>
+    </details>
 
     <section id="viewerPoll" hidden>
       <p class="eyebrow">LIVE POLL</p><h2 id="viewerPollQuestion">방송 투표</h2><div id="viewerPollOptions"></div><p id="viewerPollStatus"></p>

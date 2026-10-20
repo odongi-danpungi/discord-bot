@@ -6,6 +6,7 @@ import { ActionRowBuilder, ButtonBuilder, ButtonStyle, TextInputBuilder, TextInp
 import { randomUUID } from 'node:crypto';
 import { applyAction } from './operations.js';
 import { validateProfile, hasGame } from './profiles.js';
+import { classifyRuntimeError } from './runtime-health.js';
 
 const ephemeral={flags:MessageFlags.Ephemeral};
 function field(id,label,placeholder,value='',required=false,max=100){
@@ -13,12 +14,13 @@ function field(id,label,placeholder,value='',required=false,max=100){
   if(value)input.setValue(value.slice(0,max));return new ActionRowBuilder().addComponents(input);
 }
 const row=(id,label,style=ButtonStyle.Primary)=>new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(id).setLabel(label).setStyle(style));
-export function installInteractions({client,config,store,operations,discord,viewerAuth,chzzkVerification=null,participationQueue=null,participationCalls=null,emergencyState=()=>({locked:false})}){
+export function installInteractions({client,config,store,operations,discord,viewerAuth,chzzkVerification=null,participationQueue=null,participationCalls=null,emergencyState=()=>({locked:false}),operationGuard=()=>{}}){
   const drafts=new Map();let syncTimer;
   const queueSync=()=>{clearTimeout(syncTimer);syncTimer=setTimeout(()=>discord.sync('sync').catch(()=>{}),900);syncTimer.unref();};
   const prune=setInterval(()=>{for(const [key,value] of drafts)if(value.expiresAt<Date.now())drafts.delete(key)},60000);prune.unref();
-  client.on(Events.InteractionCreate,async interaction=>{
+  const interactionHandler=async interaction=>{
     try{
+      if(config.workspaceScoped && interaction.guildId!==config.guildId)return;
       if ((interaction.isButton() && ['chzzk:link','chzzk:status'].includes(interaction.customId)) || (interaction.isChatInputCommand?.() && interaction.commandName === '치지직인증')) {
         if (emergencyState?.().locked) return interaction.reply({ content: '방송 운영이 긴급 잠금 상태입니다.', ...ephemeral });
         if (await handleChzzkVerification(interaction,chzzkVerification)) return;
@@ -26,35 +28,55 @@ export function installInteractions({client,config,store,operations,discord,view
       if(interaction.guildId!==config.guildId)return;
       const userId=interaction.user.id,key=`${config.guildId}:${userId}`;
       const current=()=>store.read().find(r=>r.guildId===config.guildId&&r.discordId===userId);
+      if(interaction.isChatInputCommand()&&interaction.commandName==='룰렛'){
+        const reply=content=>interaction.reply({content,allowedMentions:{parse:[]},...ephemeral});
+        const memberRoles=interaction.member?.roles,hasRole=Array.isArray(memberRoles)?memberRoles.includes(config.adminRoleId):memberRoles?.cache?.has(config.adminRoleId);
+        if(!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)&&!(config.adminRoleId&&hasRole))return reply('서버 관리 권한이 필요합니다.');
+        try{operationGuard();if(emergencyState?.().locked)throw Error('locked');}
+        catch{return reply('방송 운영이 잠겨 있거나 재시작 대기 중입니다. 운영자에게 상태를 확인해 주세요.');}
+        let url;
+        try{
+          const base=new URL(config.publicBaseUrl);
+          if(base.protocol!=='https:'||base.username||base.password||base.search||base.hash||base.pathname!=='/'||!base.hostname.includes('.')||/^(?:\[|\d+\.)/.test(base.hostname)||/(?:^|\.)(?:localhost|local|internal)\.?$/i.test(base.hostname))throw Error('origin');
+          url=new URL(config.multiWorkspaceEnabled?'/portal/':'/roulette.html',base);
+          if(config.multiWorkspaceEnabled){url.searchParams.set('server',config.guildId);url.searchParams.set('page','roulette');}
+        }catch{return reply('룰렛 운영 화면을 열려면 운영자가 PUBLIC_BASE_URL에 공개 HTTPS 기본 주소를 설정해야 합니다.');}
+        return reply(`룰렛 운영 화면: ${url.href}\n운영 계정으로 로그인한 뒤 이용해 주세요. 이 명령은 룰렛을 실행하지 않습니다.`);
+      }
       const emergency=emergencyState?.()||{};const readOnlyInteraction=(interaction.isButton()&&['avatar_access','profile_view','reservation_view','community:home','community:guide','community:history','community:tickets','community:subscriptions'].includes(interaction.customId))||(interaction.isButton()&&interaction.customId.startsWith('guide:')&&!interaction.customId.startsWith('guide:ack'));
       if(emergency.locked&&!readOnlyInteraction){const content='방송 운영이 긴급 잠금 상태입니다. 진행자가 잠금을 해제한 뒤 다시 시도해 주세요.';if(interaction.deferred&&!interaction.replied)return interaction.editReply({content}).catch(()=>{});return interaction.reply({content,...ephemeral});}
       if((interaction.isButton()||interaction.isModalSubmit())&&interaction.customId?.startsWith('community:')){
         const service=communityFor({operations,config,discord});
         if(await handleCommunityInteraction(interaction,{operations,config,discord,service,store,viewerAuth,participationQueue,participationCalls}))return;
       }
-      if(interaction.isChatInputCommand()&&interaction.commandName==='setting'){
+      if(interaction.isChatInputCommand()&&['setting','소개'].includes(interaction.commandName)){
         const memberRoles=interaction.member?.roles,hasRole=Array.isArray(memberRoles)?memberRoles.includes(config.adminRoleId):memberRoles?.cache?.has(config.adminRoleId);
         if(!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)&&!(config.adminRoleId&&hasRole))return interaction.reply({content:'서버 관리 권한이 필요합니다.',...ephemeral});
-        await interaction.deferReply(ephemeral);await discord.setup();return interaction.editReply('카테고리·채널과 사용자 연동 패널을 설정했습니다. 반복 실행해도 기존 패널을 갱신합니다.');
+        const guard=()=>{operationGuard();if(emergencyState?.().locked)throw Error('방송 운영이 긴급 잠금 상태입니다. 잠금을 해제한 뒤 다시 시도해 주세요.');};
+        const name=interaction.options?.getString('이름',interaction.commandName==='소개');
+        await interaction.deferReply(ephemeral);
+        if(interaction.commandName==='setting'){
+          await discord.setup({...(name==null?{}:{introductionName:name}),guard});
+          return interaction.editReply('카테고리·채널과 사용자 연동 패널을 설정했습니다. 입력한 이름을 XX소개 등 이름 템플릿에 적용하고 다음 설정에도 유지합니다.');
+        }
+        const result=await discord.renameIntroduction(name,{guard});
+        return interaction.editReply({content:`소개 채널을 ${result.name}(으)로 설정했습니다. <#${result.channelId}>`,allowedMentions:{parse:[]}});
       }
       if(interaction.isButton()&&interaction.customId==='avatar_access'){
         if(!current())return interaction.reply({content:'먼저 /연동으로 게임 정보를 등록해 주세요.',...ephemeral});
+        if(config.multiWorkspaceEnabled)return interaction.reply({content:`내 참가 상태: ${new URL('/portal/?server='+config.guildId,config.publicBaseUrl).href}\nDiscord 계정으로 로그인해 주세요.`,allowedMentions:{parse:[]},...ephemeral});
         const code=viewerAuth.issue(userId),url=config.viewerUrl||(config.publicBaseUrl?new URL('/viewer/',config.publicBaseUrl).href:`http://127.0.0.1:${config.port}/viewer/`);
         return interaction.reply({content:`시청자 대시보드: ${url}\n로그인 코드: \`${code}\`\n10분 이내 1회 사용 가능 · 다른 사람에게 공유하지 마세요.${config.viewerUrl||config.publicBaseUrl?'':'\n현재 운영자 PC 전용 주소입니다. 시청자 접속에는 운영자의 공개 HTTPS 주소 설정이 필요합니다.'}`,allowedMentions:{parse:[]},...ephemeral});
       }
       if(interaction.isButton()&&interaction.customId.startsWith('queuecall:')){
         if(!participationQueue||!participationCalls)return interaction.reply({content:'시참 호출 기능이 준비되지 않았습니다.',...ephemeral});
-        const [,action,entryId,token]=interaction.customId.split(':');if(!['join','pass'].includes(action)||!entryId||!token)throw Error('이전 호출 버튼입니다. 최신 시참 호출 메시지를 이용해 주세요.');
-        const entry=participationQueue.read().entries.find(item=>item.id===entryId);if(!entry)throw Error('호출된 참가자를 찾지 못했습니다.');
+        const [,action,entryId,token]=interaction.customId.split(':');if(!['join','pass'].includes(action)||!entryId||!token)throw Object.assign(Error('이전 호출 버튼입니다. 최신 시참 호출 메시지를 이용해 주세요.'),{status:400});
+        const entry=participationQueue.read().entries.find(item=>item.id===entryId);if(!entry)throw Object.assign(Error('호출된 참가자를 찾지 못했습니다.'),{status:404});
         if(entry.discordUserId!==userId)return interaction.reply({content:'호출된 참가자만 이 버튼을 사용할 수 있습니다.',...ephemeral});
         await interaction.deferReply(ephemeral);
-        if(action==='pass'){
-          const s=operations.read().session;if(s&&s.phase==='open'&&entry.sessionId===s.id&&entry.source==='discord'){await operations.update(state=>applyAction(state,'postpone_next',{sessionId:s.id,userId}));}
-        }
         const result=await participationCalls.respond({entryId,token,userId,action});
-        if(action==='pass'){const s=operations.read().session;if(s&&entry.source==='discord')await participationQueue.syncOperations({operationsState:operations.read(),records:store.read().filter(r=>r.guildId===config.guildId)});}
         queueSync();
-        return interaction.editReply(action==='join'?'참가 확인 완료! 진행자의 안내를 기다려 주세요.':result.advanceError?'이번판 패스는 저장됐지만 다음 참가자 자동 호출에 실패했습니다. 진행자가 대시보드에서 다시 호출해 주세요.':'이번판 패스 처리했습니다. 다음 참가자를 자동 호출합니다.');
+        return interaction.editReply(action==='join'?'참가 확인 완료! 진행자의 안내를 기다려 주세요.':result.advanceError?'이번판 패스는 저장됐지만 다음 참가자 자동 호출에 실패했습니다. 진행자가 대시보드에서 다시 호출해 주세요.':result.replayed?'이미 저장된 패스 처리 결과를 확인했습니다. 내 참가 상태에서 예약을 확인해 주세요.':'이번판 패스 처리했습니다. 다음 참가자를 자동 호출합니다.');
       }
       if(interaction.isButton()&&interaction.customId.startsWith('guide:')){
         const [,page,value]=interaction.customId.split(':');
@@ -115,11 +137,18 @@ export function installInteractions({client,config,store,operations,discord,view
         return interaction.editReply('사용자 연동 완료! /연동으로 다시 수정할 수 있습니다.');
       }
     }catch(error){
-      const content=error.code?'Discord 요청에 실패했습니다. 봇의 채널 권한을 확인해 주세요.':error.message;
+      let content=error.code?'Discord 요청에 실패했습니다. 봇의 채널 권한을 확인해 주세요.':error.message;
+      if(interaction.customId?.startsWith('queuecall:')||/^community:act:call_(join|pass):/.test(interaction.customId||'')||/^community:call:(join|pass):/.test(interaction.customId||'')){
+        const classified=classifyRuntimeError(error),status=error.status||error.statusCode;
+        content=classified.kind==='storage'||classified.kind==='discord'?classified.message:
+          Number.isInteger(status)&&status>=400&&status<500?classified.message:
+          '호출 응답을 처리하지 못했습니다. 내 참가 상태를 확인하고 진행자에게 문의해 주세요.';
+      }
       if(interaction.deferred&&!interaction.replied)await interaction.editReply({content}).catch(()=>{});
       else if(interaction.replied)await interaction.followUp({content,...ephemeral}).catch(()=>{});
       else await interaction.reply({content,...ephemeral}).catch(()=>{});
     }
-  });
-  return ()=>{clearInterval(prune);clearTimeout(syncTimer);};
+  };
+  client.on(Events.InteractionCreate,interactionHandler);
+  return ()=>{clearInterval(prune);clearTimeout(syncTimer);client.off?.(Events.InteractionCreate,interactionHandler);};
 }

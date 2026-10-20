@@ -1,5 +1,8 @@
 import { applyAction } from './operations.js';
 import { hasGame } from './profiles.js';
+import { buildParticipantRecruitmentState } from './participant-intake.js';
+import { canBookCallPass,hasPendingCallPass } from './call-pass.js';
+import { buildParticipantCallResponse } from './participant-call-result.js';
 
 const ACTIVE_QUEUE_STATUSES=new Set(['waiting','called','joined','postponed_next','postponed_next2']);
 const STATUS_LABELS={
@@ -46,27 +49,31 @@ function publicOwnEntry(entry){
 }
 
 export function buildParticipantSelfServiceState({operationsState={},queueSummary={},userId='',profile=null,now=Date.now()}={}){
-  const session=operationsState?.session||null;
+  const session=operationsState?.session??null;
+  const recruitment=buildParticipantRecruitmentState({session,now});
   const reservations=(operationsState?.reservations||[]).filter(item=>item?.userId===userId).map(item=>({game:item.game,round:Number(item.round)||0}));
   const ownEntry=currentOwnEntry(queueSummary,userId);
-  const open=Boolean(session&&session.phase==='open'&&(!session.closeAt||Number(session.closeAt)>now));
+  const open=Boolean(session&&session.phase==='open'&&recruitment.reason!=='deadline');
   const applicant=Boolean(session?.applicants?.includes(userId));
   const postponed=Boolean(session?.postponed?.includes(userId));
   const winner=Boolean(session?.winners?.includes(userId));
   const confirmed=Boolean(session?.confirmed?.includes(userId));
-  const called=ownEntry?.status==='called'&&Number(ownEntry.callDeadline||ownEntry.deadline||0)>now;
-  const canJoinCurrent=Boolean(open&&profile&&hasGame(profile,session.game)&&(!applicant||postponed)&&!called);
+  const passPending=hasPendingCallPass({state:operationsState,entry:ownEntry});
+  const called=!passPending&&ownEntry?.status==='called'&&Number(ownEntry.callDeadline||ownEntry.deadline||0)>now;
+  const currentSessionCall=Boolean(session&&ownEntry?.sessionId===session.id);
+  const canJoinCurrent=Boolean(recruitment.status==='open'&&profile&&hasGame(profile,session.game)&&(!applicant||postponed)&&!called&&!passPending);
   const actions={
     join:canJoinCurrent,
-    leave:Boolean(open&&applicant&&!called),
-    postponeNext:Boolean(open&&applicant&&!postponed&&!called),
-    postponeNext2:Boolean(open&&applicant&&!postponed&&!called),
+    leave:Boolean(open&&applicant&&!called&&!passPending),
+    postponeNext:Boolean(open&&applicant&&!postponed&&!called&&!passPending),
+    postponeNext2:Boolean(open&&applicant&&!postponed&&!called&&!passPending),
     callJoin:Boolean(called),
-    callPass:Boolean(called),
+    callPass:Boolean(called&&(!currentSessionCall||canBookCallPass({state:operationsState,entry:ownEntry}))),
     confirm:Boolean(session?.phase==='checking'&&winner&&!confirmed&&Number(session.deadline)>now),
-    cancelReservation:reservations.length>0&&!called
+    cancelReservation:reservations.length>0&&!called&&!passPending
   };
   return {
+    recruitment,
     session:session?{
       id:session.id,
       title:session.title||'시참 모집',
@@ -86,7 +93,9 @@ export function buildParticipantSelfServiceState({operationsState={},queueSummar
       confirmed
     }:null,
     queue:{
-      entry:publicOwnEntry(ownEntry),
+      entry:ownEntry&&passPending?{...publicOwnEntry(ownEntry),statusLabel:'패스 반영 확인 중'}:publicOwnEntry(ownEntry),
+      passPending,
+      callResponse:buildParticipantCallResponse({operationsState,entry:ownEntry,userId}),
       waitingCount:Number(queueSummary?.counts?.waiting)||0,
       activeCount:Number(queueSummary?.activeCount)||0
     },
@@ -99,19 +108,29 @@ export function buildParticipantSelfServiceState({operationsState={},queueSummar
 export async function performParticipantSelfServiceAction({
   action,
   game,
+  expectedCall,
   userId,
   profile,
   operations,
   participationQueue,
   participationCalls,
   records=[],
-  now=Date.now()
+  now=Date.now(),
+  clock=Date.now
 }={}){
   if(!userId)throw httpError('로그인 정보를 확인할 수 없습니다.',401,'participant_auth_missing');
   if(!profile)throw httpError('먼저 /연동으로 게임 정보를 등록해 주세요.',403,'participant_profile_missing');
   if(!operations)throw httpError('시참 운영 상태를 불러올 수 없습니다.',503,'participant_operations_unavailable');
   const allowed=new Set(['join','leave','postpone_next','postpone_next2','call_join','call_pass','confirm','cancel_reservation']);
   if(!allowed.has(action))throw httpError('지원하지 않는 시참 작업입니다.',400,'participant_action_invalid');
+  const clockAtStart=typeof clock==='function'?clock():NaN;
+  if(!Number.isSafeInteger(now)||now<0||!Number.isSafeInteger(clockAtStart)||clockAtStart<0)throw httpError('현재 작업 시간을 확인할 수 없습니다.',503,'participant_clock_unavailable');
+  const currentTime=()=>{
+    const sampled=clock();
+    const at=now+Math.max(0,sampled-clockAtStart);
+    if(!Number.isSafeInteger(sampled)||sampled<0||!Number.isSafeInteger(at))throw httpError('현재 작업 시간을 확인할 수 없습니다.',503,'participant_clock_unavailable');
+    return at;
+  };
 
   const rawQueue=participationQueue?.read?.();
   const calledEntry=rawQueue?.entries?.find(entry=>entry?.source==='discord'&&entry?.discordUserId===userId&&entry?.status==='called')||null;
@@ -119,19 +138,20 @@ export async function performParticipantSelfServiceAction({
 
   if(action==='call_join'||action==='call_pass'){
     if(!participationQueue||!participationCalls)throw httpError('시참 호출 기능이 준비되지 않았습니다.',503,'participant_call_unavailable');
+    if(expectedCall!==undefined){
+      const text=value=>typeof value==='string'&&value.length>0&&value.length<=80&&!/[\r\n\t]/.test(value);
+      if(!expectedCall||typeof expectedCall!=='object'||Array.isArray(expectedCall)||Object.keys(expectedCall).length!==3||Object.keys(expectedCall).some(key=>!['entryId','attempt','sessionId'].includes(key))||!text(expectedCall.entryId)||!Number.isSafeInteger(expectedCall.attempt)||expectedCall.attempt<1||(expectedCall.sessionId!==null&&!text(expectedCall.sessionId)))throw httpError('화면의 호출 정보를 확인할 수 없습니다. 상태를 다시 확인해 주세요.',400,'participant_call_binding_invalid');
+    }
     const entry=participationQueue.read().entries.find(item=>item?.source==='discord'&&item?.discordUserId===userId&&item?.status==='called');
     if(!entry)throw httpError('현재 응답할 호출이 없습니다.',409,'participant_call_missing');
-    if(Number(entry.callDeadline)&&Number(entry.callDeadline)<=now)throw httpError('응답 시간이 만료됐습니다.',409,'participant_call_expired');
+    if(expectedCall&&(expectedCall.entryId!==entry.id||expectedCall.attempt!==entry.callAttempt||expectedCall.sessionId!==(entry.sessionId||null)))throw httpError('호출이 변경되었습니다. 상태를 다시 확인한 뒤 최신 호출에 응답해 주세요.',409,'participant_call_changed');
+    if(Number(entry.callDeadline)&&Number(entry.callDeadline)<=now&&!(action==='call_pass'&&hasPendingCallPass({state:operations.read(),entry})))throw httpError('응답 시간이 만료됐습니다.',409,'participant_call_expired');
     const callAction=action==='call_join'?'join':'pass';
-    if(callAction==='pass'){
-      const state=operations.read(),session=state.session;
-      if(session&&session.phase==='open'&&entry.sessionId===session.id&&entry.source==='discord'){
-        await operations.update(next=>applyAction(next,'postpone_next',{sessionId:session.id,userId},now));
-      }
-    }
+    // The call service owns the durable reservation decision and Queue projection.
+    // Do not pre-write Operations or replay a snapshot after it commits.
     const result=await participationCalls.respond({entryId:entry.id,token:entry.callToken,userId,action:callAction});
-    if(callAction==='pass')await participationQueue.syncOperations({operationsState:operations.read(),records});
-    return {result,state:buildParticipantSelfServiceState({operationsState:operations.read(),queueSummary:participationQueue.summary(),userId,profile,now:Date.now()})};
+    const ownResult={entry:publicOwnEntry(result.entry),replayed:Boolean(result.replayed),advanceError:result.advanceError?'다음 참가자 호출을 완료하지 못했습니다. 진행자가 확인해야 합니다.':null};
+    return {result:ownResult,state:buildParticipantSelfServiceState({operationsState:operations.read(),queueSummary:participationQueue.summary(),userId,profile,now:Date.now()})};
   }
 
   if(action==='cancel_reservation'){
@@ -139,13 +159,15 @@ export async function performParticipantSelfServiceAction({
     if(!['lol','er'].includes(selected))throw httpError('취소할 예약 게임을 선택해 주세요.',400,'participant_reservation_game_invalid');
     const exists=(operations.read().reservations||[]).some(item=>item.game===selected&&item.userId===userId);
     if(!exists)throw httpError('이미 취소되었거나 현재 회차에 반영된 예약입니다.',409,'participant_reservation_missing');
-    await operations.update(state=>applyAction(state,'cancel_reservation',{game:selected,userId},now));
+    await operations.update(state=>applyAction(state,'cancel_reservation',{game:selected,userId},currentTime()));
   }else{
     const current=operations.read().session;
     if(!current)throw httpError('진행 중인 시참 모집이 없습니다.',409,'participant_session_missing');
     if(action==='join'&&!hasGame(profile,current.game))throw httpError('먼저 /연동에서 해당 게임 계정을 등록해 주세요.',409,'participant_game_profile_missing');
     const mapped=action==='postpone_next2'?'postpone_later':action;
-    await operations.update(state=>applyAction(state,mapped,{sessionId:current.id,userId,attendanceVersion:current.attendanceVersion},now));
+    // A mutation may wait behind a save. Check the deadline when this callback
+    // owns the authoritative state, rather than replaying request arrival time.
+    await operations.update(state=>applyAction(state,mapped,{sessionId:current.id,userId,attendanceVersion:current.attendanceVersion},currentTime()));
   }
 
   if(participationQueue)await participationQueue.syncOperations({operationsState:operations.read(),records});

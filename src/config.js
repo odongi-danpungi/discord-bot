@@ -23,6 +23,16 @@ export async function loadConfig(env=process.env,args=process.argv.slice(2)) {
   const trustProxyHops=Number(value('TRUST_PROXY_HOPS')||0);
   if(!Number.isInteger(trustProxyHops)||trustProxyHops<0||trustProxyHops>5)throw Error('TRUST_PROXY_HOPS는 0~5 사이 정수여야 합니다.');
   const config={demo,dev,profile,port,viewerUrl:value('VIEWER_URL')||'',publicBaseUrl:String(value('PUBLIC_BASE_URL')||'').trim(),trustProxyHops,host:demo?'127.0.0.1':value('HOST')||'127.0.0.1',guildId:demo?'demo':value('DISCORD_GUILD_ID'),clientId:value('DISCORD_CLIENT_ID'),token:value('DISCORD_TOKEN'),adminRoleId:value('ADMIN_ROLE_ID')||'',dashboardUser:value('DASHBOARD_USER')||'admin',dashboardPassword:value('DASHBOARD_PASSWORD'),dashboardOperatorUser,dashboardOperatorPassword,dashboardOperatorCapabilities,broadcastToken:value('BROADCAST_TOKEN')||'',dataFile:demo?'./data/demo/registrations.json':value('DATA_FILE')||'./data/registrations.json',operationsFile:demo?'./data/demo/operations.json':value('OPERATIONS_FILE')||'./data/operations.json',recoveryFile:demo?'./data/demo/recovery.json':value('RECOVERY_FILE')||'./data/recovery.json',discordPolicyFile:demo?'./data/demo/discord-policy.json':value('DISCORD_POLICY_FILE')||'./data/discord-policy.json',incidentWorkflowFile:demo?'./data/demo/incidents.json':value('INCIDENT_WORKFLOW_FILE')||'./data/incidents.json',idempotencyFile:demo?'./data/demo/idempotency.json':value('IDEMPOTENCY_FILE')||'./data/idempotency.json',naverAuthFile:demo?'./data/demo/naver-auth.json':value('NAVER_AUTH_FILE')||'./data/naver-auth.json',naverMonitorFile:demo?'./data/demo/naver-monitor.json':value('NAVER_MONITOR_FILE')||'./data/naver-monitor.json',naverParticipationFile:demo?'./data/demo/naver-participation.json':value('NAVER_PARTICIPATION_FILE')||'./data/naver-participation.json',participationQueueFile:demo?'./data/demo/participation-queue.json':value('PARTICIPATION_QUEUE_FILE')||'./data/participation-queue.json',broadcastOpsFile:demo?'./data/demo/broadcast-ops.json':value('BROADCAST_OPS_FILE')||'./data/broadcast-ops.json',participationCallTimeoutSeconds:participationCallTimeout,chzzkClientId:String(value('CHZZK_CLIENT_ID')||'').trim(),chzzkClientSecret:String(value('CHZZK_CLIENT_SECRET')||'').trim(),chzzkChannelId:String(value('CHZZK_CHANNEL_ID')||'').trim(),chzzkMonitorEnabled:String(value('CHZZK_MONITOR_ENABLED')||'false').trim().toLowerCase()==='true',chzzkMonitorIntervalMinutes:chzzkMonitorInterval,chzzkMonitorDiscordAlerts:String(value('CHZZK_MONITOR_DISCORD_ALERTS')||'true').trim().toLowerCase()!=='false',chzzkLiveScanMaxPages:chzzkMaxPages,chzzkLiveFile:demo?'./data/demo/chzzk-live.json':value('CHZZK_LIVE_FILE')||'./data/chzzk-live.json',naverClientId:String(value('NAVER_CLIENT_ID')||'').trim(),naverClientSecret:String(value('NAVER_CLIENT_SECRET')||'').trim(),naverRedirectUri:String(value('NAVER_REDIRECT_URI')||'').trim(),naverCafeId:String(value('NAVER_CAFE_ID')||'').trim(),naverMenuId:String(value('NAVER_MENU_ID')||'').trim(),naverMemoMenuId:String(value('NAVER_MEMO_MENU_ID')||'').trim(),naverTokenKey:String(value('NAVER_TOKEN_KEY')||'').trim(),naverMonitorEnabled:String(value('NAVER_MONITOR_ENABLED')||'').trim().toLowerCase()==='true',naverMonitorQuery:String(value('NAVER_MONITOR_QUERY')||'').trim(),naverMonitorCafeUrl:String(value('NAVER_MONITOR_CAFE_URL')||'').trim(),naverMonitorIntervalMinutes:naverMonitorInterval,naverMonitorDiscordAlerts:String(value('NAVER_MONITOR_DISCORD_ALERTS')||'true').trim().toLowerCase()!=='false',backupDir:demo?'./data/demo/backups':value('BACKUP_DIR')||'./data/backups',backupKeepCount:keepCount,backupMaxAgeDays:maxAgeDays,backupIntervalHours:backupHours};
+  config.multiWorkspaceEnabled=!demo&&String(value('MULTI_WORKSPACE_ENABLED')||'false').toLowerCase()==='true';
+  config.discordClientSecret=String(value('DISCORD_CLIENT_SECRET')||'').trim();
+  config.participantNaverClientId=String(value('NAVER_PARTICIPANT_CLIENT_ID')||'').trim();
+  config.participantNaverClientSecret=String(value('NAVER_PARTICIPANT_CLIENT_SECRET')||'').trim();
+  config.workspaceScoped=config.multiWorkspaceEnabled;
+  if(config.multiWorkspaceEnabled){
+    if(!config.discordClientSecret)throw Error('사용자 로그인을 위한 DISCORD_CLIENT_SECRET이 필요합니다.');
+    let base;try{base=new URL(config.publicBaseUrl);}catch{throw Error('사용자 서비스에 PUBLIC_BASE_URL이 필요합니다.');}
+    if(base.protocol!=='https:'||!['','/'].includes(base.pathname))throw Error('사용자 서비스는 루트 경로의 공개 HTTPS 주소가 필요합니다.');
+  }
   const storagePaths=[['DATA_FILE',config.dataFile],['OPERATIONS_FILE',config.operationsFile],['RECOVERY_FILE',config.recoveryFile],['DISCORD_POLICY_FILE',config.discordPolicyFile],['INCIDENT_WORKFLOW_FILE',config.incidentWorkflowFile],['IDEMPOTENCY_FILE',config.idempotencyFile],['NAVER_AUTH_FILE',config.naverAuthFile],['NAVER_MONITOR_FILE',config.naverMonitorFile],['NAVER_PARTICIPATION_FILE',config.naverParticipationFile],['PARTICIPATION_QUEUE_FILE',config.participationQueueFile],['BROADCAST_OPS_FILE',config.broadcastOpsFile],['CHZZK_LIVE_FILE',config.chzzkLiveFile]];
   Object.assign(config, {
     chzzkVerifyEnabled: !demo && String(value('CHZZK_VERIFY_ENABLED') || 'false').toLowerCase() === 'true',
@@ -49,7 +59,17 @@ export async function loadConfig(env=process.env,args=process.argv.slice(2)) {
     if(!config.chzzkClientId||!config.chzzkClientSecret)throw Error('치지직 방송 감지를 사용하려면 CHZZK_CLIENT_ID와 CHZZK_CLIENT_SECRET이 모두 필요합니다.');
     if((config.chzzkChannelId||config.chzzkMonitorEnabled||!config.chzzkVerifyEnabled)&&!/^[0-9a-fA-F]{32}$/.test(config.chzzkChannelId||''))throw Error('CHZZK_CHANNEL_ID는 32자리 치지직 채널 ID여야 합니다.');
   }
-  const naverAny=Boolean(config.naverClientId||config.naverClientSecret||config.naverRedirectUri||config.naverCafeId||config.naverMenuId||config.naverMemoMenuId||config.naverTokenKey||config.naverMonitorEnabled||config.naverMonitorQuery||config.naverMonitorCafeUrl);
+  const participantNaverConfigured=Boolean(config.participantNaverClientId||config.participantNaverClientSecret);
+  if(config.naverTokenKey){
+    let keyBytes=null;
+    if(/^[0-9a-fA-F]{64}$/.test(config.naverTokenKey))keyBytes=Buffer.from(config.naverTokenKey,'hex');
+    else if(/^[A-Za-z0-9+/]{43}=$/.test(config.naverTokenKey)){
+      const decoded=Buffer.from(config.naverTokenKey,'base64');
+      if(decoded.toString('base64')===config.naverTokenKey)keyBytes=decoded;
+    }
+    if(!keyBytes||keyBytes.length!==32)throw Error('NAVER_TOKEN_KEY는 32바이트 키여야 합니다. 64자리 HEX 또는 Base64 형식을 사용해 주세요.');
+  }
+  const naverAny=Boolean(config.naverClientId||config.naverClientSecret||config.naverRedirectUri||config.naverCafeId||config.naverMenuId||config.naverMemoMenuId||(config.naverTokenKey&&!participantNaverConfigured)||config.naverMonitorEnabled||config.naverMonitorQuery||config.naverMonitorCafeUrl);
   if(naverAny){
     if(!config.naverClientId||!config.naverClientSecret)throw Error('네이버 연동을 사용하려면 NAVER_CLIENT_ID와 NAVER_CLIENT_SECRET이 모두 필요합니다.');
     if(config.naverCafeId&&!/^\d+$/.test(config.naverCafeId))throw Error('NAVER_CAFE_ID는 숫자 clubid여야 합니다.');
@@ -57,13 +77,6 @@ export async function loadConfig(env=process.env,args=process.argv.slice(2)) {
     if(config.naverMemoMenuId&&!/^\d+$/.test(config.naverMemoMenuId))throw Error('NAVER_MEMO_MENU_ID는 숫자 menuid여야 합니다.');
     if(config.naverMenuId&&!config.naverCafeId)throw Error('NAVER_MENU_ID를 사용하려면 NAVER_CAFE_ID도 설정해야 합니다.');
     if(config.naverMemoMenuId&&!config.naverCafeId)throw Error('NAVER_MEMO_MENU_ID를 사용하려면 NAVER_CAFE_ID도 설정해야 합니다.');
-    if(config.naverTokenKey){
-      let keyBytes=null;
-      if(/^[0-9a-fA-F]{64}$/.test(config.naverTokenKey))keyBytes=Buffer.from(config.naverTokenKey,'hex');
-      else{try{keyBytes=Buffer.from(config.naverTokenKey,'base64')}catch{keyBytes=null}}
-      if(!keyBytes||keyBytes.length!==32)throw Error('NAVER_TOKEN_KEY는 32바이트 키여야 합니다. 64자리 HEX 또는 Base64 형식을 사용해 주세요.');
-    }
-
     if(config.naverMonitorQuery.length>100)throw Error('NAVER_MONITOR_QUERY는 100자 이하로 설정해 주세요.');
     if(config.naverMonitorEnabled&&!config.naverMonitorQuery)throw Error('NAVER_MONITOR_ENABLED=true이면 NAVER_MONITOR_QUERY가 필요합니다.');
     if(config.naverMonitorCafeUrl){

@@ -1,5 +1,6 @@
 import { PermissionFlagsBits } from 'discord.js';
-import { TOPICS, communityView } from './community.js';
+import { createHash, timingSafeEqual } from 'node:crypto';
+import { TOPICS, communityView, participantEntryUrl } from './community.js';
 import { buildParticipantSelfServiceState,performParticipantSelfServiceAction } from './participant-self-service.js';
 
 export const communityButtons=()=>[{type:1,components:[{type:2,style:1,custom_id:'community:home',label:'내 시참'},{type:2,style:2,custom_id:'community:guide',label:'규칙 · FAQ'},{type:2,style:2,custom_id:'community:subscriptions',label:'알림 구독'},{type:2,style:2,custom_id:'community:ticket',label:'운영자 문의'}]}];
@@ -19,6 +20,14 @@ export function installCommunityDiscord(DiscordService,DemoDiscord){
   DemoDiscord.prototype.communitySubscription=async function(){};
 }
 const button=(custom_id,label)=>({type:2,style:2,custom_id,label});
+export function communityCallButtonId(action,sessionId,entry){
+  if(!['join','pass'].includes(action))throw new TypeError('지원하지 않는 호출 응답입니다.');
+  // This digest identifies the displayed call attempt. It is not a credential;
+  // Discord identity and the private Queue token still authorize the response.
+  const digest=createHash('sha256').update(JSON.stringify([sessionId||null,entry.id,entry.callAttempt,entry.sessionId||null])).digest('hex');
+  return `community:call:${action}:${digest}`;
+}
+const changedCall=()=>Object.assign(Error('호출이 변경되었습니다. 내 시참을 다시 열고 최신 호출에 응답해 주세요.'),{status:409,statusCode:409,code:'participant_call_changed'});
 export async function handleCommunityInteraction(interaction,ctx){
   const custom=interaction.customId||'';if(!custom.startsWith('community:'))return false;
   const userId=interaction.user.id,kind=custom.split(':')[1],{operations,service,viewerAuth,config,store,participationQueue,participationCalls,discord}=ctx;
@@ -29,8 +38,18 @@ export async function handleCommunityInteraction(interaction,ctx){
   await interaction.deferReply({flags:64});
   if(kind==='ticket'){await service.ticket(userId,{message:interaction.fields.getTextInputValue('message')});await interaction.editReply('문의를 접수했습니다. 내 시참 → 내 문의에서 답변을 확인하세요.');return true;}
   if(kind==='sub'){const [, ,topic,value]=custom.split(':');await service.subscribe(userId,{topic,enabled:value==='on'});}
+  if(kind==='call'){
+    const parts=custom.split(':'),action=parts[2],digest=parts[3];
+    if(parts.length!==4||!['join','pass'].includes(action)||!/^[a-f0-9]{64}$/.test(digest||''))throw changedCall();
+    const entry=participationQueue?.read?.().entries?.find(row=>row?.source==='discord'&&row.discordUserId===userId&&row.status==='called');
+    if(!entry)throw changedCall();
+    const expected=communityCallButtonId(action,operations.read().session?.id,entry).split(':')[3];
+    if(!timingSafeEqual(Buffer.from(digest,'hex'),Buffer.from(expected,'hex')))throw changedCall();
+    await performParticipantSelfServiceAction({action:action==='join'?'call_join':'call_pass',expectedCall:{entryId:entry.id,attempt:entry.callAttempt,sessionId:entry.sessionId||null},userId,profile,operations,participationQueue,participationCalls,records});await discord.sync('sync').catch(()=>{});
+  }
   if(kind==='act'){
-    const [, ,action,sessionId]=custom.split(':');if(sessionId!==(operations.read().session?.id||'none'))throw Error('회차가 변경됐습니다. 내 시참을 다시 열어 주세요.');
+    const [, ,action,sessionId]=custom.split(':');if(['call_join','call_pass'].includes(action))throw changedCall();
+    if(sessionId!==(operations.read().session?.id||'none'))throw Error('회차가 변경됐습니다. 내 시참을 다시 열어 주세요.');
     await performParticipantSelfServiceAction({action,userId,profile,operations,participationQueue,participationCalls,records});await discord.sync('sync').catch(()=>{});
   }
   if(kind==='cancel')await performParticipantSelfServiceAction({action:'cancel_reservation',game:custom.split(':')[2],userId,profile,operations,participationQueue,participationCalls,records});
@@ -40,18 +59,22 @@ export async function handleCommunityInteraction(interaction,ctx){
     content='게임별 알림 구독 · 아래 버튼을 누르면 알림 전용 역할을 추가하거나 해제합니다.';
     components=Object.entries(TOPICS).map(([topic,label])=>{const s=view.subscriptions.find(s=>s.topic===topic),on=s?.enabled&&s.status==='active';return {type:1,components:[button(`community:sub:${topic}:${s?.status&&s.status!=='active'?(s.enabled?'on':'off'):on?'off':'on'}`,`${label} ${s?.status&&s.status!=='active'?(s.enabled?'구독 재시도':'해제 재시도'):on?'해제':'구독'}`)]};});
   }else if(kind==='web'){
-    if(!profile)throw Error('먼저 /연동으로 게임 정보를 등록하세요.');const base=config.publicBaseUrl||config.viewerUrl;if(!base?.startsWith('https:'))throw Error('공개 HTTPS 주소 설정이 필요합니다.');const url=new URL('/viewer/',base).href;
-    content=`시청자 페이지: ${url}\n일회용 코드: ${viewerAuth.issue(userId)}\n10분 이내 사용하세요. 코드를 다른 사람에게 공유하지 마세요.`;
+    if(!profile)throw Error('먼저 /연동으로 게임 정보를 등록하세요.');const url=participantEntryUrl(config);
+    if(config.multiWorkspaceEnabled){
+      content=`내 참가 상태: ${url}\nDiscord 계정으로 로그인해 주세요.`;
+    }else{
+      content=`시청자 페이지: ${url}\n일회용 코드: ${viewerAuth.issue(userId)}\n10분 이내 사용하세요. 코드를 다른 사람에게 공유하지 마세요.`;
+    }
   }else if(kind==='history'){content=view.history.map(s=>`${s.title} · ${s.attended?'참가 확인':'신청 기록'}`).join('\n')||'최근 참가 기록이 없습니다.';}
   else if(kind==='tickets'){content=view.tickets.slice(0,5).map(t=>`${t.status==='closed'?'처리 완료':'접수'} · ${t.message.slice(0,100)}\n답변: ${t.answer||'답변 대기'}`).join('\n\n').slice(0,1900)||'등록된 문의가 없습니다.';}
   else{
     const own=buildParticipantSelfServiceState({operationsState:operations.read(),queueSummary:participationQueue?.summary?.()||{},userId,profile});
     content=`${own.session?.title||'진행 중인 모집 없음'}\n내 상태: ${own.queue?.entry?.statusLabel||'신청 상태 확인'} · 대기 순번: ${own.queue?.entry?.position||'—'}\n${view.fairness}\n아래에서 신청·취소·호출 응답을 처리하세요. 게임 정보는 /연동에서 수정할 수 있습니다.`;
     const names={join:'참가 신청',leave:'신청 취소',postponeNext:'다음 판',postponeNext2:'다다음 판',callJoin:'참가 가능',callPass:'이번 호출 패스',confirm:'준비 완료'},map={postponeNext:'postpone_next',postponeNext2:'postpone_next2',callJoin:'call_join',callPass:'call_pass'};
-    const buttons=Object.entries(names).filter(([k])=>own.actions[k]).map(([k,label])=>button(`community:act:${map[k]||k}:${own.session?.id||'none'}`,label));
+    const buttons=Object.entries(names).filter(([k])=>own.actions[k]).map(([k,label])=>button(k==='callJoin'||k==='callPass'?communityCallButtonId(k==='callJoin'?'join':'pass',own.session?.id,own.queue.entry):`community:act:${map[k]||k}:${own.session?.id||'none'}`,label));
     for(let i=0;i<buttons.length;i+=5)components.push({type:1,components:buttons.slice(i,i+5)});
     const reservations=(operations.read().reservations||[]).filter(r=>r.userId===userId);if(reservations.length)components.push({type:1,components:reservations.slice(0,2).map(r=>button(`community:cancel:${r.game}`,`${r.game==='er'?'이터널 리턴':'롤'} 예약 취소`))});
-    components.push({type:1,components:[button('community:web','신청 페이지 · 로그인 코드'),button('community:history','내 참가 기록'),button('community:tickets','내 문의')]});
+    components.push({type:1,components:[button('community:web',config.multiWorkspaceEnabled?'내 참가 상태 · Discord 로그인':'신청 페이지 · 로그인 코드'),button('community:history','내 참가 기록'),button('community:tickets','내 문의')]});
   }
   await interaction.editReply({content,components,allowedMentions:{parse:[]}});return true;
 }

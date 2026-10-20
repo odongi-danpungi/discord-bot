@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,rm} from 'node:fs/promises';
+import {mkdtemp,rm,readFile} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { OperationsStore,applyAction } from '../src/operations.js';
@@ -33,3 +33,52 @@ test('recap exposes aggregate counts without no-show identities',async t=>{const
 test('emergency/drain guard denies publication, settings and participant mutations',async t=>{const {service,sends}=await fixture(t);service.guard=()=>{throw Error('locked');};await assert.rejects(service.draft({kind:'notice'}),/locked/);await assert.rejects(service.ticket(user,{message:'hello'}),/locked/);await assert.rejects(service.subscribe(user,{topic:'aram',enabled:true}),/locked/);assert.equal(sends(),0);});
 test('fair selection honors unplayed priority, newcomer quota and consecutive cap',()=>{const now=Date.now(),state={session:{game:'lol',mode:'aram',communityFairness:{enabled:true,unplayedFirst:true,waitFirst:true,maxConsecutive:2,newcomerSlots:1}},sessionArchive:[{game:'lol',mode:'aram',endedAt:now,confirmed:['a','b']},{game:'lol',mode:'aram',endedAt:now-1000,confirmed:['a']}]};assert.deepEqual(fairSelect(state,['a','b','c','d'],2,now,()=>1),['c','d']);assert.throws(()=>fairSelect(state,['a','b'],2,now,()=>1),/부족/);});
 test('fairness disabled preserves legacy selection',()=>assert.equal(fairSelect({session:{}},['a'],1),null));
+
+test('settings preserve missing legacy round policy through save and restart, then apply only to a new round',async t=>{
+  const {service,operations}=await fixture(t);
+  await operations.update(s=>{applyAction(s,'open',{game:'lol',mode:'aram',count:2});delete s.session.communityFairness;});
+  const previous=communityState(operations.read()).settings.fairness;
+  await service.settings({revision:1,...communityState(operations.read()).settings,fairness:{enabled:true,unplayedFirst:true,waitFirst:true,maxConsecutive:2,newcomerSlots:1}});
+  assert.deepEqual(operations.read().session.communityFairness,previous);
+  assert.equal(fairSelect(operations.read(),[user,other],2),null);
+  assert.equal(communityView(operations).session.fairness,'무작위 추첨');
+  const reopened=await new OperationsStore(operations.file).init();
+  assert.deepEqual(reopened.read().session.communityFairness,previous);
+  await reopened.update(s=>{applyAction(s,'end');applyAction(s,'open',{game:'lol',mode:'aram',count:2});});
+  assert.equal(reopened.read().session.communityFairness.enabled,true);
+  assert.equal(reopened.read().session.communityFairness.maxConsecutive,2);
+});
+
+test('legacy active fair policy is snapshotted before default is disabled; invalid and stale settings do not write',async t=>{
+  const {service,operations}=await fixture(t);
+  await service.settings({revision:1,...communityState(operations.read()).settings,fairness:{enabled:true,unplayedFirst:false,waitFirst:true,maxConsecutive:1,newcomerSlots:0}});
+  await operations.update(s=>{applyAction(s,'open',{game:'lol',mode:'aram',count:1});delete s.session.communityFairness;});
+  const before=operations.read(),bytes=await readFile(operations.file,'utf8'),settings=communityState(before).settings;
+  await assert.rejects(service.settings({revision:1,...settings}),/다른 창/);
+  await assert.rejects(service.settings({revision:2,...settings,fairness:{...settings.fairness,maxConsecutive:21}}),/숫자 범위/);
+  assert.deepEqual(operations.read(),before);assert.equal(await readFile(operations.file,'utf8'),bytes);
+  await service.settings({revision:2,...settings,fairness:{...settings.fairness,enabled:false}});
+  assert.deepEqual(operations.read().session.communityFairness,settings.fairness);
+  assert.deepEqual(fairSelect(operations.read(),[user,other],1,Date.now(),()=>1),[user]);
+});
+
+test('settings queued before an emergency lock recheck the guard before committing',async t=>{
+  const {service,operations}=await fixture(t),before=operations.read(),bytes=await readFile(operations.file,'utf8');
+  let locked=false,release,entered;
+  service.guard=()=>{if(locked)throw Error('locked during queue wait');};
+  const ready=new Promise(resolve=>{entered=resolve;});
+  const blocker=operations.enqueue(async()=>{entered();await new Promise(resolve=>{release=resolve;});});
+  await ready;
+  const save=service.settings({revision:1,...communityState(before).settings});
+  locked=true;release();await blocker;
+  await assert.rejects(save,/locked during queue wait/);
+  assert.deepEqual(operations.read(),before);assert.equal(await readFile(operations.file,'utf8'),bytes);
+});
+
+test('missing legacy round policy with malformed prior defaults fails closed instead of guessing selection rules',async t=>{
+  const {service,operations}=await fixture(t);
+  await operations.update(s=>{applyAction(s,'open',{game:'lol',mode:'aram',count:1});delete s.session.communityFairness;s.community.settings.fairness.maxConsecutive='invalid';});
+  const before=operations.read(),bytes=await readFile(operations.file,'utf8'),settings=communityState(before).settings;
+  await assert.rejects(service.settings({revision:1,...settings,fairness:{enabled:false,unplayedFirst:true,waitFirst:true,maxConsecutive:0,newcomerSlots:0}}),error=>error.statusCode===409&&/기존 공정성/.test(error.message));
+  assert.deepEqual(operations.read(),before);assert.equal(await readFile(operations.file,'utf8'),bytes);
+});

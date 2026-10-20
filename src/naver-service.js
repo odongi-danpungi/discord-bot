@@ -53,7 +53,7 @@ function retryAfterMs(response){
 }
 
 export class NaverService {
-  constructor({config,authStore=null,fetchImpl=globalThis.fetch,timeoutMs=10000,reporter=null,sleepImpl=null}={}) {
+  constructor({config,authStore=null,fetchImpl=globalThis.fetch,timeoutMs=10000,reporter=null,sleepImpl=null,guard=()=>{}}={}) {
     this.config=config||{};
     this.authStore=authStore;
     this.fetch=fetchImpl;
@@ -62,6 +62,11 @@ export class NaverService {
     this.sleep=typeof sleepImpl==='function'?sleepImpl:(ms=>new Promise(resolve=>setTimeout(resolve,ms)));
     this.states=new Map();
     this.refreshPromise=null;
+    this.authGeneration=0;
+    this.disconnectPromise=null;
+    this.disconnecting=false;
+    this.consentGeneration=null;
+    this.guard=guard;
   }
   configured() { return Boolean(this.config.naverClientId && this.config.naverClientSecret); }
   oauthConfigured() { return Boolean(this.config.naverClientId && this.config.naverClientSecret && this.config.naverRedirectUri && this.authStore); }
@@ -81,12 +86,21 @@ export class NaverService {
   }
   cleanupStates(now=Date.now()) { for(const [key,expiresAt] of this.states)if(expiresAt<=now)this.states.delete(key); }
   beginOAuth() {
+    this.assertAuthGeneration(this.authGeneration);
     if(!this.oauthConfigured())throw new Error('네이버 OAuth 설정이 완료되지 않았습니다. NAVER_CLIENT_ID, NAVER_CLIENT_SECRET, NAVER_REDIRECT_URI, NAVER_TOKEN_KEY를 확인해 주세요.');
     this.cleanupStates();const state=randomBytes(24).toString('base64url');this.states.set(state,Date.now()+STATE_TTL_MS);
     const url=new URL(AUTHORIZE_URL);url.search=new URLSearchParams({response_type:'code',client_id:this.config.naverClientId,redirect_uri:this.config.naverRedirectUri,state}).toString();
     return {url:url.toString(),expiresAt:Date.now()+STATE_TTL_MS};
   }
   consumeState(state) { this.cleanupStates();const key=String(state||'');const expiresAt=this.states.get(key);if(!expiresAt||expiresAt<=Date.now())throw Object.assign(new Error('네이버 로그인 요청이 만료되었거나 state가 일치하지 않습니다. 대시보드에서 다시 연동해 주세요.'),{status:400});this.states.delete(key); }
+  assertAuthGeneration(generation) {
+    this.guard();
+    if (this.disconnecting || generation !== this.authGeneration) throw Object.assign(new Error('네이버 인증 정보가 변경되었습니다. 현재 연결 상태를 확인한 뒤 다시 시도해 주세요.'),{status:409,source:'naver',code:'NAVER_AUTH_CHANGED'});
+  }
+  assertAuthUsable() {
+    this.assertAuthGeneration(this.authGeneration);
+    if (this.consentGeneration !== null) throw Object.assign(new Error('네이버 계정 연결이 진행 중입니다. 연결 완료 후 다시 시도해 주세요.'),{status:409,source:'naver',code:'NAVER_AUTH_CHANGED'});
+  }
   async rawRequest(url,{method='GET',headers={},body=null,expectJson=true,operation='naver-api',retries=0}={}) {
     if(Date.now()<(this.rateLimitedUntil||0))throw Object.assign(Error('Naver rate limit cooldown'),{status:429,upstreamStatus:429,retryAfterMs:this.rateLimitedUntil-Date.now()});
     if(typeof this.fetch!=='function')throw new Error('HTTP fetch를 사용할 수 없습니다.');
@@ -119,47 +133,78 @@ export class NaverService {
     throw lastError||Object.assign(new Error('네이버 API 요청에 실패했습니다.'),{status:502,source:'naver'});
   }
   async exchangeCode({code,state}) {
+    this.assertAuthGeneration(this.authGeneration);
     if(!this.oauthConfigured())throw new Error('네이버 OAuth 설정이 완료되지 않았습니다.');
     this.consumeState(state);
-    const params=new URLSearchParams({grant_type:'authorization_code',client_id:this.config.naverClientId,client_secret:this.config.naverClientSecret,code:text(code,512,'인증 코드'),state:String(state)});
-    const {data}=await this.rawRequest(`${TOKEN_URL}?${params}`,{operation:'oauth-token',retries:0});
-    if(data?.error)throw Object.assign(new Error(data.error_description||data.error),{status:400,source:'naver'});
-    await this.authStore.saveToken({accessToken:data.access_token,refreshToken:data.refresh_token,tokenType:data.token_type,expiresIn:Number(data.expires_in||0)});return this.status();
+    const generation=++this.authGeneration;
+    // A new consent supersedes older token refreshes and in-flight callbacks.
+    this.refreshPromise=null;
+    this.consentGeneration=generation;
+    try {
+      const params=new URLSearchParams({grant_type:'authorization_code',client_id:this.config.naverClientId,client_secret:this.config.naverClientSecret,code:text(code,512,'인증 코드'),state:String(state)});
+      const {data}=await this.rawRequest(`${TOKEN_URL}?${params}`,{operation:'oauth-token',retries:0});
+      if(data?.error)throw Object.assign(new Error(data.error_description||data.error),{status:400,source:'naver'});
+      this.assertAuthGeneration(generation);
+      // This consent replaces this service's earlier grant, including a refresh
+      // already inside atomic IO. A newer consent or disconnect invalidates this generation.
+      await this.authStore.saveToken({accessToken:data.access_token,refreshToken:data.refresh_token,tokenType:data.token_type,expiresIn:Number(data.expires_in||0)}, {replaceExisting:true,guard:()=>this.assertAuthGeneration(generation)});
+      this.assertAuthGeneration(generation);return this.status();
+    } finally { if(this.consentGeneration===generation)this.consentGeneration=null; }
   }
   async refreshToken() {
+    this.assertAuthUsable();
     if(this.refreshPromise)return this.refreshPromise;
-    this.refreshPromise=(async()=>{
+    const generation=this.authGeneration;
+    const refresh=(async()=>{
       const current=this.authStore?.token?.();
+      const expectedToken=this.authStore?.read?.().token;
       if(!current?.refreshToken)throw Object.assign(new Error('네이버 refresh token이 없습니다. 다시 연동해 주세요.'),{status:409,source:'naver'});
       const params=new URLSearchParams({grant_type:'refresh_token',client_id:this.config.naverClientId,client_secret:this.config.naverClientSecret,refresh_token:current.refreshToken});
       const {data}=await this.rawRequest(`${TOKEN_URL}?${params}`,{operation:'oauth-refresh',retries:1});
       if(!data?.access_token)throw Object.assign(new Error('네이버 access token 갱신 응답이 올바르지 않습니다.'),{status:502,source:'naver'});
-      await this.authStore.saveToken({accessToken:data.access_token,refreshToken:data.refresh_token||current.refreshToken,tokenType:data.token_type,expiresIn:Number(data.expires_in||0)});
+      this.assertAuthGeneration(generation);
+      await this.authStore.saveToken({accessToken:data.access_token,refreshToken:data.refresh_token||current.refreshToken,tokenType:data.token_type,expiresIn:Number(data.expires_in||0)}, {expectedToken,guard:()=>this.assertAuthGeneration(generation)});
+      this.assertAuthGeneration(generation);
       return this.authStore.token();
     })();
-    try{return await this.refreshPromise;}finally{this.refreshPromise=null;}
+    this.refreshPromise=refresh;
+    try{return await refresh;}finally{if(this.refreshPromise===refresh)this.refreshPromise=null;}
   }
   async accessToken({forceRefresh=false}={}) {
+    this.assertAuthUsable();
     const token=this.authStore?.token?.();
     if(!token?.accessToken)throw Object.assign(new Error('네이버 계정을 먼저 연동해 주세요.'),{status:409,source:'naver'});
     if(forceRefresh||(token.expiresAt&&token.expiresAt-Date.now()<60000))return (await this.refreshToken()).accessToken;
     return token.accessToken;
   }
   async authorizedRequest(url,options={}){
+    const generation=this.authGeneration;
     let token=await this.accessToken();
+    this.assertAuthGeneration(generation);this.assertAuthUsable();
     try{return await this.rawRequest(url,{...options,headers:{...(options.headers||{}),Authorization:`Bearer ${token}`}});}
     catch(error){
       if(error?.upstreamStatus!==401)throw error;
+      this.assertAuthGeneration(generation);this.assertAuthUsable();
       token=await this.accessToken({forceRefresh:true});
+      this.assertAuthGeneration(generation);this.assertAuthUsable();
       return this.rawRequest(url,{...options,retries:0,headers:{...(options.headers||{}),Authorization:`Bearer ${token}`}});
     }
   }
   async disconnect() {
-    const token=this.authStore?.token?.();if(token?.accessToken&&this.configured()){
-      const body=new URLSearchParams({client_id:this.config.naverClientId,client_secret:this.config.naverClientSecret,token:token.accessToken,token_type_hint:'access_token'}).toString();
-      try{await this.rawRequest(REVOKE_URL,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body,expectJson:false,operation:'oauth-revoke',retries:0});}catch(error){if(error.upstreamStatus!==400)throw error;}
-    }
-    if(this.authStore)await this.authStore.clear();return this.status();
+    if(this.disconnectPromise)return this.disconnectPromise;
+    ++this.authGeneration;this.states.clear();this.refreshPromise=null;this.consentGeneration=null;this.disconnecting=true;
+    const disconnect=(async()=>{
+      const token=this.authStore?.token?.();
+      if(token?.accessToken&&this.configured()){
+        const body=new URLSearchParams({client_id:this.config.naverClientId,client_secret:this.config.naverClientSecret,token:token.accessToken,token_type_hint:'access_token'}).toString();
+        try{await this.rawRequest(REVOKE_URL,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body,expectJson:false,operation:'oauth-revoke',retries:0});}catch(error){if(error.upstreamStatus!==400)throw error;}
+      }
+      // Earlier guarded writes may already be inside atomic file IO. New auth
+      // work is fenced until this queued clear finishes, so clear the last commit.
+      if(this.authStore)await this.authStore.clear();return this.status();
+    })();
+    this.disconnectPromise=disconnect;
+    try{return await disconnect;}finally{if(this.disconnectPromise===disconnect){this.disconnectPromise=null;this.disconnecting=false;}}
   }
   async profile({readOnly=false}={}) {
     if(readOnly){

@@ -63,6 +63,50 @@ test('optional Naver and CHZZK integrations do not prevent core production start
   assert.equal(report.checks.find(x=>x.id==='chzzk-client').status,'warn');
 });
 
+test('participant-only Naver settings do not require operator Cafe credentials or leak their values',()=>{
+  const config=strongConfig();
+  for(const field of ['naverClientId','naverClientSecret','naverRedirectUri','naverCafeId','naverMenuId','naverMemoMenuId'])config[field]='';
+  config.naverMonitorEnabled=false;
+  Object.assign(config,{multiWorkspaceEnabled:true,discordClientSecret:'discord-oauth-private-value-2026',participantNaverClientId:'participant-app-value-2026',participantNaverClientSecret:'participant-secret-value-2026'});
+  const report=buildProductionEnvironmentValidation({config});
+  assert.equal(report.launchable,true);
+  assert.equal(report.checks.find(item=>item.id==='naver-client').required,false);
+  assert.equal(report.checks.find(item=>item.id==='participant-naver-app').status,'pass');
+  assert.equal(report.checks.find(item=>item.id==='participant-naver-key').status,'pass');
+  const serialized=JSON.stringify(report);
+  for(const value of [config.participantNaverClientId,config.participantNaverClientSecret,config.naverTokenKey])assert.equal(serialized.includes(value),false);
+  assert.doesNotThrow(()=>assertProductionEnvironment(report));
+});
+
+test('partial or unavailable participant Naver app warns without blocking existing production startup',()=>{
+  for(const changed of [
+    {participantNaverClientId:'participant-app'},
+    {participantNaverClientSecret:'participant-private-secret'},
+    {participantNaverClientId:'participant-app',participantNaverClientSecret:'participant-private-secret',naverTokenKey:''},
+    {participantNaverClientId:'naver-client-id',participantNaverClientSecret:'participant-private-secret'},
+    {participantNaverClientId:'participant-app',participantNaverClientSecret:'participant-private-secret',multiWorkspaceEnabled:false}
+  ]){
+    const config={...strongConfig(),...changed};
+    if(changed.naverTokenKey==='')config.naverRedirectUri='';
+    const report=buildProductionEnvironmentValidation({config});
+    assert.equal(report.launchable,true,JSON.stringify(changed));
+    assert.equal(report.checks.find(item=>item.id==='participant-naver-app').status,'warn');
+    assert.equal(report.checks.find(item=>item.id==='participant-naver-app').required,false);
+  }
+});
+
+test('configured participant key and secret reuse keep production fail-closed without exposing values',()=>{
+  const config={...strongConfig(),participantNaverClientId:'participant-app',participantNaverClientSecret:'participant-private-secret'};
+  for(const key of ['invalid-key',Buffer.alloc(32,7).toString('base64')+'!']){
+    const report=buildProductionEnvironmentValidation({config:{...config,naverTokenKey:key}});
+    assert.equal(report.launchable,false);assert.equal(report.checks.find(item=>item.id==='participant-naver-key').status,'fail');
+    assert.equal(JSON.stringify(report).includes(key),false);
+  }
+  const report=buildProductionEnvironmentValidation({config:{...config,participantNaverClientSecret:config.dashboardPassword}});
+  assert.equal(report.launchable,false);assert.equal(report.checks.find(item=>item.id==='secret-reuse').status,'fail');
+  assert.equal(JSON.stringify(report).includes(config.dashboardPassword),false);
+});
+
 test('startup runs production environment validation before acquiring process lock',async()=>{
   const source=await readFile(new URL('../src/index.js',import.meta.url),'utf8');
   const envAt=source.indexOf('startupEnvironmentValidation=buildProductionEnvironmentValidation');

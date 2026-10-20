@@ -3,15 +3,23 @@ import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, EmbedBuilder
 import { buildDiscordPermissionAudit, DISCORD_RECOMMENDED_INSTALL_PERMISSIONS } from './discord-permission-audit.js';
 import { buildDiscordDriftPlan, validateSafeFixSelection, DISCORD_EXPECTED_COMMANDS } from './discord-drift-fix.js';
 import { recruitmentCard, attendanceCard, resultCard, registrationPanel, actionLabels } from './messages.js';
+import { normalizeIntroductionName, readIntroductionSettings, introductionChannelName, resolveIntroduction, assertIntroductionTarget, saveIntroductionSettings } from './discord-introduction.js';
+import { canonicalCommandOptions, introductionCommands, setupCommand, rouletteCommand } from './discord-commands.js';
+import { prepareSetupTemplate,saveSetupTemplate } from './discord-setup-template.js';
 
-async function ensureSetupChannels(guild) {
+async function ensureSetupChannels(guild,operations,{introductionName,guard=()=>{}}={}) {
+  guard();
   const channels = await guild.channels.fetch();
+  guard();
+  const plan=prepareSetupTemplate(channels,operations.read(),introductionName,guild.members.me),names=plan.names;
+  // Save desired naming before Discord writes so a partial setup can be retried.
+  await saveSetupTemplate(operations,plan,guard);
   const layout = [
-    { name: '🔔 ᭄༄・방울! 안내방', channels: [
+    { name:names.welcomeCategory, key:'welcomeCategory', channels: [
       ['📢・공지사항', '게임 추첨 결과와 서버 공지 채널입니다.'],
       ['📃・이용규칙', '서버 이용 규칙을 안내하는 채널입니다.'],
-      ['🐱・방울소개', '새로 온 멤버를 환영하는 채널입니다.'],
-      ['🐱・방울2', '방울 커뮤니티 안내 채널입니다.'],
+      [names.introduction, '새로 온 멤버를 환영하는 채널입니다.','introduction'],
+      [names.communityInfo, `${plan.name??'방울'} 커뮤니티 안내 채널입니다.`,'communityInfo'],
       ['⭐・어서와요', '새로 온 멤버를 환영하는 채널입니다.']
     ]},
     { name: '📣 ᭄༄・방송 일정', channels: [
@@ -29,21 +37,25 @@ async function ensureSetupChannels(guild) {
       ['⚔️・내전', '시청자 내전 모집과 팀 안내 채널입니다.'],
       ['📜・로그', '시참 및 내전 진행 로그 채널입니다.']
     ]},
-    { name: '🔔・방울', channels: [
-      ['방울・방울방울', '커뮤니티 봇 안내 채널입니다.']
+    { name:names.botCategory, key:'botCategory', channels: [
+      [names.botInfo, '커뮤니티 봇 안내 채널입니다.','botInfo']
     ]}
   ];
   const result = {};
   for (const group of layout) {
+    guard();
     const categoryAliases = group.name === '🎮 시참' ? ['🎮 ꧁༺ · 시참'] : [];
-    let category = channels.find(c => c?.type === ChannelType.GuildCategory && [group.name, ...categoryAliases].includes(c.name));
+    let category = (group.key&&plan.resolved[group.key])||channels.find(c => c?.type === ChannelType.GuildCategory && [group.name, ...categoryAliases].includes(c.name));
     if (!category) category = await guild.channels.create({ name: group.name, type: ChannelType.GuildCategory, reason: 'Game roster bot setup' });
-    else if (category.name !== group.name) await category.setName(group.name, 'Match reference server layout');
-    for (const [name, topic] of group.channels) {
+    if(group.key){plan.ids[group.key]=category.id;await saveSetupTemplate(operations,plan,guard);}
+    if(category.name!==group.name&&(!group.key||plan.rename)){guard();await category.setName(group.name,'Apply server name template');}
+    for (const [name, topic, templateKey] of group.channels) {
+      guard();
       const aliases = name === '🎟️・시참' ? ['시참', '🎮・시참'] : name === '⚔️・내전' ? ['내전'] : name === '📜・로그' ? ['로그'] : [];
-      let channel = channels.find(c => c?.parentId === category.id && [name, ...aliases].includes(c.name) && c.type === ChannelType.GuildText);
+      let channel = (templateKey&&plan.resolved[templateKey])||channels.find(c => c?.parentId === category.id && [name, ...aliases].includes(c.name) && c.type === ChannelType.GuildText);
       if (!channel) channel = await guild.channels.create({ name, type: ChannelType.GuildText, parent: category.id, topic, reason: 'Game roster bot setup' });
-      else if (channel.name !== name) await channel.setName(name, 'Match reference server layout');
+      if(templateKey){plan.ids[templateKey]=channel.id;await saveSetupTemplate(operations,plan,guard);}
+      if (channel.name !== name&&(!templateKey||plan.rename||templateKey==='introduction')) {guard();await channel.setName(name, 'Apply server name template');}
       if (name === '🎟️・시참') result.registration = channel;
       if (name === '📢・공지사항') result.results = channel;
       if (name === '⚔️・내전') result.teams = channel;
@@ -85,14 +97,15 @@ async function ensureCoreChannelsOnly(guild){
 
 async function syncProjectGuildCommands(guild,{adminRoleId=''}={}){
   const current=await guild.commands.fetch(),changes=[];
-  for(const expected of DISCORD_EXPECTED_COMMANDS){
-    const data={name:expected.name,description:expected.description,defaultMemberPermissions:null};
-    if(expected.name==='setting')data.defaultMemberPermissions=adminRoleId?null:PermissionFlagsBits.ManageGuild.toString();
+  const expectedCommands=[...DISCORD_EXPECTED_COMMANDS.filter(command=>command.name!=='setting'),setupCommand({adminRoleId}),...introductionCommands({adminRoleId}),rouletteCommand({adminRoleId})];
+  for(const expected of expectedCommands){
+    const data={name:expected.name,description:expected.description,defaultMemberPermissions:expected.default_member_permissions??null,options:expected.options||[]};
     const existing=[...current.values()].find(command=>command.name===expected.name);
     if(!existing){const created=await guild.commands.create(data);changes.push({action:'create',name:created.name,id:created.id});continue;}
-    const desiredPermission=expected.name==='setting'?(adminRoleId?null:PermissionFlagsBits.ManageGuild.toString()):null;
+    const desiredPermission=data.defaultMemberPermissions;
     const currentPermission=existing.defaultMemberPermissions?.toString?.()??null;
-    if(existing.description!==expected.description||currentPermission!==desiredPermission){
+    const currentOptions=canonicalCommandOptions(existing.options||[]),expectedOptions=canonicalCommandOptions(expected.options||[]);
+    if(existing.description!==expected.description||currentPermission!==desiredPermission||JSON.stringify(currentOptions)!==JSON.stringify(expectedOptions)){
       const edited=await guild.commands.edit(existing.id,data);changes.push({action:'edit',name:edited.name,id:edited.id});
     }
   }
@@ -129,11 +142,24 @@ export class DiscordService {
     }
     const message=await channel.send(payload);return {channelId:channel.id,id:message.id};
   }
-  setup(){return this.serial('setup',async()=>{
+  setup(options={}){return this.serial('setup',async()=>{
     this.auditAt=0;
-    const channels=await ensureSetupChannels(await this.client.guilds.fetch(this.guildId));
+    const channels=await ensureSetupChannels(await this.client.guilds.fetch(this.guildId),this.operations,options);
+    options.guard?.();
     const ref=await this.editOrSend(channels.registration,this.operations.read().panel,registrationPanel);
     await this.operations.update(state=>{state.panel=ref;});this.warning='';
+  });}
+  renameIntroduction(value,{guard=()=>{}}={}){return this.serial('rename-introduction',async()=>{
+    guard();const name=normalizeIntroductionName(value),settings=readIntroductionSettings(this.operations.read());
+    const guild=await this.client.guilds.fetch(this.guildId),all=await guild.channels.fetch();guard();
+    const {category,channel}=resolveIntroduction(all,settings,{requireExisting:true});
+    const desiredName=introductionChannelName({name});
+    assertIntroductionTarget(all,category,channel,desiredName,guild.members.me||this.client.user);
+    // Persist the intended name and stable channel ID first. If Discord fails,
+    // setup/retry converges on this channel instead of creating a second one.
+    guard();await saveIntroductionSettings(this.operations,{name,channelId:channel.id,categoryId:category.id},{guard});
+    guard();if(channel.name!==desiredName)await channel.setName(desiredName,'댕댕봇 소개 채널 이름 변경');
+    this.auditAt=0;return {channelId:channel.id,name:desiredName};
   });}
   sync(action){return this.serial(`sync:${action||'sync'}`,async()=>{
     const state=this.operations.read(),s=state.session;if(!s)return;
@@ -229,7 +255,7 @@ export class DiscordService {
         category:{exists:Boolean(resolvedCategory),id:resolvedCategory?.id||null,name:resolvedCategory?.name||null,expectedName:'🎮 시참'},
         channels:{registration:channelSnapshot(resolvedChannels.registration,'registration'),teams:channelSnapshot(resolvedChannels.teams,'teams'),log:channelSnapshot(resolvedChannels.log,'log')},outsideCoreChannels,
         installScopes,installPermissions,guildInstallConfigured:Boolean((app.integrationTypesConfig&&((app.integrationTypesConfig instanceof Map&&app.integrationTypesConfig.has(0))||Object.prototype.hasOwnProperty.call(app.integrationTypesConfig,'0')))||installScopes.includes('bot')),
-        commands:[...commands.values()].map(command=>({name:command.name,id:command.id,description:command.description,defaultMemberPermissions:command.defaultMemberPermissions?.toString?.()??null})),
+        commands:[...commands.values()].map(command=>({name:command.name,id:command.id,description:command.description,defaultMemberPermissions:command.defaultMemberPermissions?.toString?.()??null,options:command.options||[]})),
         adminRoleId,adminRoleExists:adminRoleId?Boolean(adminRole):true,adminRoleName:adminRole?.name||'',manageGuildPermissionValue:manageGuildValue,
         installPermissionValue:recommendedValue,hierarchy:{botHighestRoleId:me.roles.highest?.id||null,botHighestRoleName:me.roles.highest?.name||'',botHighestRolePosition:me.roles.highest?.position??0}
       });

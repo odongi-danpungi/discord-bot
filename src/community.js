@@ -25,6 +25,12 @@ export function fairSelect(state,eligible,count,now=Date.now(),rng=randomInt){
   return selected.map(u=>u.userId);
 }
 export function publicOrigin(config){try{const u=new URL(config.publicBaseUrl||config.viewerUrl);if(u.protocol!=='https:'||u.username||u.password)throw Error();return u.origin;}catch{throw fail('먼저 공개 HTTPS 주소를 설정해 주세요.');}}
+export function participantEntryUrl(config,sessionId){
+  const url=new URL(config.multiWorkspaceEnabled?'/portal/':'/viewer/',publicOrigin(config));
+  if(config.multiWorkspaceEnabled)url.searchParams.set('server',id(config.guildId));
+  if(sessionId)url.searchParams.set('session',String(sessionId));
+  return url.href;
+}
 export function communityView(operations,userId){
   const state=operations.read(),c=communityState(state),guide=guideState(state);
   if(!userId)return {...c,guide,session:state.session?{id:state.session.id,title:state.session.title,phase:state.session.phase,fairness:fairnessLabel(state.session.communityFairness||c.settings.fairness)}:null,archives:(state.sessionArchive||[]).map(s=>({id:s.id,title:s.title,endedAt:s.endedAt}))};
@@ -33,12 +39,20 @@ export function communityView(operations,userId){
 export class CommunityService {
   constructor({operations,config,discord,naver,guard=()=>{}}){Object.assign(this,{operations,config,discord,naver,guard});this.pending=new Set();}
   async mutate(fn,expected){await this.operations.update(state=>{const c=communityState(state);if(expected!==undefined&&expected!==c.revision)throw fail('다른 창에서 변경되었습니다. 새로고침 후 다시 시도해 주세요.',409);fn(c,state);c.revision++;state.community=c;});}
-  async settings(body){this.guard();await this.mutate(c=>{
+  async settings(body){this.guard();await this.mutate((c,state)=>{
+    this.guard();
     const f=body.fairness||{};for(const k of ['enabled','unplayedFirst','waitFirst'])if(typeof f[k]!=='boolean')throw fail('공정성 설정을 확인해 주세요.');
     for(const [k,max] of [['maxConsecutive',20],['newcomerSlots',50]])if(!Number.isInteger(f[k])||f[k]<0||f[k]>max)throw fail('공정성 숫자 범위를 확인해 주세요.');
     const roles={};for(const topic of Object.keys(TOPICS)){const value=body.roles?.[topic]||'';roles[topic]=value?id(value):'';if(roles[topic]===this.config.guildId)throw fail('@everyone 역할은 사용할 수 없습니다.');}
     const old=c.settings.roles||{};if(c.subscriptions.some(s=>(s.enabled||s.status!=='active')&&old[s.topic]!==roles[s.topic]))throw fail('구독 중이거나 적용 확인 중인 역할은 변경할 수 없습니다. 기존 구독을 해제한 후 변경하세요.');
     if(new Set(Object.values(roles).filter(Boolean)).size!==Object.values(roles).filter(Boolean).length)throw fail('주제별로 서로 다른 알림 전용 역할을 선택하세요.');
+    // Older active rounds predate the policy snapshot. Preserve the effective
+    // policy before replacing defaults so an ongoing draw never changes rules.
+    if(state.session&&state.session.phase!=='ended'&&state.session.communityFairness==null){
+      const previous=c.settings.fairness;
+      if(!previous||['enabled','unplayedFirst','waitFirst'].some(k=>typeof previous[k]!=='boolean')||[['maxConsecutive',20],['newcomerSlots',50]].some(([k,max])=>!Number.isInteger(previous[k])||previous[k]<0||previous[k]>max))throw fail('진행 중인 회차의 기존 공정성 설정을 확인해 주세요.',409);
+      state.session.communityFairness=structuredClone(previous);
+    }
     c.settings={channelId:body.channelId?id(body.channelId):'',roles,fairness:{enabled:f.enabled,unplayedFirst:f.unplayedFirst,waitFirst:f.waitFirst,maxConsecutive:f.maxConsecutive,newcomerSlots:f.newcomerSlots}};
   },body.revision);}
   async draft(body){this.guard();let saved;await this.mutate((c,state)=>{
@@ -48,8 +62,9 @@ export class CommunityService {
     let title=text(body.title||'방송 안내',150),content=text(body.content||'',1200,false),sessionId=null;
     if(kind==='recruitment'){
       const s=state.session;if(!s||s.phase!=='open')throw fail('컨트롤 센터에서 모집을 먼저 열어 주세요.');
-      sessionId=s.id;title=s.title.slice(0,150);const url=`${publicOrigin(this.config)}/viewer/?session=${encodeURIComponent(s.id)}`;
-      content=`${content}\n${s.count}명 모집 · ${s.game==='er'?'이터널 리턴':s.mode==='aram'?'칼바람':'협곡'}\n${fairnessLabel(s.communityFairness||c.settings.fairness)}\n신청: ${url}\nDiscord에서 사용자 연동 후 일회용 코드로 로그인하세요. 카페 댓글은 자동 접수되지 않습니다.`.trim();
+      sessionId=s.id;title=s.title.slice(0,150);const url=participantEntryUrl(this.config,s.id);
+      const loginHelp=this.config.multiWorkspaceEnabled?'Discord 계정으로 로그인한 뒤 내 참가 상태에서 신청하세요.':'Discord에서 사용자 연동 후 일회용 코드로 로그인하세요.';
+      content=`${content}\n${s.count}명 모집 · ${s.game==='er'?'이터널 리턴':s.mode==='aram'?'칼바람':'협곡'}\n${fairnessLabel(s.communityFairness||c.settings.fairness)}\n신청: ${url}\n${loginHelp} 카페 댓글은 자동 접수되지 않습니다.`.trim();
     }
     if(kind==='recap'){
       const s=(state.sessionArchive||[]).find(s=>s.id===body.archiveId);if(!s)throw fail('종료된 회차를 선택하세요.');

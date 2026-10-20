@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { canonicalCommandOptions, introductionCommands, setupCommand, rouletteCommand } from './discord-commands.js';
 
 const EXPECTED_COMMANDS=Object.freeze([
   {name:'연동',description:'내 치지직·게임 정보를 등록하거나 수정합니다'},
@@ -44,18 +45,19 @@ export function buildDiscordDriftPlan(audit={}){
     addSafe(items,{id:'ensure-core-channels',action:'ensure-core-channels',title:'핵심 시참 채널 생성',detail:`누락된 핵심 채널 ${safeMissing.length}개만 생성합니다. 기존 채널과 다른 카테고리는 수정하지 않습니다.`,changes:safeMissing,blocked:!manageChannels,blockedReason:manageChannels?'':'봇에 ManageChannels 권한이 없어 자동 생성할 수 없습니다.'});
   }
 
-  const desiredSettingPermission=audit.adminRole?.id?null:String(audit.manageGuildPermissionValue||'');
+  const commandConfig={adminRoleId:audit.adminRole?.id||''};
+  const expectedCommands=[...EXPECTED_COMMANDS.filter(command=>command.name!=='setting'),setupCommand(commandConfig),...introductionCommands(commandConfig),rouletteCommand(commandConfig)];
   const commandDrift=[];
-  for(const expected of EXPECTED_COMMANDS){
+  for(const expected of expectedCommands){
     const current=commandBy(audit,expected.name);
     if(!current){commandDrift.push(`/${expected.name} 생성`);continue;}
     if(String(current.description||'')!==expected.description)commandDrift.push(`/${expected.name} 설명 동기화`);
+    if(JSON.stringify(canonicalCommandOptions(current.options||[]))!==JSON.stringify(canonicalCommandOptions(expected.options||[])))commandDrift.push(`/${expected.name} 옵션 동기화`);
     const actual=current.defaultMemberPermissions==null?null:String(current.defaultMemberPermissions);
-    if(expected.name==='setting'){
-      if(actual!==desiredSettingPermission)commandDrift.push(`/setting 기본 권한 ${actual??'없음'} → ${desiredSettingPermission??'런타임 역할 검사'}`);
-    }else if(actual!==null)commandDrift.push(`/${expected.name} 기본 권한 제한 해제`);
+    const desired=expected.default_member_permissions??null;
+    if(actual!==desired)commandDrift.push(desired===null?`/${expected.name} 기본 권한 제한 해제`:`/${expected.name} 기본 권한 ${actual??'없음'} → ${desired}`);
   }
-  if(commandDrift.length)addSafe(items,{id:'sync-guild-commands',action:'sync-guild-commands',title:'Guild Slash Command 동기화',detail:'프로젝트가 소유한 /연동, /setting 명령만 생성·수정합니다. 다른 명령은 삭제하지 않습니다.',changes:commandDrift});
+  if(commandDrift.length)addSafe(items,{id:'sync-guild-commands',action:'sync-guild-commands',title:'Guild Slash Command 동기화',detail:'프로젝트가 소유한 /연동, /setting, /소개, /룰렛 명령만 생성·수정합니다. 다른 명령은 삭제하지 않습니다.',changes:commandDrift});
 
   if(checkBy(audit,'administrator')?.status==='warn')addManual(items,{id:'manual-administrator',title:'Administrator 제거 검토',detail:'고위험 서버 권한은 자동으로 제거하지 않습니다. 봇 역할에서 필요한 최소 권한만 남기세요.'});
   if(checkBy(audit,'privileged-intents')?.status==='warn'||checkBy(audit,'portal-intents')?.status==='warn')addManual(items,{id:'manual-intents',title:'Privileged Intent 정리',detail:'Gateway Intent와 Developer Portal 토글은 실행 설정에 영향을 주므로 자동 변경하지 않습니다. 현재 기능은 Guilds Intent만 사용합니다.'});

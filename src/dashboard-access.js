@@ -38,6 +38,7 @@ export function canDashboard(identity,capability){
 }
 
 export function publicDashboardAccess(identity){
+  if(identity?.role==='workspace')return {role:'workspace',user:String(identity.user),guildId:String(identity.guildId),capabilities:['live','queue','broadcast','discord','naver','community']};
   const role=identity?.role==='operator'?'operator':'admin';
   return {role,user:String(identity?.user||'admin'),capabilities:role==='admin'?[...DASHBOARD_OPERATOR_CAPABILITIES]:[...(identity?.capabilities||[])]};
 }
@@ -50,6 +51,12 @@ export function dashboardCapabilityForRequest(method,path){
   if(pathname==='/api/naver/participation'&&verb==='GET')return 'queue';
   if(/^\/api\/naver\/participation\/(register|cancel|close)$/.test(pathname)&&verb==='POST')return 'queue';
   if(pathname==='/api/broadcast-ops'&&verb==='GET')return 'broadcast';
+  if(pathname==='/api/roulette'&&verb==='GET')return 'broadcast';
+  if(pathname==='/api/roulette/spin'&&verb==='POST')return 'broadcast';
+  if(pathname==='/api/donation-roulette'&&['GET','POST'].includes(verb))return 'broadcast';
+  if(pathname==='/api/donation-roulette/test'&&verb==='POST')return 'broadcast';
+  if(pathname==='/api/chat-overlay'&&['GET','POST'].includes(verb))return 'broadcast';
+  if(['/api/chat-overlay/test','/api/chat-overlay/clear'].includes(pathname)&&verb==='POST')return 'broadcast';
   if(pathname==='/api/broadcast-runbook'&&verb==='GET')return 'broadcast';
   if(pathname==='/api/broadcast-archive'&&verb==='GET')return 'broadcast';
   if(pathname.startsWith('/api/broadcast-runbook/')&&verb==='POST')return 'broadcast';
@@ -67,7 +74,7 @@ export function dashboardCapabilityForRequest(method,path){
 }
 
 export function operatorStaticAllowed(path){
-  return ['/mobile-control.html','/mobile-control.js','/mobile-control.css','/mobile-control-model.js','/mobile-broadcast-model.js','/mobile-health-model.js','/mobile-recovery-model.js','/broadcast-runbook-model-v416.js'].includes(String(path||''));
+  return ['/mobile-control.html','/mobile-control.js','/mobile-control.css','/mobile-control-model.js','/mobile-broadcast-model.js','/mobile-health-model.js','/mobile-recovery-model.js','/broadcast-runbook-model-v416.js','/roulette.html','/roulette.js','/roulette.css'].includes(String(path||''));
 }
 
 export function sanitizeOperatorQueueEntry(entry){

@@ -3,6 +3,7 @@ import { verificationMessages } from './chzzk-verification-discord.js';
 export function installChzzkOAuthRoutes(app, service, guard) {
   if (!service) return;
   service.guard = guard;
+  const cookieName=service.config?.workspaceScoped?`__Secure-chzzk-oauth-${service.config.guildId}`:'__Secure-chzzk-oauth';
   const security = res => res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff',
     'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'" });
   const page = (res, title, message, status = 200) => {
@@ -11,18 +12,18 @@ export function installChzzkOAuthRoutes(app, service, guard) {
   app.get('/oauth/chzzk/start', (req, res) => {
     try {
       security(res); const next = service.start(req.query.ticket);
-      res.cookie('__Secure-chzzk-oauth', next.cookie, { httpOnly: true, secure: true, sameSite: 'lax', path: '/oauth/chzzk/callback', maxAge: 600000 });
+      res.cookie(cookieName, next.cookie, { httpOnly: true, secure: true, sameSite: 'lax', path: '/oauth/chzzk/callback', maxAge: 600000 });
       res.redirect(303, next.url);
     } catch (e) { page(res, '인증 시작 실패', 'Discord 또는 관리자 화면에서 새 인증 링크를 발급해 주세요.', e.status || 400); }
   });
   app.get('/oauth/chzzk/callback', async (req, res) => {
     security(res);
     try {
-      const match = String(req.headers.cookie || '').split(';').map(c => c.trim()).find(c => c.startsWith('__Secure-chzzk-oauth='));
-      const cookie = match ? decodeURIComponent(match.slice('__Secure-chzzk-oauth='.length)) : '';
-      res.clearCookie('__Secure-chzzk-oauth', { httpOnly: true, secure: true, sameSite: 'lax', path: '/oauth/chzzk/callback' });
+      const match = String(req.headers.cookie || '').split(';').map(c => c.trim()).find(c => c.startsWith(cookieName+'='));
+      const cookie = match ? decodeURIComponent(match.slice(cookieName.length+1)) : '';
+      res.clearCookie(cookieName, { httpOnly: true, secure: true, sameSite: 'lax', path: '/oauth/chzzk/callback' });
       const result = await service.callback({ state: req.query.state, cookie, code: req.query.code, denied: Boolean(req.query.error) });
-      const message = result.status === 'owner_connected' ? '공통 방송 채널이 자동 설정됐습니다. 봇을 초대한 모든 Discord 서버에서 같은 채널의 팔로워를 인증합니다. 관리자 대시보드에서 채널을 확인하세요.' : verificationMessages[result.status];
+      const message = result.status === 'owner_connected' ? (service.config.workspaceScoped?'이 Discord 서버의 방송 채널이 연결됐습니다. 운영 화면에서 연결 상태를 확인하세요.':'공통 방송 채널이 자동 설정됐습니다. 봇을 초대한 모든 Discord 서버에서 같은 채널의 팔로워를 인증합니다. 관리자 대시보드에서 채널을 확인하세요.') : verificationMessages[result.status];
       return page(res, result.status === 'verified' ? '치지직 팔로워 인증 완료' : '치지직 계정 연동 결과', message || '연동 확인 대기입니다.');
     } catch (e) {
       const message = e.reason === 'OWNER_CHANNEL_MISMATCH'

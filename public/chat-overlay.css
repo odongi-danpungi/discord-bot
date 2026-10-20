@@ -1,0 +1,15 @@
+/* OBS browser source: transparent page, newest chat at the bottom in sage bubbles. */
+:root{--panel:#f5f7f1;--text:#25372c;--muted:#5b6e60;--line:#cdd7ca;--accent:#456b59;--soft:#dce7dc;font-family:Pretendard,"Noto Sans KR",system-ui,sans-serif;font-synthesis:none;color-scheme:light}
+*{box-sizing:border-box}html,body{margin:0;height:100%;background:transparent;color:var(--text);overflow:hidden}
+.chat{position:fixed;left:0;right:0;bottom:0;margin:0;padding:12px;list-style:none;display:flex;flex-direction:column;justify-content:flex-end;gap:8px;max-height:100%;font-size:20px}
+.chat[data-size="small"]{font-size:16px}.chat[data-size="large"]{font-size:26px}
+.message{align-self:flex-start;max-width:100%;padding:.45em .75em;border-radius:.8em;background:#f5f7f1eb;border:1px solid var(--line);box-shadow:0 4px 14px #0000002b;line-height:1.45;overflow-wrap:anywhere;animation:enter .25s ease-out;transition:opacity .6s ease,transform .6s ease}
+.message.gone{opacity:0;transform:translateY(-4px)}
+.name{font-weight:700;color:var(--accent);margin-right:.45em}
+.role{display:inline-block;margin-right:.35em;padding:0 .4em;border-radius:.4em;background:var(--accent);color:#f8fbf6;font-size:.7em;font-weight:700;vertical-align:.12em}
+.role.test{background:var(--soft);color:var(--text)}
+.message[data-role="streamer"] .name{color:#2f4f3f}
+.content img{height:1.35em;width:auto;vertical-align:-.3em;margin:0 .05em}
+.connection{position:fixed;right:8px;top:6px;margin:0;font-size:11px;color:#ffffffcc;text-shadow:0 1px 2px #000a}.connection[data-state="live"]{display:none}
+@keyframes enter{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){.message{animation:none;transition:none}}
