@@ -248,11 +248,11 @@ test('portal donation screen saves tiers with the loaded revision and never clai
   await dom.window.eval('(async()=>{' + source.replace(/^import \{newPractice,practiceAction\} from '\.\/practice-model\.js';\r?\n/, '') + ';globalThis.portalTest={page};})()');
   await dom.window.portalTest.page('donation-roulette');
   const doc = dom.window.document, panel = doc.getElementById('panel');
-  assert.equal(doc.getElementById('breadcrumb').textContent, '통합 운영 / 룰렛 / 치즈 후원 룰렛');
-  assert.deepEqual([...doc.querySelectorAll('#menu>details>summary')].map(s => s.textContent), ['통합 운영', '네이버 카페', 'Discord', 'CHZZK']);
-  assert.equal(doc.querySelector('#menu [data-page=donation-roulette]').closest('#menu>details').querySelector('summary').textContent, '통합 운영');
+  assert.equal(doc.getElementById('breadcrumb').textContent, '방송 / 룰렛 / 치즈 후원 룰렛');
+  assert.deepEqual([...doc.querySelectorAll('#menu>details>summary')].map(s => s.textContent), ['통합 운영', '방송', '네이버 카페', 'Discord', 'CHZZK']);
+  assert.equal(doc.querySelector('#menu [data-page=donation-roulette]').closest('#menu>details').querySelector('summary').textContent, '방송');
   const groupOf = id => { const leaf = doc.querySelector(`#menu [data-page="${id}"]`); return [leaf.closest('#menu>details').querySelector('summary').textContent, leaf.parentElement.querySelector('summary').textContent]; };
-  for (const [id, path] of Object.entries({ schedule: ['통합 운영', '방송'], poll: ['통합 운영', '방송'], studio: ['통합 운영', '방송'], obs: ['통합 운영', '방송'], 'obs-roulette': ['통합 운영', '방송'], 'obs-chat': ['통합 운영', '방송'], roulette: ['통합 운영', '룰렛'], archive: ['통합 운영', '방송 기록'], timeline: ['통합 운영', '방송 기록'], stats: ['통합 운영', '방송 기록'], notifications: ['통합 운영', '방송 기록'],
+  for (const [id, path] of Object.entries({ schedule: ['방송', '방송 도구'], poll: ['방송', '방송 도구'], studio: ['방송', '방송 도구'], obs: ['방송', 'OBS'], 'obs-roulette': ['방송', 'OBS'], 'obs-chat': ['방송', 'OBS'], roulette: ['방송', '룰렛'], archive: ['방송', '방송 기록'], timeline: ['방송', '방송 기록'], stats: ['방송', '방송 기록'], notifications: ['방송', '방송 기록'],
     home: ['통합 운영', '참가 진행'], queue: ['통합 운영', '참가 진행'], presets: ['통합 운영', '참가 진행'], practice: ['통합 운영', '운영 준비'] })) assert.deepEqual(groupOf(id), path, id);
   assert.equal(new Set([...doc.querySelectorAll('#menu [data-page]')].map(b => b.dataset.page)).size, doc.querySelectorAll('#menu [data-page]').length, 'every feature appears once');
   assert.match(panel.textContent, /후원 구독 요청 완료/); assert.match(panel.textContent, /실제 후원 수신 검증 대기/);

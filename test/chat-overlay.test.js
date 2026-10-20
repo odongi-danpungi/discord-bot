@@ -229,12 +229,12 @@ test('portal OBS screens: roulette guide copies the donation OBS URL; chat scree
   await dom.window.eval('(async()=>{' + source.replace(/^import \{newPractice,practiceAction\} from '\.\/practice-model\.js';\r?\n/, '') + ';globalThis.portalTest={page};})()');
   const doc = dom.window.document, panel = doc.getElementById('panel');
   await dom.window.portalTest.page('obs-roulette');
-  assert.equal(doc.getElementById('breadcrumb').textContent, '통합 운영 / 방송 / OBS 룰렛');
+  assert.equal(doc.getElementById('breadcrumb').textContent, '방송 / OBS / OBS 룰렛');
   assert.match(panel.textContent, /브라우저/); assert.match(panel.textContent, /1280/);
   [...panel.querySelectorAll('button')].find(b => b.textContent === 'OBS 후원 룰렛 주소 복사').click(); await settle();
   assert.deepEqual(copied, ['https://fixture.invalid/d?token=t']);
   await dom.window.portalTest.page('obs-chat');
-  assert.equal(doc.getElementById('breadcrumb').textContent, '통합 운영 / 방송 / OBS 채팅창');
+  assert.equal(doc.getElementById('breadcrumb').textContent, '방송 / OBS / OBS 채팅창');
   assert.match(panel.textContent, /채팅 구독 요청 완료/); assert.match(panel.textContent, /실제 채팅 수신 검증 대기/);
   assert.match(panel.textContent, /\[테스트\] <b>봄이<\/b>/); assert.equal(panel.querySelector('td b, td i'), null, 'chat stays inert text');
   doc.querySelector('.chat-form [name=enabled]').checked = true;
