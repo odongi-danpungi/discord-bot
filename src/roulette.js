@@ -10,33 +10,40 @@ const fingerprintValid=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(val
 const sources=['custom','queue'];
 const corrupt=()=>failure('저장된 룰렛 기록을 확인할 수 없습니다. 제작자에게 점검을 요청해 주세요.',503);
 
-function label(value) {
+// New draws accept at most 99 entries and 30-character typed items. Results and
+// settings saved under the earlier 100-entry / 80-character rule stay readable.
+export const ROULETTE_LIMITS=Object.freeze({minItems:2,maxItems:99,maxLength:30});
+const STORED_LIMITS=Object.freeze({minItems:2,maxItems:100,maxLength:80});
+const QUEUE_LIMITS=Object.freeze({minItems:2,maxItems:99,maxLength:80});
+export const STORED_ROULETTE_LIMITS=STORED_LIMITS;
+
+function label(value,limits=ROULETTE_LIMITS) {
   // Bound UTF-16 input before normalization or code-point allocation. NFC,
   // surrounding whitespace and case are ignored for custom duplicate checks.
-  if(typeof value!=='string'||value.length>320||controls.test(value))throw failure('룰렛 항목은 제어 문자 없이 1~80자로 입력해 주세요.');
+  if(typeof value!=='string'||value.length>limits.maxLength*4||controls.test(value))throw failure(`룰렛 항목은 제어 문자 없이 1~${limits.maxLength}자로 입력해 주세요.`);
   const normalized=value.normalize('NFC').trim();
-  if(!normalized||[...normalized].length>80)throw failure('룰렛 항목은 1~80자로 입력해 주세요.');
+  if(!normalized||[...normalized].length>limits.maxLength)throw failure(`룰렛 항목은 1~${limits.maxLength}자로 입력해 주세요.`);
   return normalized;
 }
 
-function count(items) {
-  if(!Array.isArray(items)||items.length<2||items.length>100)throw failure('룰렛 항목은 2~100개로 구성해 주세요.');
+function count(items,limits=ROULETTE_LIMITS) {
+  if(!Array.isArray(items)||items.length<limits.minItems||items.length>limits.maxItems)throw failure(`룰렛 항목은 ${limits.minItems}~${limits.maxItems}개로 구성해 주세요.`);
 }
 
 /** Equal-chance custom items; NFC + trim + Unicode lowercase define duplicates. */
-export function normalizeRouletteItems(items) {
-  count(items);
+export function normalizeRouletteItems(items,limits=ROULETTE_LIMITS) {
+  count(items,limits);
   const seen=new Set();
   return Array.from(items,(value,index)=>{
-    const normalized=label(value),key=normalized.toLowerCase();
+    const normalized=label(value,limits),key=normalized.toLowerCase();
     if(seen.has(key))throw failure('같은 이름의 룰렛 항목을 중복 입력할 수 없습니다.');
     seen.add(key);
     return {id:`custom:${index}`,label:normalized};
   });
 }
 
-function normalizeEntries(entries) {
-  count(entries);
+function normalizeEntries(entries,limits=QUEUE_LIMITS) {
+  count(entries,limits);
   const seen=new Set();
   return Array.from(entries,entry=>{
     if(!exact(entry,['id','label'])||typeof entry.id!=='string'||!entry.id||entry.id.length>160||entry.id.trim()!==entry.id||controls.test(entry.id))throw failure('룰렛 참가자 식별 정보를 확인해 주세요.');
@@ -44,14 +51,14 @@ function normalizeEntries(entries) {
     seen.add(entry.id);
     // Queue participants may legitimately share a display name. Identity is
     // the stable queue entry ID, not the label or a cross-platform nickname.
-    return {id:entry.id,label:label(entry.label)};
+    return {id:entry.id,label:label(entry.label,limits)};
   });
 }
 
 function validResult(result) {
   if(!exact(result,['id','requestId','at','source','entries','winnerIndex','winner'])||typeof result.id!=='string'||!requestIdValid(result.id)||!requestIdValid(result.requestId)||!revision(result.at)||!sources.includes(result.source))return false;
   let entries;
-  try{count(result.entries);entries=result.source==='custom'?normalizeRouletteItems(result.entries.map(entry=>entry?.label)):normalizeEntries(result.entries);}
+  try{count(result.entries,STORED_LIMITS);entries=result.source==='custom'?normalizeRouletteItems(result.entries.map(entry=>entry?.label),STORED_LIMITS):normalizeEntries(result.entries,STORED_LIMITS);}
   catch{return false;}
   if(JSON.stringify(entries)!==JSON.stringify(result.entries)||!Number.isInteger(result.winnerIndex)||result.winnerIndex<0||result.winnerIndex>=entries.length||!exact(result.winner,['id','label']))return false;
   return result.winner.id===entries[result.winnerIndex].id&&result.winner.label===entries[result.winnerIndex].label;
@@ -102,7 +109,7 @@ export function spinRoulette(state,input,{randomIntImpl=randomInt,now=Date.now()
   if(!plain(input)||Object.keys(input).some(key=>!allowed.includes(key))||!requestIdValid(input.requestId)||!fingerprintValid(input.fingerprint)||!revision(input.expectedRevision)||!sources.includes(input.source)||(input.source==='custom'?Object.hasOwn(input,'entries'):Object.hasOwn(input,'items')))throw failure('룰렛 요청과 최신 상태 버전을 확인해 주세요.');
   const replay=replayRoulette(state,{requestId:input.requestId,fingerprint:input.fingerprint});
   if(replay){
-    if(replay.result.source!==input.source||(input.source==='custom'&&JSON.stringify(normalizeRouletteItems(input.items))!==JSON.stringify(replay.result.entries)))throw failure('이미 다른 내용으로 사용한 룰렛 요청입니다.',409);
+    if(replay.result.source!==input.source||(input.source==='custom'&&JSON.stringify(normalizeRouletteItems(input.items,STORED_LIMITS))!==JSON.stringify(replay.result.entries)))throw failure('이미 다른 내용으로 사용한 룰렛 요청입니다.',409);
     return replay;
   }
   const stored=storedRoulette(state);

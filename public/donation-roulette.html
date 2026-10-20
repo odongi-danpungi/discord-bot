@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>댕댕봇 · 치즈 후원 룰렛 OBS</title>
+  <link rel="stylesheet" href="/broadcast/donation-roulette.css">
+</head>
+<body>
+<main id="stage" class="stage" hidden aria-live="polite">
+  <p id="donor" class="donor"></p>
+  <div class="wheel-wrap"><span class="pointer" aria-hidden="true"></span><svg id="wheel" viewBox="0 0 400 400" role="img" aria-label="치즈 후원 룰렛"></svg></div>
+  <p id="result" class="result" hidden></p>
+</main>
+<p id="connection" class="connection" data-state="connecting">연결 중</p>
+<script type="module" src="/broadcast/donation-roulette.js"></script>
+</body>
+</html>

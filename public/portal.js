@@ -39,7 +39,8 @@ function form(fields,submit,label='저장',confirmation=''){
 }
 function table(rows,columns){const t=el('table'),head=el('tr');for(const [,label]of columns)head.append(el('th',label));t.append(head);for(const row of rows||[]){const tr=el('tr');for(const [key]of columns)tr.append(el('td',String(row[key]??'—')));t.append(tr);}return t;}
 const menu=[
-  ['통합 운영',[['방송',['home','queue','open','round','ready','undo']],['운영 준비',['onboarding','handoff']],['참가 설정',['intake-capacity','intake-duplicates','intake-close','recruitment-rules','call-settings']],['방송 도구',['presets','schedule','poll','studio','roulette','obs','practice']],['방송 기록',['archive','timeline','stats','notifications']],['커뮤니티',['subscriptions','recruitment','my-panel','recap','publication','guide','tickets']]]],
+  ['통합 운영',[['참가 진행',['home','queue','open','presets','round','ready','undo']],['운영 준비',['onboarding','handoff','practice']],['참가 설정',['intake-capacity','intake-duplicates','intake-close','recruitment-rules','call-settings']],['커뮤니티',['subscriptions','recruitment','my-panel','recap','publication','guide','tickets']]]],
+  ['방송',[['방송 도구',['schedule','poll','studio']],['OBS',['obs','obs-roulette','obs-chat']],['룰렛',['roulette','donation-roulette']],['방송 기록',['archive','timeline','stats','notifications']]]],
   ['네이버 카페',[['계정·게시판',['naver','cafe']],['카페 운영',['search','write','memo','monitor']]]],
   ['Discord',[['서버 운영',['discord','members']]]],
   ['CHZZK',[['방송 계정',['chzzk','live']],['팔로워 인증',['panel']]]]
@@ -50,7 +51,7 @@ Object.assign(titles,{presets:'모집 프리셋',timeline:'방송 타임라인',
 Object.assign(titles,{onboarding:'운영 시작 안내',handoff:'운영 인수인계'});
 Object.assign(titles,{'recruitment-rules':'참가 선발 규칙','call-settings':'호출 응답 시간'});
 Object.assign(titles,{'intake-capacity':'접수 인원 제한','intake-duplicates':'중복 접수 처리','intake-close':'정원 도달 마감'});
-Object.assign(titles,{roulette:'룰렛'});
+Object.assign(titles,{roulette:'직접 입력 룰렛','donation-roulette':'치즈 후원 룰렛','obs-roulette':'OBS 룰렛','obs-chat':'OBS 채팅창'});
 const knownPage=id=>id==='fairness'||typeof id==='string'&&menu.some(([,middle])=>middle.some(([,leaves])=>leaves.includes(id)));
 const safeText=(value,limit=600)=>typeof value==='string'?value.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g,'').slice(0,limit):'';
 const readinessStatuses={configured:'설정 완료',attention:'확인 필요',pending:'검증 대기',optional:'선택 사항'};
@@ -67,7 +68,9 @@ async function page(id){
   const assertCurrent=()=>{if(!current())throw Object.assign(Error('서버 또는 화면이 변경되었습니다. 다시 선택해 주세요.'),{stale:true});};
   notice('');$('title').textContent=titles[id]||'내 참가 상태';$('intro').textContent=workspace.name+' · 운영자';
   const group=menu.find(([,mid])=>mid.some(([,leaves])=>leaves.includes(id))),mid=group?.[1].find(([,leaves])=>leaves.includes(id));$('breadcrumb').textContent=[group?.[0],mid?.[0],titles[id]].filter(Boolean).join(' / ');
-  for(const b of document.querySelectorAll('[data-page]')){b.classList.toggle('active',b.dataset.page===id);if(b.dataset.page===id){b.parentElement.open=true;b.parentElement.parentElement.open=true;}}
+  for(const b of document.querySelectorAll('[data-page]')){b.classList.toggle('active',b.dataset.page===id);if(b.dataset.page===id)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');if(b.dataset.page===id){b.parentElement.open=true;b.parentElement.parentElement.open=true;}}
+  // Expand only the selected path right away (toggle events are asynchronous), across top-level categories too.
+  const holds=node=>[...node.querySelectorAll('[data-page]')].some(item=>item.dataset.page===id);for(const top of $('menu').querySelectorAll(':scope>details')){const has=holds(top);top.open=has;if(has)for(const mid of top.querySelectorAll(':scope>details'))mid.open=holds(mid);}
   const p=el('div');$('panel').replaceChildren(el('p','불러오는 중…','muted'));
   const request=async(endpoint,body)=>{assertCurrent();try{const result=await api(scope+endpoint,body);assertCurrent();return result;}catch(error){assertCurrent();throw error;}};
   const snap=async()=>snapshot=await request('/api/snapshot');
@@ -198,6 +201,94 @@ async function page(id){
     p.append(el('p','연결한 방송 계정의 시작·종료를 확인하고 이 서버에 알림을 보냅니다.'),el('p',s.channelId?'방송 계정 연결됨 · 확인 대상은 연결한 채널로 고정됩니다.':'방송 계정 연결 메뉴에서 채널을 먼저 연결해 주세요.','muted'),form([['enabled','방송 상태 확인',String(s.enabled),'select',[['true','사용'],['false','중지']]],['intervalMinutes','확인 간격',String(s.intervalMinutes||2),'select',[['1','1분'],['2','2분'],['5','5분'],['10','10분'],['15','15분']]],['discordAlerts','Discord 알림',String(s.discordAlerts!==false),'select',[['true','알림 전송'],['false','전송하지 않음']]]],body=>request('/live-settings',{enabled:body.enabled==='true',intervalMinutes:Number(body.intervalMinutes),discordAlerts:body.discordAlerts==='true'})));
   }else if(id==='panel'){
     const options=await request('/api/community-options');p.append(form([['channelId','인증 안내를 게시할 채널','','select',(options.channels||[]).map(c=>[c.id,c.name])]],body=>request('/api/chzzk/verification/panel',body),'인증 안내 게시','선택한 Discord 채널에 인증 안내를 게시할까요?'));
+  }else if(id==='donation-roulette'){
+    const data=await request('/api/donation-roulette'),s=data.settings,st=data.status||{};
+    const validTiers=s&&typeof s.enabled==='boolean'&&Array.isArray(s.tiers)&&s.tiers.length<=5&&s.tiers.every(t=>t&&Number.isSafeInteger(t.minAmount)&&t.minAmount>0&&Array.isArray(t.items)&&t.items.every(i=>typeof i==='string'));
+    if(!Number.isSafeInteger(data.revision)||data.revision<0||!validTiers){const message='저장된 후원 룰렛 설정을 확인하지 못했습니다. 다시 불러와 주세요.';$('panel').replaceChildren(el('p',message),button('설정 다시 불러오기',()=>page(id),'secondary'));throw Error(message);}
+    const states={unavailable:['준비 안 됨','readiness-optional'],not_connected:['방송 계정 연결 필요','readiness-attention'],disabled:['사용 안 함','readiness-optional'],stopped:['중지','readiness-optional'],connecting:['연결 중','readiness-pending'],subscribing:['구독 요청 중','readiness-pending'],subscribed:['후원 구독 요청 완료','readiness-configured'],reconnecting:['재연결 대기','readiness-attention'],auth_required:['후원 조회 권한 동의 필요','readiness-attention']};
+    const [label,cls]=states[st.state]||['상태 확인 필요','readiness-attention'],evidence=el('div',undefined,'readiness-evidence');
+    evidence.append(el('span',label,'badge '+cls),el('span','실제 후원 수신 검증 대기','badge readiness-pending'));
+    p.append(el('p','치지직에서 정한 금액 이상 치즈 후원이 들어오면, 후원 금액이 해당하는 가장 높은 구간의 목록으로 룰렛을 돌립니다. 결과는 룰렛 기록과 OBS 후원 룰렛 화면에 후원자 닉네임과 함께 표시됩니다. Queue는 바뀌지 않습니다.','settings-guidance'),evidence);
+    if(st.detail)p.append(el('p',safeText(st.detail,200),'muted'));
+    if(st.state==='not_connected')p.append(el('p','CHZZK → 방송 계정 연결에서 이 서버의 방송 계정을 먼저 연결해 주세요. 후원 조회 권한(후원 조회 Scope)에 동의해야 합니다.','muted'));
+    const f=el('form',undefined,'form settings-form donation-form'),message=el('p','','settings-feedback');message.setAttribute('role','status');
+    const toggle=el('label',undefined,'setting-toggle'),enabled=el('input'),toggleText=el('span');enabled.type='checkbox';enabled.name='enabled';enabled.checked=s.enabled;toggleText.append(el('strong','치즈 후원 룰렛 사용'),el('span','방송 계정이 연결되어 있을 때만 후원을 받습니다.','field-help'));toggle.append(enabled,toggleText);f.append(toggle);
+    const list=el('div',undefined,'donation-tiers'),add=el('button','금액 구간 추가','secondary');add.type='button';
+    const tierRow=(tier={minAmount:1000,items:[]})=>{const row=el('fieldset',undefined,'intake-setting-card donation-tier'),legend=el('legend','금액 구간');row.append(legend);
+      const amount=field(row,'minAmount','최소 후원 금액 (치즈)',tier.minAmount,'number');amount.min='1';amount.max='100000000';amount.step='1';amount.required=true;
+      const items=field(row,'items','룰렛 항목 (한 줄에 하나, 2~99개 · 항목당 1~30자)',tier.items.join('\n'),'textarea');items.required=true;items.maxLength=4000;
+      const counter=el('span','','field-help donation-count');counter.setAttribute('aria-live','polite');items.parentElement.append(counter);
+      const recount=()=>{const lines=items.value.split('\n').map(v=>v.trim()).filter(Boolean),long=lines.filter(v=>[...v].length>30).length;counter.textContent=`${lines.length}/99개`+(long?` · 30자를 넘는 항목 ${long}개`:'');counter.classList.toggle('over',lines.length>99||long>0);};items.addEventListener('input',recount);recount();
+      const remove=el('button','이 구간 삭제','secondary');remove.type='button';remove.onclick=()=>{if(list.children.length>1){row.remove();add.disabled=false;}else message.textContent='금액 구간은 1개 이상 필요합니다.';};row.append(remove);list.append(row);add.disabled=list.children.length>=5;};
+    for(const tier of s.tiers.length?s.tiers:[{minAmount:1000,items:[]}])tierRow(tier);
+    add.onclick=()=>{if(list.children.length<5)tierRow({minAmount:(Math.max(0,...[...list.querySelectorAll('input[name=minAmount]')].map(i=>Number(i.value)||0))+1000),items:[]});};
+    f.append(list,add,el('p','금액이 여러 구간에 해당하면 최소 금액이 가장 높은 구간 하나만 사용합니다. 저장한 뒤 들어오는 후원부터 적용됩니다.','field-help'));
+    const mode=field(f,'spinMode','돌리는 방식',s.spinMode||'once','select',[['once','후원 1건에 1회'],['repeat','금액만큼 여러 번 (구간 최소 금액당 1회)']]);
+    const maxSpins=field(f,'maxSpins','한 후원당 최대 횟수',s.maxSpins||1,'number');maxSpins.min='1';maxSpins.max='10';maxSpins.step='1';maxSpins.required=true;
+    const modeHelp=el('span','','field-help');maxSpins.parentElement.append(modeHelp);
+    const describeMode=()=>{const repeat=mode.value==='repeat';maxSpins.disabled=!repeat;modeHelp.textContent=repeat?'예: 1,000치즈 구간에 3,500치즈를 후원하면 3회 돌립니다. 1~10회까지 정할 수 있습니다.':'금액과 관계없이 후원 1건에 한 번만 돌립니다.';};mode.onchange=describeMode;describeMode();
+    const save=el('button','설정 저장');save.type='submit';f.append(save,message);
+    f.onsubmit=event=>{event.preventDefault();if(busy)return;void run(async()=>{assertCurrent();
+      const tiers=[...list.querySelectorAll('.donation-tier')].map(row=>({minAmount:Number(row.querySelector('[name=minAmount]').value),items:row.querySelector('[name=items]').value.split('\n').map(v=>v.trim()).filter(Boolean)}));
+      if(tiers.some(t=>!Number.isSafeInteger(t.minAmount)||t.minAmount<1||t.minAmount>100000000))throw Error('최소 후원 금액은 1~100,000,000치즈 사이의 정수로 입력해 주세요.');
+      if(tiers.some(t=>t.items.length<2||t.items.length>99))throw Error('각 구간의 룰렛 항목은 2~99개로 입력해 주세요.');
+      if(tiers.some(t=>t.items.some(v=>[...v].length>30)))throw Error('룰렛 항목은 하나에 30자까지 입력할 수 있습니다.');
+      if(tiers.some(t=>new Set(t.items.map(v=>v.normalize('NFC').toLowerCase())).size!==t.items.length))throw Error('한 구간 안에 같은 항목을 두 번 넣을 수 없습니다.');
+      const spins=mode.value==='repeat'?Number(maxSpins.value):1;if(!Number.isInteger(spins)||spins<1||spins>10)throw Error('한 후원당 최대 횟수는 1~10회로 입력해 주세요.');
+      await request('/api/donation-roulette',{enabled:enabled.checked,tiers,spinMode:mode.value,maxSpins:spins,revision:data.revision});await page(id);});};
+    p.append(f);
+    const testBox=el('section',undefined,'intake-setting-card donation-test');testBox.append(el('h2','테스트 후원'),el('p','실제 치즈 없이 저장된 설정으로 룰렛을 돌려 OBS 화면과 기록을 확인합니다. 기록과 OBS에 "테스트"로 표시되며 룰렛 기록·운영 기록에는 남지 않습니다. 치지직 연결이나 사용 설정과 관계없이 동작합니다.','muted'));
+    const tf=el('form',undefined,'form donation-test-form'),tName=field(tf,'nickname','표시할 닉네임','테스트'),tAmount=field(tf,'amount','후원 금액 (치즈)',s.tiers[0]?.minAmount||1000,'number');tName.maxLength=20;tAmount.min='1';tAmount.max='100000000';tAmount.step='1';
+    const tSend=el('button','테스트 후원 보내기');tSend.type='submit';tf.append(tSend);
+    if(!s.tiers.length){tSend.disabled=true;tf.append(el('span','금액 구간을 먼저 저장해 주세요.','field-help'));}
+    tf.onsubmit=event=>{event.preventDefault();if(busy)return;void run(async()=>{assertCurrent();const amount=Number(tAmount.value);if(!Number.isSafeInteger(amount)||amount<1||amount>100000000)throw Error('테스트 후원 금액은 1~100,000,000치즈 사이의 정수로 입력해 주세요.');
+      await request('/api/donation-roulette/test',{nickname:tName.value,amount});await page(id);});};
+    testBox.append(tf);p.append(testBox);
+    actions(button('OBS 후원 룰렛 주소 복사',async()=>{const obs=await request('/obs');if(!obs.donationRouletteUrl)throw Error('OBS 주소를 확인하지 못했습니다.');await navigator.clipboard.writeText(obs.donationRouletteUrl);}),button('룰렛 기록 보기',()=>page('roulette'),'secondary'));
+    p.append(el('h2','최근 후원 룰렛'));
+    const events=Array.isArray(data.events)?data.events:[];
+    const shortTime=at=>{const d=new Date(at);return Number.isFinite(d.getTime())?d.toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:false}):'—';};
+    const logBox=el('div',undefined,'donation-log');
+    if(events.length){logBox.append(table(events.slice(0,60).map(e=>({time:shortTime(e.at),nickname:(e.test?'[테스트] ':'')+safeText(e.nickname,20),amount:Number(e.amount).toLocaleString('ko-KR')+'치즈'+(e.spins>1?` · ${e.spin}/${e.spins}회`:''),result:e.status==='spun'?safeText(e.winner,80):'돌리지 않음 · '+safeText(e.reason,200)})),[['time','일시'],['nickname','후원자'],['amount','후원'],['result','결과']]));p.append(logBox);}
+    else p.append(el('p','아직 기록된 후원 룰렛이 없습니다.','muted'));
+  }else if(id==='obs-roulette'){
+    p.append(el('p','치즈 후원 룰렛을 방송 화면(OBS)에 띄우는 방법입니다. 금액 구간과 룰렛 항목은 룰렛 → 치즈 후원 룰렛에서 정합니다.','settings-guidance'));
+    const steps=el('ol',undefined,'obs-steps');
+    for(const text of ['아래 "OBS 후원 룰렛 주소 복사"를 누릅니다.','OBS의 소스 목록에서 + → 브라우저를 고르고 이름(예: 치즈 룰렛)을 정합니다.','URL 칸에 붙여 넣고 너비 1280, 높이 720으로 정합니다. 배경은 투명하게 나옵니다.','"보이지 않을 때 소스 종료"는 끄는 것을 권장합니다. 꺼져 있던 동안의 후원은 다시 재생하지 않습니다.','치즈 후원 룰렛의 "테스트 후원"으로 화면에 룰렛이 뜨는지 확인합니다.'])steps.append(el('li',text));
+    p.append(steps,el('p','주소에는 이 서버의 방송 토큰이 들어 있습니다. 참가자에게 공유하지 마세요.','muted'));
+    actions(button('OBS 후원 룰렛 주소 복사',async()=>{const obs=await request('/obs');if(!obs.donationRouletteUrl)throw Error('OBS 주소를 확인하지 못했습니다.');await navigator.clipboard.writeText(obs.donationRouletteUrl);}),button('치즈 후원 룰렛 설정',()=>page('donation-roulette'),'secondary'));
+  }else if(id==='obs-chat'){
+    const data=await request('/api/chat-overlay'),s=data.settings,st=data.status||{};
+    if(!Number.isSafeInteger(data.revision)||data.revision<0||!s||typeof s.enabled!=='boolean'){const message='저장된 채팅창 설정을 확인하지 못했습니다. 다시 불러와 주세요.';$('panel').replaceChildren(el('p',message),button('설정 다시 불러오기',()=>page(id),'secondary'));throw Error(message);}
+    const states={unavailable:['준비 안 됨','readiness-optional'],not_connected:['방송 계정 연결 필요','readiness-attention'],disabled:['사용 안 함','readiness-optional'],stopped:['중지','readiness-optional'],connecting:['연결 중','readiness-pending'],subscribing:['구독 요청 중','readiness-pending'],subscribed:['채팅 구독 요청 완료','readiness-configured'],reconnecting:['재연결 대기','readiness-attention'],auth_required:['채팅 메시지 조회 권한 동의 필요','readiness-attention']};
+    const [label,cls]=states[st.state]||['상태 확인 필요','readiness-attention'],evidence=el('div',undefined,'readiness-evidence');
+    evidence.append(el('span',label,'badge '+cls),el('span','실제 채팅 수신 검증 대기','badge readiness-pending'));
+    p.append(el('p','연결한 방송 계정의 치지직 채팅을 방송 화면(OBS)에 투명 채팅창으로 띄웁니다. 채팅 내용은 저장하지 않고, 서버 메모리에 최근 50개만 잠시 보관합니다.','settings-guidance'),evidence);
+    if(st.detail)p.append(el('p',safeText(st.detail,200),'muted'));
+    if(st.state==='not_connected')p.append(el('p','CHZZK → 방송 계정 연결에서 이 서버의 방송 계정을 먼저 연결해 주세요. 채팅 메시지 조회 권한에 동의해야 합니다.','muted'));
+    const f=el('form',undefined,'form settings-form chat-form');
+    const toggle=el('label',undefined,'setting-toggle'),enabled=el('input'),toggleText=el('span');enabled.type='checkbox';enabled.name='enabled';enabled.checked=s.enabled;toggleText.append(el('strong','OBS 채팅창 사용'),el('span','방송 계정이 연결되어 있을 때만 채팅을 받습니다.','field-help'));toggle.append(enabled,toggleText);f.append(toggle);
+    const max=field(f,'maxMessages','한 번에 보일 채팅 수 (3~20개)',s.maxMessages,'number');max.min='3';max.max='20';max.step='1';max.required=true;
+    const hideAfter=field(f,'hideAfterSeconds','채팅이 사라지는 시간',String(s.hideAfterSeconds),'select',[['15','15초 뒤'],['30','30초 뒤'],['60','1분 뒤'],['120','2분 뒤'],['300','5분 뒤'],['0','사라지지 않음']]);
+    const size=field(f,'fontSize','글자 크기',s.fontSize,'select',[['small','작게'],['medium','보통'],['large','크게']]);
+    const save=el('button','설정 저장');save.type='submit';f.append(save);
+    f.onsubmit=event=>{event.preventDefault();if(busy)return;void run(async()=>{assertCurrent();const maxMessages=Number(max.value);if(!Number.isInteger(maxMessages)||maxMessages<3||maxMessages>20)throw Error('한 번에 보일 채팅 수는 3~20개로 입력해 주세요.');
+      await request('/api/chat-overlay',{enabled:enabled.checked,maxMessages,hideAfterSeconds:Number(hideAfter.value),fontSize:size.value,revision:data.revision});await page(id);});};
+    p.append(f);
+    const testBox=el('section',undefined,'intake-setting-card chat-test');testBox.append(el('h2','테스트 채팅'),el('p','치지직 연결 없이 OBS 채팅창에 "테스트" 표시가 붙은 채팅을 보냅니다.','muted'));
+    const tf=el('form',undefined,'form donation-test-form'),tName=field(tf,'nickname','표시할 닉네임','테스트'),tText=field(tf,'content','채팅 내용','안녕하세요!');tName.maxLength=20;tText.maxLength=100;tText.required=true;
+    const tSend=el('button','테스트 채팅 보내기');tSend.type='submit';tf.append(tSend);
+    tf.onsubmit=event=>{event.preventDefault();if(busy)return;void run(async()=>{assertCurrent();if(!tText.value.trim())throw Error('테스트 채팅 내용을 입력해 주세요.');await request('/api/chat-overlay/test',{nickname:tName.value,content:tText.value});await page(id);});};
+    testBox.append(tf);p.append(testBox);
+    const clearChat=el('button','채팅창 비우기','secondary');clearChat.type='button';clearChat.onclick=()=>{if(!busy&&confirm('OBS 채팅창에 보이는 채팅을 모두 지울까요?'))void run(async()=>{await request('/api/chat-overlay/clear',{});await page(id);});};
+    actions(button('OBS 채팅창 주소 복사',async()=>{const obs=await request('/obs');if(!obs.chatUrl)throw Error('OBS 주소를 확인하지 못했습니다.');await navigator.clipboard.writeText(obs.chatUrl);}),clearChat);
+    const steps=el('ol',undefined,'obs-steps');
+    for(const text of ['"OBS 채팅창 주소 복사"를 누릅니다.','OBS의 소스 목록에서 + → 브라우저를 고르고 이름(예: 채팅창)을 정합니다.','URL 칸에 붙여 넣고 너비 400, 높이 600 정도로 정합니다. 배경은 투명하게 나옵니다.','"테스트 채팅 보내기"로 화면에 채팅이 뜨는지 확인합니다.'])steps.append(el('li',text));
+    p.append(el('h2','OBS에 추가하기'),steps,el('p','주소에는 이 서버의 방송 토큰이 들어 있습니다. 참가자에게 공유하지 마세요.','muted'));
+    p.append(el('h2','최근 채팅'));
+    const recent=Array.isArray(data.recent)?data.recent:[],shortTime=at=>{const d=new Date(at);return Number.isFinite(d.getTime())?d.toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}):'—';};
+    if(recent.length){const box=el('div',undefined,'donation-log');box.append(table([...recent].reverse().map(m=>({time:shortTime(m.at),nickname:(m.test?'[테스트] ':'')+safeText(m.nickname,20),content:safeText(m.content,300)})),[['time','시각'],['nickname','닉네임'],['content','내용']]));p.append(box);}
+    else p.append(el('p','아직 받은 채팅이 없습니다. 서버를 다시 시작하면 비워집니다.','muted'));
   }else if(id==='obs'){
     p.append(el('p','OBS 브라우저 소스에 사용할 주소를 복사합니다. 참가자에게 공유하지 마세요.'));actions(button('OBS 주소 복사',async()=>{const data=await request('/obs');await navigator.clipboard.writeText(data.url);}));
   }else if(id==='presets'){

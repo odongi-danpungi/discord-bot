@@ -17,7 +17,8 @@ const deterministic={randomIntImpl:()=>1,now:1000};
 
 test('custom items preserve NFC labels and use stable ordinal IDs',()=>{
   assert.deepEqual(normalizeRouletteItems(['  시리  ','🐶']),[{id:'custom:0',label:'시리'},{id:'custom:1',label:'🐶'}]);
-  assert.equal(normalizeRouletteItems(['😀'.repeat(80),'봄이'])[0].label.length,160);
+  assert.equal(normalizeRouletteItems(['😀'.repeat(30),'봄이'])[0].label.length,60,'30 code points, not UTF-16 units');
+  assert.throws(()=>normalizeRouletteItems(['😀'.repeat(31),'봄이']));
 });
 
 test('sparse inputs and stored snapshots reject instead of creating missing participants',()=>{
@@ -28,9 +29,9 @@ test('sparse inputs and stored snapshots reject instead of creating missing part
   throwsStatus(()=>readRoulette(state),503);
 });
 
-test('one hundred unique entries are accepted and every custom ID stays unique',()=>{
-  const state={},items=Array.from({length:100},(_,index)=>`참가자 ${index}`),response=spinRoulette(state,request({items}),{now:1000,randomIntImpl:max=>max-1});
-  assert.equal(response.result.entries.length,100);assert.equal(response.result.winnerIndex,99);assert.equal(new Set(response.result.entries.map(entry=>entry.id)).size,100);assert.equal(response.result.winner.label,'참가자 99');
+test('ninety-nine unique entries are accepted and every custom ID stays unique',()=>{
+  const state={},items=Array.from({length:99},(_,index)=>`참가자 ${index}`),response=spinRoulette(state,request({items}),{now:1000,randomIntImpl:max=>max-1});
+  assert.equal(response.result.entries.length,99);assert.equal(response.result.winnerIndex,98);assert.equal(new Set(response.result.entries.map(entry=>entry.id)).size,99);assert.equal(response.result.winner.label,'참가자 98');
 });
 
 for(const items of [[],['한명'],Array.from({length:101},(_,index)=>String(index)),['시리','  시리 '],['DOG','dog'],[' ','봄이'],['시리\n','봄이'],['시리\u202e','봄이'],['a'.repeat(81),'봄이'],['a'.repeat(100000),'봄이'],[null,'봄이'],['\ud800','봄이']])test(`invalid or duplicate custom items reject without mutation: ${JSON.stringify(items).slice(0,80)}`,()=>{
@@ -161,3 +162,17 @@ test('storage validates a corrupt roulette field and preserves fail-closed data'
   const fresh=new OperationsStore(file);
   await assert.rejects(fresh.init(),error=>error.code==='EDATA_CORRUPT');
 }));
+
+test('new draws accept 2-99 items of 1-30 characters while earlier saved results stay readable', async () => {
+  const { ROULETTE_LIMITS, normalizeRouletteItems: items, readRoulette: read } = await import('../src/roulette.js');
+  assert.deepEqual({ ...ROULETTE_LIMITS }, { minItems: 2, maxItems: 99, maxLength: 30 });
+  assert.equal(items(Array.from({ length: 99 }, (_, i) => '항목' + i)).length, 99);
+  assert.throws(() => items(Array.from({ length: 100 }, (_, i) => '항목' + i)), /2~99개/);
+  assert.equal(items(['가'.repeat(30), '나']).at(0).label.length, 30);
+  assert.throws(() => items(['가'.repeat(31), '나']), /1~30자/);
+  // A result saved under the earlier rule (100 entries, 80-character labels) must not be reported as corrupt.
+  const entries = Array.from({ length: 100 }, (_, i) => ({ id: 'custom:' + i, label: (i === 0 ? '가'.repeat(80) : '항목' + i) }));
+  const result = { id: 'legacy-result-1', requestId: 'legacy-request-1', at: 1, source: 'custom', entries, winnerIndex: 0, winner: { ...entries[0] } };
+  const state = { roulette: { version: 1, revision: 1, history: [result], requests: [{ requestId: 'legacy-request-1', fingerprint: 'a'.repeat(64), result }] } };
+  assert.equal(read(state).history[0].entries.length, 100);
+});
