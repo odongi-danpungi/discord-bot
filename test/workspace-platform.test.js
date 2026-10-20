@@ -567,3 +567,34 @@ test('cheese donation roulette settings are per server, manager-only, and the OB
   const page=await fetch(f.base+new URL(obs.donationRouletteUrl).pathname+feed.search);assert.equal(page.status,200);
   assert.match(await page.text(),new RegExp('/w/'+A+'/broadcast/donation-roulette\\.js'));
 });
+
+test('OBS chat window settings are per server, manager-only, and its feed and page need that server token',async t=>{
+  const f=await fixture(t),admin=await f.login(owner),participant=await f.login(person);
+  for(const id of [A,B])assert.equal((await f.request('/portal/api/servers/'+id,admin,{})).status,200);
+  const loaded=await f.request('/w/'+A+'/api/chat-overlay',admin);assert.equal(loaded.status,200,await loaded.clone().text());
+  const initial=await loaded.json();assert.deepEqual(initial.settings,{enabled:false,maxMessages:8,hideAfterSeconds:60,fontSize:'medium'});assert.equal(initial.revision,0);
+  assert.equal(initial.status.verification,'pending','a chat subscription is never reported as verified delivery');
+  assert.equal((await f.request('/w/'+A+'/api/chat-overlay',participant)).status,403);
+  const body={enabled:true,maxMessages:5,hideAfterSeconds:30,fontSize:'large',revision:0};
+  assert.equal((await f.request('/w/'+A+'/api/chat-overlay',{...admin,'X-CSRF-Token':'bad'},body)).status,403);
+  const saved=await f.request('/w/'+A+'/api/chat-overlay',admin,body);assert.equal(saved.status,200,await saved.clone().text());assert.equal((await saved.json()).revision,1);
+  assert.equal((await(await f.request('/w/'+B+'/api/chat-overlay',admin)).json()).revision,0,'other server keeps its own settings');
+  const obs=await(await f.request('/w/'+A+'/obs',admin)).json();
+  assert.match(obs.chatUrl,new RegExp('/w/'+A+'/broadcast/chat\\?token='));
+  const token=new URL(obs.chatUrl).search,feed='/w/'+A+'/broadcast/api/chat';
+  assert.equal((await fetch(f.base+feed)).status,403);
+  const otherToken=new URL((await(await f.request('/w/'+B+'/obs',admin)).json()).chatUrl).search;
+  assert.equal((await fetch(f.base+feed+otherToken)).status,403,'another server token cannot read this chat');
+  assert.equal((await f.request('/w/'+A+'/api/chat-overlay/test',participant,{content:'안녕'})).status,403);
+  const tested=await f.request('/w/'+A+'/api/chat-overlay/test',admin,{nickname:'테스트',content:'<b>안녕</b>'});assert.equal(tested.status,200,await tested.clone().text());
+  const data=await(await fetch(f.base+feed+token)).json();
+  assert.deepEqual(data.settings,{maxMessages:5,hideAfterSeconds:30,fontSize:'large'});
+  assert.equal(data.messages.length,1);assert.equal(data.messages[0].test,true);assert.equal(data.messages[0].content,'<b>안녕</b>');
+  assert.equal((await(await fetch(f.base+'/w/'+B+'/broadcast/api/chat'+otherToken)).json()).messages.length,0,'test chat stays in its own server');
+  const cleared=await f.request('/w/'+A+'/api/chat-overlay/clear',admin,{});assert.equal(cleared.status,200,await cleared.clone().text());
+  assert.equal((await(await fetch(f.base+feed+token)).json()).messages.length,0);
+  const page=await fetch(f.base+'/w/'+A+'/broadcast/chat'+token);assert.equal(page.status,200);
+  assert.match(page.headers.get('content-security-policy'),/img-src 'self' data: https:\/\/\*\.pstatic\.net/,'only CHZZK emoji images are allowed');
+  assert.match(await page.text(),new RegExp('/w/'+A+'/broadcast/chat-overlay\\.js'));
+  const script=await fetch(f.base+'/w/'+A+'/broadcast/chat-overlay.js');assert.equal(script.status,200);assert.match(await script.text(),new RegExp('/w/'+A+'/broadcast/api/chat'));
+});

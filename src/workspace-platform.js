@@ -279,7 +279,7 @@ export async function createWorkspacePlatform({config,client,fetchImpl=fetch,run
       });
       return res.json({settings:ctx.chzzkLiveMonitor.summary().settings});
     }
-    if(req.path==='/obs'&&req.method==='GET'){const url=new URL(`/w/${guildId}/broadcast/overlay`,config.publicBaseUrl),donation=new URL(`/w/${guildId}/broadcast/donation-roulette`,config.publicBaseUrl);url.searchParams.set('token',ctx.config.broadcastToken);donation.searchParams.set('token',ctx.config.broadcastToken);return res.json({url:url.href,donationRouletteUrl:donation.href});}
+    if(req.path==='/obs'&&req.method==='GET'){const url=new URL(`/w/${guildId}/broadcast/overlay`,config.publicBaseUrl),donation=new URL(`/w/${guildId}/broadcast/donation-roulette`,config.publicBaseUrl),chat=new URL(`/w/${guildId}/broadcast/chat`,config.publicBaseUrl);for(const item of [url,donation,chat])item.searchParams.set('token',ctx.config.broadcastToken);return res.json({url:url.href,donationRouletteUrl:donation.href,chatUrl:chat.href});}
     if(req.path.startsWith('/viewer/api/'))return target.runtime.app(req,res,next);
     if(await workspaceAsset(req,res,guildId))return;
     if(req.path==='/api/naver/oauth/start'&&req.method==='POST'){

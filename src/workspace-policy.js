@@ -8,12 +8,13 @@ const reads = new Set([
   '/api/access', '/api/snapshot', '/api/participation-queue',
   '/api/broadcast-ops', '/api/broadcast-runbook', '/api/broadcast-archive',
   '/api/broadcast-control', '/api/chzzk/live', '/api/chzzk/verification',
-  '/api/community', '/api/community-options', '/api/operation-tools', '/api/roulette', '/api/donation-roulette',
+  '/api/community', '/api/community-options', '/api/operation-tools', '/api/roulette', '/api/donation-roulette', '/api/chat-overlay',
   '/api/naver/status', '/api/naver/monitor', '/api/naver/participation',
   '/api/naver/profile', '/api/naver/search', '/api/broadcast-settings', '/api/broadcast-export'
 ]);
 const writes = new Set([
   '/api/chzzk/verification/owner/start', '/api/chzzk/verification/panel', '/api/roulette/spin', '/api/donation-roulette', '/api/donation-roulette/test',
+  '/api/chat-overlay', '/api/chat-overlay/test', '/api/chat-overlay/clear',
   '/api/naver/oauth/start', '/api/naver/disconnect', '/api/naver/join',
   '/api/naver/articles', '/api/naver/monitor/settings', '/api/naver/monitor/run', '/api/naver/monitor/retry',
   '/api/naver/participation/register', '/api/naver/participation/cancel',

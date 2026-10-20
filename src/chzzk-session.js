@@ -1,4 +1,4 @@
-// CHZZK official Session API client for donation events.
+// CHZZK official Session API client for donation and chat events.
 //
 // Official flow (https://chzzk.gitbook.io/chzzk/chzzk-api/session):
 //   1. GET  /open/v1/sessions/auth                        (broadcaster Access Token) -> { url }
@@ -6,6 +6,10 @@
 //   3. SYSTEM { type: 'connected', data: { sessionKey } }
 //   4. POST /open/v1/sessions/events/subscribe/donation   (sessionKey, scope "후원 조회")
 //   5. DONATION { donationType, channelId, donatorChannelId, donatorNickname, payAmount, donationText }
+//   4'. POST /open/v1/sessions/events/subscribe/chat     (sessionKey, scope "채팅 메시지 조회")
+//   5'. CHAT { channelId, senderChannelId, chatChannelId, profile{nickname,badges,verifiedMark}, userRoleCode, content, emojis, messageTime }
+// CHZZK allows at most 3 user sessions per account, so one session per server
+// subscribes to every event type that server needs (see ChzzkSessionHub).
 // A user session only receives events of the user who owns the Access Token.
 // This module speaks the small Engine.IO v3 / Socket.IO v2 text framing over the
 // platform WebSocket so no outdated socket.io-client dependency is added.
@@ -43,16 +47,57 @@ export function normalizeDonation(raw) {
   };
 }
 
-export class ChzzkDonationSession {
-  constructor({ accessToken, onDonation, onStatus = () => {}, fetchImpl = globalThis.fetch, WebSocketImpl = globalThis.WebSocket,
+const EVENTS = Object.freeze({ DONATION: { path: 'donation', scope: '후원 조회', noun: '후원' }, CHAT: { path: 'chat', scope: '채팅 메시지 조회', noun: '채팅' } });
+export const CHZZK_EVENT_TYPES = Object.freeze(Object.keys(EVENTS));
+const scopes = types => types.map(type => EVENTS[type].scope).join('·');
+
+const ROLES = { streamer: 'streamer', streaming_channel_manager: 'manager', streaming_chat_manager: 'manager' };
+const emojiUrl = value => {
+  if (typeof value !== 'string' || value.length > 500) return '';
+  try { const url = new URL(value); return url.protocol === 'https:' && /(^|\.)pstatic\.net$/i.test(url.hostname) && !url.username && !url.password ? url.href : ''; } catch { return ''; }
+};
+/** Validates one CHAT payload. Sender channel ids and chat channel ids are never kept. */
+export function normalizeChat(raw) {
+  const event = parse(raw);
+  if (!event || typeof event !== 'object' || Array.isArray(event)) return null;
+  const channelId = String(event.channelId || '').toLowerCase();
+  const content = text(event.content, 300);
+  if (!/^[a-f0-9]{32}$/.test(channelId) || !content) return null;
+  const emojis = {};
+  if (event.emojis && typeof event.emojis === 'object' && !Array.isArray(event.emojis)) {
+    for (const [key, value] of Object.entries(event.emojis).slice(0, 20)) { const url = emojiUrl(value); if (/^[A-Za-z0-9_.-]{1,64}$/.test(key) && url) emojis[key] = url; }
+  }
+  const profile = event.profile && typeof event.profile === 'object' ? event.profile : {};
+  const at = Number(event.messageTime);
+  return { channelId, nickname: text(profile.nickname, 20) || '익명', role: ROLES[event.userRoleCode] || 'viewer', content, emojis, ...(Number.isSafeInteger(at) && at > 0 ? { at } : {}) };
+}
+
+/**
+ * One CHZZK user session that subscribes to several event types.
+ * `handlers` maps DONATION/CHAT to a function receiving the raw payload.
+ * A missing scope for one event type does not stop the others; when every
+ * type is refused the session backs off like a permanent failure.
+ */
+export class ChzzkEventSession {
+  constructor({ accessToken, handlers, onStatus = () => {}, fetchImpl = globalThis.fetch, WebSocketImpl = globalThis.WebSocket,
     now = Date.now, setTimer = setTimeout, clearTimer = clearTimeout, apiBase = API, maxBackoffMs = 60000 }) {
-    if (typeof accessToken !== 'function' || typeof onDonation !== 'function') throw TypeError('accessToken and onDonation are required');
-    Object.assign(this, { accessToken, onDonation, onStatus, fetchImpl, WebSocketImpl, now, setTimer, clearTimer, apiBase: apiBase.replace(/\/+$/, ''), maxBackoffMs });
-    this.state = { status: 'stopped', detail: '', since: now(), subscribed: false, lastEventAt: 0, failures: 0 };
+    const types = Object.keys(handlers || {}).filter(type => EVENTS[type] && typeof handlers[type] === 'function');
+    if (typeof accessToken !== 'function' || !types.length) throw TypeError('accessToken and at least one event handler are required');
+    Object.assign(this, { accessToken, handlers, types, onStatus, fetchImpl, WebSocketImpl, now, setTimer, clearTimer, apiBase: apiBase.replace(/\/+$/, ''), maxBackoffMs });
+    this.state = { status: 'stopped', detail: '', since: now(), subscribed: false, lastEventAt: 0, failures: 0, events: Object.fromEntries(types.map(type => [type, { status: 'stopped', detail: '', lastEventAt: 0 }])) };
     this.running = false; this.socket = null; this.timers = new Set(); this.generation = 0;
   }
-  status() { return { ...this.state }; }
+  status() { return { ...this.state, events: structuredClone(this.state.events) }; }
+  /** Status as seen by one feature (donation roulette or chat overlay). */
+  eventStatus(type) {
+    const state = this.state, event = state.events[type];
+    if (!event) return { status: 'stopped', detail: '', since: state.since, lastEventAt: 0 };
+    if (state.status === 'subscribed' && event.status !== 'subscribed') return { status: event.status, detail: event.detail, since: state.since, lastEventAt: event.lastEventAt };
+    return { status: state.status, detail: state.status === 'subscribed' ? event.detail || state.detail : state.detail, since: state.since, lastEventAt: event.lastEventAt };
+  }
+  setEvent(type, status, detail = '') { const event = this.state.events[type]; if (event) Object.assign(event, { status, detail: text(detail, 200) }); }
   set(status, detail = '') {
+    if (status !== 'subscribed') for (const type of this.types) if (this.state.events[type].status !== 'auth_required' || status === 'stopped') this.setEvent(type, status, detail);
     this.state = { ...this.state, status, detail: text(detail, 200), since: this.now(), subscribed: status === 'subscribed' };
     try { this.onStatus(this.status()); } catch {}
   }
@@ -71,7 +116,7 @@ export class ChzzkDonationSession {
     this.set(status, detail);
   }
 
-  async api(path, { method = 'GET', query } = {}) {
+  async api(path, { method = 'GET', query, scope = scopes(this.types) } = {}) {
     const token = await this.accessToken();
     const url = new URL(this.apiBase + path);
     for (const [key, value] of Object.entries(query || {})) url.searchParams.set(key, value);
@@ -80,7 +125,7 @@ export class ChzzkDonationSession {
       const response = await this.fetchImpl(url, { method, redirect: 'error', signal: controller.signal,
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } });
       let body = {}; try { body = await response.json(); } catch {}
-      if (response.status === 401 || response.status === 403) throw fail('방송 계정의 후원 조회 권한을 다시 동의해야 합니다.', 403, 'SCOPE_REQUIRED');
+      if (response.status === 401 || response.status === 403) throw fail(`방송 계정의 ${scope} 권한을 다시 동의해야 합니다.`, 403, 'SCOPE_REQUIRED');
       if (!response.ok) throw fail(`CHZZK 세션 요청이 실패했습니다. (${response.status})`, response.status === 429 ? 429 : 502);
       return body?.content ?? body;
     } catch (error) {
@@ -97,6 +142,7 @@ export class ChzzkDonationSession {
     const socket = this.socket; this.socket = null; this.generation++;
     if (socket) { try { socket.close?.(); } catch {} }
     this.set(permanent ? 'auth_required' : 'reconnecting', error?.message || '연결이 끊겼습니다.');
+    if (permanent) for (const type of this.types) this.setEvent(type, 'auth_required', this.state.events[type].detail || error?.message);
     this.timer(() => { if (this.running) void this.connect(); }, delay);
   }
 
@@ -139,28 +185,92 @@ export class ChzzkDonationSession {
     socket.onerror = () => { if (current()) this.retry(fail('CHZZK 세션 연결 오류입니다.', 503)); };
   }
 
+  subscribedDetail() {
+    return this.types.filter(type => this.state.events[type].status === 'subscribed').map(type => `${EVENTS[type].noun} 구독 요청을 보냈습니다. 실제 ${EVENTS[type].noun} 수신은 방송에서 확인해야 합니다.`).join(' ');
+  }
+
   async event(name, payload, current) {
     if (name === 'SYSTEM') {
       const message = parse(payload);
-      const type = message?.type;
+      const type = message?.type, eventType = message?.data?.eventType;
       if (type === 'connected') {
         const sessionKey = String(message?.data?.sessionKey || '');
         if (!sessionKey || sessionKey.length > 512) { this.retry(fail('CHZZK 세션 키를 확인할 수 없습니다.', 502)); return; }
-        this.set('subscribing', '후원 이벤트를 구독하는 중입니다.');
-        try { await this.api('/open/v1/sessions/events/subscribe/donation', { method: 'POST', query: { sessionKey } }); }
-        catch (error) { if (current()) this.retry(error); return; }
-        if (current() && this.state.status === 'subscribing') this.set('subscribed', '후원 구독 요청을 보냈습니다. 실제 후원 수신은 방송에서 확인해야 합니다.');
-      } else if (type === 'subscribed' && message?.data?.eventType === 'DONATION') {
-        this.state.failures = 0; this.set('subscribed', 'CHZZK가 후원 구독을 확인했습니다.');
-      } else if (type === 'revoked' || (type === 'unsubscribed' && message?.data?.eventType === 'DONATION')) {
-        this.retry(fail(type === 'revoked' ? '방송 계정의 후원 조회 권한이 회수되었습니다. 다시 동의해 주세요.' : 'CHZZK 후원 구독이 해제되었습니다.', 403, type === 'revoked' ? 'REVOKED' : 'UNSUBSCRIBED'));
+        this.set('subscribing', `${this.types.map(t => EVENTS[t].noun).join('·')} 이벤트를 구독하는 중입니다.`);
+        const failures = [];
+        for (const t of this.types) {
+          try { await this.api(`/open/v1/sessions/events/subscribe/${EVENTS[t].path}`, { method: 'POST', query: { sessionKey }, scope: EVENTS[t].scope }); if (!current()) return; this.setEvent(t, 'subscribed'); }
+          catch (error) { if (!current()) return; failures.push(error); this.setEvent(t, error?.code === 'SCOPE_REQUIRED' ? 'auth_required' : 'reconnecting', error?.message); }
+        }
+        // Transient errors reconnect everything; a missing scope only disables that event type.
+        const transient = failures.find(error => error?.code !== 'SCOPE_REQUIRED');
+        if (transient || failures.length === this.types.length) { this.retry(transient || failures[0]); return; }
+        if (current() && this.state.status === 'subscribing') this.set('subscribed', this.subscribedDetail());
+      } else if (type === 'subscribed' && this.types.includes(eventType)) {
+        this.state.failures = 0; this.setEvent(eventType, 'subscribed', `CHZZK가 ${EVENTS[eventType].noun} 구독을 확인했습니다.`);
+        if (this.state.status === 'subscribed' || this.state.status === 'subscribing') this.set('subscribed', this.subscribedDetail());
+      } else if (type === 'revoked') {
+        const revoked = this.types.includes(eventType) ? [eventType] : this.types;
+        for (const t of revoked) this.setEvent(t, 'auth_required', `방송 계정의 ${EVENTS[t].scope} 권한이 회수되었습니다. 다시 동의해 주세요.`);
+        if (this.types.every(t => this.state.events[t].status === 'auth_required')) this.retry(fail(this.state.events[revoked[0]].detail, 403, 'REVOKED'));
+        else this.set('subscribed', this.subscribedDetail());
+      } else if (type === 'unsubscribed' && this.types.includes(eventType)) {
+        this.retry(fail(`CHZZK ${EVENTS[eventType].noun} 구독이 해제되었습니다.`, 403, 'UNSUBSCRIBED'));
       }
       return;
     }
-    if (name !== 'DONATION') return;
-    const donation = normalizeDonation(payload);
-    if (!donation) return;
-    this.state.lastEventAt = this.now();
-    try { await this.onDonation(donation); } catch {}
+    if (!this.types.includes(name)) return;
+    try { if (await this.handlers[name](payload) !== false) { this.state.lastEventAt = this.now(); this.state.events[name].lastEventAt = this.state.lastEventAt; } } catch {}
   }
+}
+
+/** Donation-only session (kept for callers and tests that only need donations). */
+export class ChzzkDonationSession extends ChzzkEventSession {
+  constructor({ onDonation, ...options }) {
+    if (typeof onDonation !== 'function') throw TypeError('accessToken and onDonation are required');
+    super({ ...options, handlers: { DONATION: payload => { const donation = normalizeDonation(payload); if (!donation) return false; return onDonation(donation); } } });
+  }
+}
+
+/**
+ * Shares one CHZZK user session per server between features. Each feature takes a
+ * lease for one event type; the session is rebuilt (on the next microtask) whenever
+ * the set of leased event types changes, or when the broadcaster consent changes
+ * while an event type is waiting for consent.
+ */
+export class ChzzkSessionHub {
+  constructor({ sessionFactory = options => new ChzzkEventSession(options), defer = queueMicrotask } = {}) {
+    Object.assign(this, { sessionFactory, defer });
+    this.leases = new Map(); this.session = null; this.pending = false; this.closed = false;
+  }
+  /** Returns an object with the start/stop/status contract feature services already use. */
+  lease(type, { accessToken, onEvent, onStatus = () => {} }) {
+    if (!EVENTS[type] || typeof accessToken !== 'function' || typeof onEvent !== 'function') throw TypeError('a known event type, accessToken and onEvent are required');
+    const hub = this, lease = {
+      type, accessToken, onEvent, onStatus,
+      start() { if (hub.leases.get(type) !== lease) { hub.leases.set(type, lease); hub.schedule(); } },
+      stop() { if (hub.leases.get(type) === lease) { hub.leases.delete(type); hub.schedule(); } },
+      status() { return hub.session?.eventStatus(type) || { status: hub.leases.get(type) === lease ? 'connecting' : 'stopped', detail: '', since: 0, lastEventAt: 0 }; }
+    };
+    return lease;
+  }
+  /** Called when the broadcaster account consent may have changed. */
+  refresh() {
+    const events = this.session?.status?.().events || {};
+    if (Object.values(events).some(event => event.status === 'auth_required')) this.schedule();
+  }
+  schedule() { if (this.pending || this.closed) return; this.pending = true; this.defer(() => { this.pending = false; this.rebuild(); }); }
+  rebuild() {
+    if (this.closed) return;
+    if (this.session) { try { this.session.stop(); } catch {} this.session = null; }
+    if (!this.leases.size) return;
+    const leases = [...this.leases.values()], latest = leases.at(-1);
+    this.session = this.sessionFactory({
+      accessToken: () => latest.accessToken(),
+      handlers: Object.fromEntries(leases.map(lease => [lease.type, lease.onEvent])),
+      onStatus: () => { for (const lease of leases) { try { lease.onStatus(lease.status()); } catch {} } }
+    });
+    this.session.start();
+  }
+  close() { this.closed = true; this.leases.clear(); if (this.session) { try { this.session.stop(); } catch {} this.session = null; } }
 }

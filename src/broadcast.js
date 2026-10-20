@@ -9,7 +9,7 @@ const loopbackHost=host=>['127.0.0.1','localhost','::1'].includes(String(host||'
 const loopbackAddress=address=>['127.0.0.1','::1','::ffff:127.0.0.1'].includes(String(address||''));
 const equal=(a,b)=>{const x=Buffer.from(String(a||'')),y=Buffer.from(String(b||''));return x.length===y.length&&timingSafeEqual(x,y)};
 
-export function createBroadcastRouter({config,store,operations,version,participationQueue=null,donationRouletteStore=null,sessionIdentity=()=>null}){
+export function createBroadcastRouter({config,store,operations,version,participationQueue=null,donationRouletteStore=null,chatFeed=()=>null,sessionIdentity=()=>null}){
   const router=express.Router(),streams=new Set(),streamClosers=new Map();const streamLimit=8;let seq=0,pushQueued=false;
   const records=()=>store.read().filter(r=>r.guildId===config.guildId);
   const snapshot=()=>{const state=operations.read(),safeRecords=records();return {...buildBroadcastSnapshot(state,safeRecords,version),overlay:buildBroadcastOverlaySnapshot(state,safeRecords,participationQueue?.summary?.()||null,version)};};
@@ -32,10 +32,14 @@ export function createBroadcastRouter({config,store,operations,version,participa
   router.get('/overlay.js',(_req,res)=>res.sendFile('overlay.js',{root:publicDir}));
   router.get('/donation-roulette.css',(_req,res)=>res.sendFile('donation-roulette.css',{root:publicDir}));
   router.get('/donation-roulette.js',(_req,res)=>res.sendFile('donation-roulette.js',{root:publicDir}));
+  router.get('/chat-overlay.css',(_req,res)=>res.sendFile('chat-overlay.css',{root:publicDir}));
+  router.get('/chat-overlay.js',(_req,res)=>res.sendFile('chat-overlay.js',{root:publicDir}));
   router.use('/assets',express.static(publicDir,{etag:false,index:false}));
   router.get('/',requireAuth,(_req,res)=>res.sendFile('broadcast.html',{root:publicDir}));
   router.get(['/overlay','/overlay/'],requireAuth,(_req,res)=>res.sendFile('overlay.html',{root:publicDir}));
   router.get(['/donation-roulette','/donation-roulette/'],requireAuth,(_req,res)=>res.sendFile('donation-roulette.html',{root:publicDir}));
+  // CHZZK emoji images are the only external images, and only on the chat window.
+  router.get(['/chat','/chat/'],requireAuth,(_req,res)=>{res.set('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://*.pstatic.net; connect-src 'self'; object-src 'none'; frame-ancestors 'self'; base-uri 'self'; form-action 'none'");res.sendFile('chat-overlay.html',{root:publicDir});});
   router.use('/api',requireAuth);
   router.get('/api/snapshot',(_req,res)=>res.json(snapshot()));
   // OBS donation roulette feed: completed spins only (no skipped entries, no donor channel ids).
@@ -43,6 +47,12 @@ export function createBroadcastRouter({config,store,operations,version,participa
     if(!donationRouletteStore)return res.status(404).json({error:'치즈 후원 룰렛이 준비되지 않았습니다.'});
     const events=publicDonationEvents(donationRouletteStore.snapshot().events).filter(event=>event.status==='spun').slice(0,30);
     res.json({serverTime:Date.now(),events});
+  });
+  // OBS chat window feed: in-memory messages only, no sender channel ids.
+  router.get('/api/chat',(req,res)=>{
+    const service=chatFeed();if(!service)return res.status(404).json({error:'OBS 채팅창이 준비되지 않았습니다.'});
+    const after=Number(req.query.after),boot=typeof req.query.boot==='string'?req.query.boot.slice(0,16):'';
+    res.json({serverTime:Date.now(),...service.feed(Number.isSafeInteger(after)?after:0,boot)});
   });
   router.get('/api/draw/:id',(req,res)=>{
     const state=operations.read(),draw=state.lastDraw;

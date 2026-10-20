@@ -40,3 +40,6 @@ table{width:100%;border-collapse:collapse}td,th{padding:12px;text-align:left;bor
 .donation-test h2{margin:0 0 8px}.donation-test-form{display:grid;grid-template-columns:minmax(0,1fr) 180px auto;gap:12px;align-items:end;max-width:none}.donation-test-form label{margin:0}.donation-test-form .field-help{grid-column:1/-1}@media(max-width:760px){.donation-test-form{grid-template-columns:1fr}.donation-test-form button{width:100%}}
 .donation-log{overflow-x:auto;-webkit-overflow-scrolling:touch}.donation-log td:first-child,.donation-log td:nth-child(3){white-space:nowrap}@media(max-width:760px){.donation-log table{min-width:560px}.donation-log td,.donation-log th{padding:10px 8px;font-size:14px}}
 .donation-count{font-weight:500}.donation-count.over{color:#8f3c31}
+
+.obs-steps{margin:0 0 12px;padding-left:22px;line-height:1.7;color:var(--text)}.obs-steps li+li{margin-top:2px}
+.chat-test h2{margin:0 0 8px}.chat-test .donation-test-form{grid-template-columns:220px minmax(0,1fr) auto}@media(max-width:760px){.chat-test .donation-test-form{grid-template-columns:1fr}}

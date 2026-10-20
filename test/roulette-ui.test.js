@@ -98,10 +98,10 @@ test('BFCache restoration reloads fresh state before allowing another draw',asyn
 test('legacy page keeps its relative endpoint',async t=>{
  const paths=[],w=await page(t,async(url)=>{paths.push(new URL(url,'https://example.invalid/roulette.html').pathname);return response(snapshot());},'https://example.invalid/roulette.html');assert.deepEqual(paths,['/api/roulette']);assert.equal(w.document.getElementById('back').getAttribute('href'),'./');
 });
-test('operator portal offers roulette under the broadcast category and links only to the selected workspace',async t=>{
+test('operator portal offers roulette under 통합 운영 and links only to the selected workspace',async t=>{
  const html=await readFile(new URL('../public/portal.html',import.meta.url),'utf8'),source=await readFile(new URL('../public/portal.js',import.meta.url),'utf8');
  const dom=new JSDOM(html,{url:'https://example.invalid/portal/?server='+guild+'&page=roulette',runScripts:'outside-only'});t.after(()=>{for(const d of dom.window.document.querySelectorAll('details'))d.ontoggle=null;dom.window.close();});
  dom.window.fetch=async url=>response(url==='/portal/auth/session'?{authenticated:true,user:{name:'가상 운영자'},csrf:'fixture'}:url==='/portal/api/servers'?{servers:[{id:guild,name:'방송 공간',botPresent:true}],installUrl:'https://discord.com/oauth2/authorize'}:url==='/portal/api/servers/'+guild?{guildId:guild,name:'방송 공간',role:'operator'}:{});
  await dom.window.eval('(async()=>{'+source.replace(/^import .*\r?\n/,'')+'})()');
- const doc=dom.window.document,leaf=doc.querySelector('[data-page=roulette]');assert.equal(leaf.textContent,'직접 입력 룰렛');assert.equal(leaf.parentElement.querySelector('summary').textContent,'룰렛');assert.equal(leaf.parentElement.parentElement.querySelector('summary').textContent,'방송');assert.equal(doc.getElementById('breadcrumb').textContent,'방송 / 룰렛 / 직접 입력 룰렛');assert.equal(doc.querySelector('#panel a').getAttribute('href'),'/w/'+guild+'/roulette.html');
+ const doc=dom.window.document,leaf=doc.querySelector('[data-page=roulette]');assert.equal(leaf.textContent,'직접 입력 룰렛');assert.equal(leaf.parentElement.querySelector('summary').textContent,'룰렛');assert.equal(leaf.parentElement.parentElement.querySelector('summary').textContent,'통합 운영');assert.equal(doc.getElementById('breadcrumb').textContent,'통합 운영 / 룰렛 / 직접 입력 룰렛');assert.equal(doc.querySelector('#panel a').getAttribute('href'),'/w/'+guild+'/roulette.html');
 });

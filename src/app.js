@@ -8,6 +8,9 @@ import { installOperationTools } from './operation-tools.js';
 import { installRouletteRoutes } from './roulette-routes.js';
 import { installDonationRouletteRoutes } from './donation-roulette-routes.js';
 import { DonationRouletteService } from './donation-roulette.js';
+import { ChatOverlayService } from './chat-overlay.js';
+import { installChatOverlayRoutes } from './chat-overlay-routes.js';
+import { ChzzkSessionHub, normalizeChat, normalizeDonation } from './chzzk-session.js';
 import { fairSelect } from './community.js';
 import { createViewerRouter,createViewerAuth } from './viewer.js';
 import { createBroadcastRouter } from './broadcast.js';
@@ -45,7 +48,7 @@ import { createIdempotencyGuard } from './idempotency.js';
 import { authenticateDashboardBasic, canDashboard, dashboardCapabilityForRequest, operatorStaticAllowed, publicDashboardAccess, sanitizeOperatorCall, sanitizeOperatorQueueEntry, sanitizeOperatorSnapshot, sanitizeOperatorBroadcastOps, sanitizeOperatorNaverParticipation } from './dashboard-access.js';
 import { assertLiveControlFresh, createLiveControlMutationGate, readExpectedLiveRevisions } from './live-control-guard.js';
 const equal=(a,b)=>{const x=Buffer.from(a||''),y=Buffer.from(b||'');return x.length===y.length&&timingSafeEqual(x,y)};
-export function createApp({config,store,operations,recovery,discord,discordPolicy=null,incidentWorkflow=null,idempotencyStore=null,naver=null,naverMonitor=null,naverParticipation=null,chzzkLiveMonitor=null,chzzkVerification=null,participationQueue=null,participationCalls=null,callSettings=null,donationRouletteStore=null,broadcastOps=null,viewerAuth=createViewerAuth(),instanceId='',runtimeHealth=null,performanceCapacity=null,backupManager=null,releaseCenter=null,startupPreflight=null,startupEnvironmentValidation=null,workspaceAuthenticate=null,workspaceViewerAuthenticate=null,workspaceOperationGuard=null}) {
+export function createApp({config,store,operations,recovery,discord,discordPolicy=null,incidentWorkflow=null,idempotencyStore=null,naver=null,naverMonitor=null,naverParticipation=null,chzzkLiveMonitor=null,chzzkVerification=null,participationQueue=null,participationCalls=null,callSettings=null,donationRouletteStore=null,chatOverlayStore=null,broadcastOps=null,viewerAuth=createViewerAuth(),instanceId='',runtimeHealth=null,performanceCapacity=null,backupManager=null,releaseCenter=null,startupPreflight=null,startupEnvironmentValidation=null,workspaceAuthenticate=null,workspaceViewerAuthenticate=null,workspaceOperationGuard=null}) {
   const app=express();if(Number(config.trustProxyHops)>0)app.set('trust proxy',Number(config.trustProxyHops));
   const requestScope=new AsyncLocalStorage();
   app.use((req,_res,next)=>requestScope.run(req,next));
@@ -203,7 +206,8 @@ export function createApp({config,store,operations,recovery,discord,discordPolic
   };
   const unsubscribeOperations=operations.subscribe(pushLive),unsubscribeStore=store.subscribe(pushLive),unsubscribeRecovery=typeof recoveryStore.subscribe==='function'?recoveryStore.subscribe(pushLive):()=>{},unsubscribeBroadcastOps=typeof broadcastOps?.subscribe==='function'?broadcastOps.subscribe(pushLive):()=>{},unsubscribePolicy=typeof policyStore.subscribe==='function'?policyStore.subscribe(pushLive):()=>{},unsubscribeIncident=typeof incidentStore.subscribe==='function'?incidentStore.subscribe(pushLive):()=>{},unsubscribeNaverParticipation=typeof naverParticipation?.subscribe==='function'?naverParticipation.subscribe(pushLive):()=>{},unsubscribeChzzkLive=typeof chzzkLiveMonitor?.store?.subscribe==='function'?chzzkLiveMonitor.store.subscribe(pushLive):()=>{},unsubscribeParticipationQueue=typeof participationQueue?.subscribe==='function'?participationQueue.subscribe(pushLive):()=>{};
   app.disable('x-powered-by');
-  const broadcast=createBroadcastRouter({config,store,operations,version:APP_VERSION,participationQueue,donationRouletteStore,sessionIdentity:req=>dashboardSessions.identity(req)});
+  let chatOverlay=null;
+  const broadcast=createBroadcastRouter({config,store,operations,version:APP_VERSION,participationQueue,donationRouletteStore,chatFeed:()=>chatOverlay,sessionIdentity:req=>dashboardSessions.identity(req)});
   const performanceSnapshot=async()=>{
     const current=operations.read(),runtimeState=runtime.snapshot({liveClients:streams.size,version:APP_VERSION,revision:Number(current.revision)||0,recovered:hasRecoveredStore()}),broadcastStats=broadcast.stats?.()||{liveClients:0,limit:8};
     const dataFootprint=await measureDataFootprint([store.file,operations.file,recoveryStore.file,policyStore.file,incidentStore.file,idempotencyStore?.file,naver?.authStore?.file,naverMonitor?.store?.file,naverParticipation?.file,chzzkLiveMonitor?.store?.file,chzzkVerification?.store?.file,participationQueue?.file,broadcastOps?.file].filter(Boolean));
@@ -312,9 +316,18 @@ export function createApp({config,store,operations,recovery,discord,discordPolic
   installOperationTools({app,operations,participationQueue});
   installRouletteRoutes({app,operations,participationQueue,guard:participantOperationGuard,csrf});
   // CHZZK cheese donations spin the broadcaster's saved lists. Starts only when enabled and an owner account is connected.
-  const donationRoulette=donationRouletteStore?new DonationRouletteService({store:donationRouletteStore,operations,chzzkVerification,guard:participantOperationGuard,reporter:event=>runtime.recordIncident({...event,source:'chzzk',persist:false})}):null;
+  // Donations and chat share one CHZZK user session per server (CHZZK allows 3 per account).
+  const chzzkHub=new ChzzkSessionHub(),unsubscribeChzzkHub=chzzkVerification?.store?.subscribe?.(()=>chzzkHub.refresh())||(()=>{});
+  const chzzkReporter=event=>runtime.recordIncident({...event,source:'chzzk',persist:false});
+  const donationRoulette=donationRouletteStore?new DonationRouletteService({store:donationRouletteStore,operations,chzzkVerification,guard:participantOperationGuard,reporter:chzzkReporter,
+    sessionFactory:options=>chzzkHub.lease('DONATION',{accessToken:options.accessToken,onStatus:options.onStatus,onEvent:payload=>{const donation=normalizeDonation(payload);return donation?options.onDonation(donation):false;}})}):null;
   donationRoulette?.sync();
   installDonationRouletteRoutes({app,store:donationRouletteStore,service:donationRoulette,guard:participantOperationGuard});
+  // CHZZK chat -> OBS chat window. Messages stay in memory only.
+  chatOverlay=chatOverlayStore?new ChatOverlayService({store:chatOverlayStore,chzzkVerification,guard:participantOperationGuard,reporter:chzzkReporter,
+    sessionFactory:options=>chzzkHub.lease('CHAT',{accessToken:options.accessToken,onStatus:options.onStatus,onEvent:payload=>{const chat=normalizeChat(payload);return chat?options.onChat(chat):false;}})}):null;
+  chatOverlay?.sync();
+  installChatOverlayRoutes({app,store:chatOverlayStore,service:chatOverlay,guard:participantOperationGuard});
   app.get(['/', '/index.html'],async(req,res,next)=>{
     if(!config.multiWorkspaceEnabled||req.dashboardIdentity?.role!=='admin')return next();
     try{const html=await readFile(new URL('../public/index.html',import.meta.url),'utf8');
@@ -701,7 +714,7 @@ export function createApp({config,store,operations,recovery,discord,discordPolic
   },Math.min(3600,monitorInterval)*1000):null;
   productionMonitorTimer?.unref?.();
   let backgroundStopped=false;
-  const stopBackground=()=>{if(backgroundStopped)return;backgroundStopped=true;clearInterval(productionMonitorTimer);clearInterval(capacityTimer);clearInterval(backupTimer);clearInterval(policyMonitorTimer);clearInterval(naverMonitorTimer);clearInterval(chzzkLiveTimer);clearInterval(incidentTimer);void donationRoulette?.close();soak.close();broadcast.close();for(const res of [...streams]){try{streamClosers.get(res)?.();res.end()}catch{}}streams.clear();streamClosers.clear();streamIdentities.clear();};
+  const stopBackground=()=>{if(backgroundStopped)return;backgroundStopped=true;clearInterval(productionMonitorTimer);clearInterval(capacityTimer);clearInterval(backupTimer);clearInterval(policyMonitorTimer);clearInterval(naverMonitorTimer);clearInterval(chzzkLiveTimer);clearInterval(incidentTimer);void donationRoulette?.close();void chatOverlay?.close();unsubscribeChzzkHub();chzzkHub.close();soak.close();broadcast.close();for(const res of [...streams]){try{streamClosers.get(res)?.();res.end()}catch{}}streams.clear();streamClosers.clear();streamIdentities.clear();};
   const beginShutdown=(reason='shutdown')=>{if(draining)return;draining=true;runtime.recordIncident({severity:'info',source:'system',code:'graceful_shutdown',summary:'안전 종료 시작',detail:String(reason),persist:false});stopBackground();};
   const close=()=>{draining=true;stopBackground();dashboardSessions.clear();apiIdempotency.clear();unsubscribeOperations();unsubscribeStore();unsubscribeRecovery();unsubscribeBroadcastOps();unsubscribePolicy();unsubscribeIncident();unsubscribeNaverParticipation();unsubscribeChzzkLive();unsubscribeParticipationQueue();};
   const creatorIdentity=req=>{

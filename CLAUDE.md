@@ -17,14 +17,14 @@ Discord·네이버 카페·CHZZK를 연결하는 방송 운영 봇. 여러 방�
 ## UI (세이지 워크스페이스)
 - 토큰: 배경 #E9EEE7, 카드 #F5F7F1, 사이드바 #E0E7DD, 글자 #25372C, 보조 #5B6E60, 구분선 #CDD7CA, 강조 #456B59. (`public/portal.css`, `login.css`, `roulette.css`)
 - 로고는 `public/brand-logo.svg`(사용자 제공 선화). 임의 새 로고 금지.
-- 대분류 → 중분류 → 소분류, 한 화면에 한 기능. 포털 메뉴 정의: `public/portal.js`의 `menu`/`titles`. 대분류: 통합 운영(참가 진행·운영 준비·참가 설정·커뮤니티) · 방송(방송 도구·룰렛·방송 기록) · 네이버 카페 · Discord · CHZZK.
+- 대분류 → 중분류 → 소분류, 한 화면에 한 기능. 포털 메뉴 정의: `public/portal.js`의 `menu`/`titles`. 대분류: 통합 운영(참가 진행·방송·룰렛·방송 기록·운영 준비·참가 설정·커뮤니티) · 네이버 카페 · Discord · CHZZK. (2026-10-20 사용자 요청으로 대분류 방송을 통합 운영 안으로 합침)
 - 확인 크기: PC 1440×1024, 모바일 390×844, 360폭.
-- 2차 통일 대상(아직 기존 색): `index.html`+`style.css`/`business-theme.css`, `mobile-control.*`, `community.*`, `viewer.*`, `broadcast.*`/`overlay.*`.
+- 2차 통일 대상(아직 기존 색): `index.html`+`style.css`/`business-theme.css`, `mobile-control.*`, `community.*`, `viewer.*`, `broadcast.*`/`overlay.*`. (`donation-roulette.*`, `chat-overlay.*`는 세이지)
 
 ## 검증
 ```bash
 npm ci
-npm run verify:final      # 문법 + 전체 테스트 (기준: 301 JS, 1,098 테스트 통과)
+npm run verify:final      # 문법 + 전체 테스트 (기준: 305 JS, 1,113 테스트 통과)
 node --test test/<파일>.test.js
 npm run demo              # 연습 모드(외부 연결 없음). 데모 성공 ≠ 운영 인증 성공
 ```
@@ -38,6 +38,7 @@ npm run demo              # 연습 모드(외부 연결 없음). 데모 성공 �
 ## 진행 중 작업 (2026-10-20)
 - 브랜치 `feat/sage-ui-unification` (기준 `feat/creator-user-workspaces` @ 65d0a8d 위)
   1. 세이지 1차 UI 통일 + 로고 + 포털 제작자 링크 제거
+  3. OBS 룰렛 안내 + OBS 채팅창 — `src/chat-overlay*.js`, `public/chat-overlay.*`, 세션 공유 `ChzzkSessionHub`(`src/chzzk-session.js`). 실제 채팅 수신 PENDING, 안내: `docs/chzzk-chat-overlay.md`
   2. 치즈 후원 룰렛 — `src/chzzk-session.js`, `src/donation-roulette*.js`, `public/donation-roulette.*`. 1회/금액만큼 여러 번, 테스트 후원 포함. 실제 후원 수신 PENDING, 안내: `docs/chzzk-donation-roulette.md`
 - SOOP 연동: 보류(사용자 결정). 조사: `docs/soop-integration-research.md`. 구현 완료로 표시하지 않는다.
 - 상세 인수인계: 핸드오프 폴더의 `CLAUDE_HANDOFF.md`.
