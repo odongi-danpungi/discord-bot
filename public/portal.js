@@ -39,8 +39,8 @@ function form(fields,submit,label='저장',confirmation=''){
 }
 function table(rows,columns){const t=el('table'),head=el('tr');for(const [,label]of columns)head.append(el('th',label));t.append(head);for(const row of rows||[]){const tr=el('tr');for(const [key]of columns)tr.append(el('td',String(row[key]??'—')));t.append(tr);}return t;}
 const menu=[
-  ['통합 운영',[['방송',['home','queue','open','round','ready','undo']],['운영 준비',['onboarding','handoff']],['참가 설정',['intake-capacity','intake-duplicates','intake-close','recruitment-rules','call-settings']],['방송 도구',['presets','schedule','poll','studio','obs','practice']],['방송 기록',['archive','timeline','stats','notifications']],['커뮤니티',['subscriptions','recruitment','my-panel','recap','publication','guide','tickets']]]],
-  ['방송',[['룰렛',['roulette','donation-roulette']]]],
+  ['통합 운영',[['참가 진행',['home','queue','open','presets','round','ready','undo']],['운영 준비',['onboarding','handoff','practice']],['참가 설정',['intake-capacity','intake-duplicates','intake-close','recruitment-rules','call-settings']],['커뮤니티',['subscriptions','recruitment','my-panel','recap','publication','guide','tickets']]]],
+  ['방송',[['방송 도구',['schedule','poll','studio','obs']],['룰렛',['roulette','donation-roulette']],['방송 기록',['archive','timeline','stats','notifications']]]],
   ['네이버 카페',[['계정·게시판',['naver','cafe']],['카페 운영',['search','write','memo','monitor']]]],
   ['Discord',[['서버 운영',['discord','members']]]],
   ['CHZZK',[['방송 계정',['chzzk','live']],['팔로워 인증',['panel']]]]
