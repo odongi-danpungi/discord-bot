@@ -6,6 +6,7 @@ import { DonationRouletteStore } from './donation-roulette.js';
 import { ChatOverlayStore } from './chat-overlay.js';
 import { CardFlipStore } from './card-flip.js';
 import { FeatureVisibilityStore } from './feature-visibility.js';
+import { LotteryBoardStore } from './lottery-board.js';
 import { installChzzkVerificationDiscord } from './chzzk-verification-discord.js';
 import 'dotenv/config';
 import { Client, Events, GatewayIntentBits, REST, Routes } from 'discord.js';
@@ -66,14 +67,16 @@ async function main(){
   const donationRouletteStore=config.multiWorkspaceEnabled===true?new DonationRouletteStore(config.operationsFile).setObserver(persistenceObserver):null;
   const chatOverlayStore=config.multiWorkspaceEnabled===true?new ChatOverlayStore(config.operationsFile).setObserver(persistenceObserver):null;
   const cardFlipStore=config.multiWorkspaceEnabled===true?new CardFlipStore(config.operationsFile).setObserver(persistenceObserver):null;
+  const lotteryBoardStore=config.multiWorkspaceEnabled===true?new LotteryBoardStore(config.operationsFile).setObserver(persistenceObserver):null;
   const featureVisibilityStore=config.multiWorkspaceEnabled===true?new FeatureVisibilityStore(config.operationsFile).setObserver(persistenceObserver):null;
   const chzzkAuthStore=config.chzzkVerifyEnabled?new ChzzkVerificationStore(config.chzzkVerificationFile,config.chzzkTokenKey).setObserver(persistenceObserver):null;
-  persistentStores=[store,operations,recovery,discordPolicy,incidentWorkflow,idempotencyStore,naverMonitorStore,naverParticipationStore,participationQueueStore,...(callSettings?[callSettings]:[]),...(donationRouletteStore?[donationRouletteStore]:[]),...(chatOverlayStore?[chatOverlayStore]:[]),...(cardFlipStore?[cardFlipStore]:[]),...(featureVisibilityStore?[featureVisibilityStore]:[]),broadcastOpsStore,chzzkLiveStore,...(naverAuthStore?[naverAuthStore]:[])];operationsRef=operations;
+  persistentStores=[store,operations,recovery,discordPolicy,incidentWorkflow,idempotencyStore,naverMonitorStore,naverParticipationStore,participationQueueStore,...(callSettings?[callSettings]:[]),...(donationRouletteStore?[donationRouletteStore]:[]),...(chatOverlayStore?[chatOverlayStore]:[]),...(cardFlipStore?[cardFlipStore]:[]),...(featureVisibilityStore?[featureVisibilityStore]:[]),...(lotteryBoardStore?[lotteryBoardStore]:[]),broadcastOpsStore,chzzkLiveStore,...(naverAuthStore?[naverAuthStore]:[])];operationsRef=operations;
   if(callSettings)await callSettings.init();
   if(donationRouletteStore)await donationRouletteStore.init();
   if(chatOverlayStore)await chatOverlayStore.init();
   if(cardFlipStore)await cardFlipStore.init();
   if(featureVisibilityStore)await featureVisibilityStore.init();
+  if(lotteryBoardStore)await lotteryBoardStore.init();
   await store.init();await operations.init();await recovery.init();await discordPolicy.init();await incidentWorkflow.init();await idempotencyStore.init();await naverMonitorStore.init();await naverParticipationStore.init();await participationQueueStore.init();await broadcastOpsStore.init();await chzzkLiveStore.init();if(naverAuthStore)await naverAuthStore.init();
   if(chzzkAuthStore){persistentStores.push(chzzkAuthStore);await chzzkAuthStore.init();}
   const naverMonitorPending=await naverMonitorStore.recoverPending();
@@ -199,7 +202,7 @@ async function main(){
     else console.log(`업데이트 후 자동 점검 완료: ${APP_VERSION} / schema v${DATA_SCHEMA_VERSION}`);
   }
   if(config.multiWorkspaceEnabled)workspacePlatform=await createWorkspacePlatform({config,client});
-  const appContext={config,store,operations,recovery,discord,discordPolicy,incidentWorkflow,idempotencyStore,naver,naverMonitor,naverParticipation:naverParticipationStore,chzzkLiveMonitor,chzzkVerification,participationQueue:participationQueueStore,participationCalls,callSettings,donationRouletteStore,chatOverlayStore,cardFlipStore,featureVisibilityStore,broadcastOps:broadcastOpsStore,viewerAuth,instanceId,runtimeHealth,backupManager,releaseCenter,startupPreflight,startupEnvironmentValidation,
+  const appContext={config,store,operations,recovery,discord,discordPolicy,incidentWorkflow,idempotencyStore,naver,naverMonitor,naverParticipation:naverParticipationStore,chzzkLiveMonitor,chzzkVerification,participationQueue:participationQueueStore,participationCalls,callSettings,donationRouletteStore,chatOverlayStore,cardFlipStore,featureVisibilityStore,lotteryBoardStore,broadcastOps:broadcastOpsStore,viewerAuth,instanceId,runtimeHealth,backupManager,releaseCenter,startupPreflight,startupEnvironmentValidation,
     workspaceAuthenticate:workspacePlatform?workspaceIdentity:null,workspaceViewerAuthenticate:workspacePlatform?workspaceViewerIdentity:null};
   runtime=createApp(appContext);
   await participationCalls.start();

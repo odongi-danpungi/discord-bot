@@ -40,7 +40,7 @@ function form(fields,submit,label='저장',confirmation=''){
 function table(rows,columns){const t=el('table'),head=el('tr');for(const [,label]of columns)head.append(el('th',label));t.append(head);for(const row of rows||[]){const tr=el('tr');for(const [key]of columns)tr.append(el('td',String(row[key]??'—')));t.append(tr);}return t;}
 const menu=[
   ['통합 운영',[['참가 진행',['home','queue','open','presets','round','ready','undo']],['운영 준비',['onboarding','handoff','practice']],['참가 설정',['intake-capacity','intake-duplicates','intake-close','recruitment-rules','call-settings']],['커뮤니티',['subscriptions','recruitment','my-panel','recap','publication','guide','tickets','card-flip']]]],
-  ['방송',[['방송 도구',['schedule','poll','studio']],['OBS',['obs','obs-roulette','obs-chat']],['룰렛',['roulette','donation-roulette']],['방송 기록',['archive','timeline','stats','notifications']]]],
+  ['방송',[['방송 도구',['schedule','poll','studio']],['OBS',['obs','obs-roulette','obs-chat']],['룰렛',['roulette','donation-roulette','lottery-board']],['방송 기록',['archive','timeline','stats','notifications']]]],
   ['네이버 카페',[['계정·게시판',['naver','cafe']],['카페 운영',['search','write','memo','monitor']]]],
   ['Discord',[['서버 운영',['discord','members']]]],
   ['CHZZK',[['방송 계정',['chzzk','live']],['팔로워 인증',['panel']]]]
@@ -51,7 +51,7 @@ Object.assign(titles,{presets:'모집 프리셋',timeline:'방송 타임라인',
 Object.assign(titles,{onboarding:'운영 시작 안내',handoff:'운영 인수인계'});
 Object.assign(titles,{'recruitment-rules':'참가 선발 규칙','call-settings':'호출 응답 시간'});
 Object.assign(titles,{'intake-capacity':'접수 인원 제한','intake-duplicates':'중복 접수 처리','intake-close':'정원 도달 마감'});
-Object.assign(titles,{'card-flip':'시청자 보상','feature-visibility':'기능 숨기기'});
+Object.assign(titles,{'card-flip':'시청자 보상','feature-visibility':'기능 숨기기','lottery-board':'뽑기판'});
 Object.assign(titles,{roulette:'직접 입력 룰렛','donation-roulette':'치즈 후원 룰렛','obs-roulette':'OBS 룰렛','obs-chat':'OBS 채팅창'});
 const knownPage=id=>id==='fairness'||typeof id==='string'&&menu.some(([,middle])=>middle.some(([,leaves])=>leaves.includes(id)));
 const safeText=(value,limit=600)=>typeof value==='string'?value.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g,'').slice(0,limit):'';
@@ -208,6 +208,9 @@ async function page(id){
   }else if(id==='feature-visibility'){
     const {renderFeatureVisibility}=await import('./portal-features.js');assertCurrent();
     await renderFeatureVisibility({p,el,button,run,request,menu,titles,locked:['home','queue'],reload:()=>page('feature-visibility'),applied:hidden=>{hiddenPages=new Set(hidden);navigation();}});
+  }else if(id==='lottery-board'){
+    const {renderLotteryBoard}=await import('./portal-lottery.js');assertCurrent();
+    await renderLotteryBoard({p,el,button,run,request,reload:()=>page('lottery-board')});
   }else if(id==='card-flip'){
     const {renderCardFlip}=await import('./portal-card-flip.js');assertCurrent();
     await renderCardFlip({p,el,button,run,request,scope,reload:()=>page('card-flip')});

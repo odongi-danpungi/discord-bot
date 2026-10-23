@@ -6,7 +6,7 @@ const root=new URL('../public/',import.meta.url),cache=new Map();
 const viewer=new Set(['viewer.html','viewer.js','viewer.css','avatar.js','art.js','community-viewer.js','card-flip-viewer.js','card-flip.css']);
 const raceAssets=['live-director.js','avatar.js','avatar-legacy.js','art.js','maps.js','draw-engine.js','race-engine.js','race-renderer.js','race-renderer-legacy.js','replay.js'];
 const product=new Set(['community.html','community-panel.js','community.css','operation-tools.html','operation-tools.js','practice.html','practice.js','practice-model.js','game-studio.html','game-studio.js','studio-core.js','studio.css','login.css','roulette.html','roulette.js','roulette.css',...raceAssets]);
-const broadcast=new Set(['broadcast.html','broadcast.js','broadcast.css','overlay.html','overlay.js','overlay.css','donation-roulette.html','donation-roulette.js','donation-roulette.css','chat-overlay.html','chat-overlay.js','chat-overlay.css',...raceAssets]);
+const broadcast=new Set(['broadcast.html','broadcast.js','broadcast.css','overlay.html','overlay.js','overlay.css','donation-roulette.html','donation-roulette.js','donation-roulette.css','chat-overlay.html','chat-overlay.js','chat-overlay.css','lottery-board.html','lottery-board.js','lottery-board.css',...raceAssets]);
 // Sage workspace tokens (same values as portal.css / login.css).
 const productTheme='\n:root{background:#e9eee7;color:#25372c}body{background:#e9eee7;color:#25372c}section,article,.card{background:#f5f7f1;border-color:#cdd7ca}p,small{color:#5b6e60}button{background:#456b59;color:#f8fbf6}a{color:#456b59}header{background:#f5f7f1;border-bottom:1px solid #cdd7ca}header a{color:#25372c}input:not([type=checkbox]),select,textarea{background:#fbfcf8;color:#25372c;border-color:#cdd7ca}[hidden]{display:none!important}\n';
 export async function workspaceAsset(req,res,guildId){
@@ -21,6 +21,7 @@ export async function workspaceAsset(req,res,guildId){
   else if(['/broadcast/overlay','/broadcast/overlay/'].includes(p)){file='overlay.html';kind='broadcast';}
   else if(['/broadcast/donation-roulette','/broadcast/donation-roulette/'].includes(p)){file='donation-roulette.html';kind='broadcast';}
   else if(['/broadcast/chat','/broadcast/chat/'].includes(p)){file='chat-overlay.html';kind='broadcast';}
+  else if(['/broadcast/lottery-board','/broadcast/lottery-board/'].includes(p)){file='lottery-board.html';kind='broadcast';}
   else if(p.startsWith('/broadcast/assets/')){file=p.slice(18);kind='broadcast';}
   else if(p.startsWith('/broadcast/')){file=p.slice(11);kind='broadcast';}
   else{file=p.slice(1);kind='product';}
