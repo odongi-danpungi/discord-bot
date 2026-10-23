@@ -226,8 +226,10 @@ test('OBS page renders donor text as inert text and lands on the saved winner wi
   assert.equal(doc.querySelector('#donor img'), null);
   for (let i = 0; i < 4; i++) { const due = pending.filter(p => p.ms < 2000); pending = pending.filter(p => p.ms >= 2000); for (const p of due) p.fn(); await settle(); }
   assert.equal(doc.getElementById('result').textContent, '결과 · 흙');
-  const angle = Number(/rotate\(([-.\d]+)deg\)/.exec(doc.getElementById('wheel').style.transform)[1]);
-  assert.equal((angle + (2 + .5) * 120) % 360, 0, 'winner sector centre meets the top pointer');
+  // Circus pin wheel (2026-10-23): the wheel stops inside the winner sector, just past its pin, under the top flapper.
+  const angle = Number(/rotate\(([-.\d]+) 100 100\)/.exec(doc.getElementById('rot').getAttribute('transform'))[1]);
+  const under = ((-angle % 360) + 360) % 360;
+  assert.equal(Math.floor(under / 120), 2, 'the winner sector meets the top flapper');
 });
 
 test('portal donation screen saves tiers with the loaded revision and never claims real delivery', async t => {
