@@ -1,0 +1,22 @@
+/* OBS browser source: transparent page, a goal bar that fills with cheese donations. */
+:root{--card:#1f2e26;--text:#f5f7f1;--muted:#c9d6cb;--gold:#f2c14e;--gold-2:#f9dc7a;--track:#33473b;font-family:Pretendard,"Noto Sans KR",system-ui,sans-serif;font-synthesis:none;color-scheme:dark}
+*{box-sizing:border-box}html,body{margin:0;height:100%;background:transparent;color:var(--text);overflow:hidden}
+body{display:grid;place-items:center;padding:12px}
+.goal{position:relative;width:min(100%,900px);padding:16px 20px 18px;border-radius:22px;background:#1f2e26e8;border:2px solid #f2c14e99;box-shadow:0 10px 30px #00000052}
+.goal[hidden]{display:none}
+.row{display:flex;justify-content:space-between;align-items:baseline;gap:16px;margin-bottom:10px}
+.title{font-size:24px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.numbers{font-size:20px;font-weight:700;color:var(--gold);white-space:nowrap}
+.track{position:relative;height:34px;border-radius:999px;background:var(--track);overflow:hidden}
+.fill,.ghost{position:absolute;inset:0 auto 0 0;width:0;border-radius:999px;transition:width 1.2s cubic-bezier(.2,.9,.3,1)}
+.fill{background:linear-gradient(90deg,var(--gold),var(--gold-2));box-shadow:inset 0 -3px 0 #0000001f}
+.fill::after{content:"";position:absolute;inset:0;background:linear-gradient(110deg,transparent 30%,#ffffff59 45%,transparent 60%);background-size:220% 100%;animation:shine 2.6s linear infinite}
+.ghost{background:repeating-linear-gradient(45deg,#8fc3a8aa 0 10px,#8fc3a866 10px 20px)}
+.percent{position:absolute;right:14px;top:50%;transform:translateY(-50%);font-weight:800;font-size:17px;color:#f5f7f1;text-shadow:0 1px 3px #000c}
+.goal.done .fill{background:linear-gradient(90deg,#8fc3a8,#c6ecd7)}
+.plus{position:absolute;right:20px;top:-18px;margin:0;padding:4px 12px;border-radius:999px;background:var(--gold);color:#1f2e26;font-weight:800;font-size:18px;animation:rise 2.4s ease-out both}
+.plus[hidden]{display:none}
+.connection{position:fixed;right:8px;top:6px;margin:0;font-size:11px;color:#ffffffcc;text-shadow:0 1px 2px #000a}.connection[data-state="live"]{display:none}
+@keyframes shine{from{background-position:120% 0}to{background-position:-120% 0}}
+@keyframes rise{0%{opacity:0;transform:translateY(10px)}15%{opacity:1;transform:none}80%{opacity:1}100%{opacity:0;transform:translateY(-8px)}}
+@media(prefers-reduced-motion:reduce){.fill,.ghost{transition:none}.fill::after,.plus{animation:none}}

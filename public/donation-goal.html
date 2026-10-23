@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>댕댕봇 · OBS 후원 목표</title>
+  <link rel="stylesheet" href="/broadcast/donation-goal.css">
+</head>
+<body>
+<section id="goal" class="goal" hidden>
+  <div class="row"><strong id="title" class="title"></strong><span id="numbers" class="numbers"></span></div>
+  <div class="track" role="progressbar" aria-valuemin="0" aria-valuemax="100" id="track">
+    <div id="ghost" class="ghost"></div>
+    <div id="fill" class="fill"></div>
+    <span id="percent" class="percent"></span>
+  </div>
+  <p id="plus" class="plus" hidden></p>
+</section>
+<p id="connection" class="connection" data-state="connecting">연결 중</p>
+<script type="module" src="/broadcast/donation-goal.js"></script>
+</body>
+</html>

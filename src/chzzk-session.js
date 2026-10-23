@@ -99,6 +99,20 @@ export function normalizeChat(raw) {
 }
 
 /**
+ * Chat with the sender's CHZZK channel id, for chat commands that look up the sender's own queue entry.
+ * The sender id must stay in memory: callers match it against an existing account link and drop it.
+ */
+export function normalizeChatSender(raw) {
+  const event = parse(raw);
+  if (!event || typeof event !== 'object' || Array.isArray(event)) return null;
+  const channelId = String(event.channelId || '').toLowerCase(), senderChannelId = String(event.senderChannelId || '').toLowerCase();
+  const content = text(event.content, 300);
+  if (!/^[a-f0-9]{32}$/.test(channelId) || !content) return null;
+  const profile = event.profile && typeof event.profile === 'object' ? event.profile : {};
+  return { channelId, senderChannelId: /^[a-f0-9]{32}$/.test(senderChannelId) ? senderChannelId : '', nickname: text(profile.nickname, 20) || '익명', role: ROLES[event.userRoleCode] || 'viewer', content };
+}
+
+/**
  * One CHZZK user session that subscribes to several event types.
  * `handlers` maps DONATION/CHAT to a function receiving the raw payload.
  * A missing scope for one event type does not stop the others; when every

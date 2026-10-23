@@ -8,6 +8,8 @@ import { CardFlipStore } from './card-flip.js';
 import { FeatureVisibilityStore } from './feature-visibility.js';
 import { LotteryBoardStore } from './lottery-board.js';
 import { DonationAlertStore } from './donation-alert.js';
+import { DonationGoalStore } from './donation-goal.js';
+import { ChatCommandsStore } from './chat-commands.js';
 import { installChzzkVerificationDiscord } from './chzzk-verification-discord.js';
 import 'dotenv/config';
 import { Client, Events, GatewayIntentBits, REST, Routes } from 'discord.js';
@@ -70,9 +72,11 @@ async function main(){
   const cardFlipStore=config.multiWorkspaceEnabled===true||config.demo?new CardFlipStore(config.operationsFile).setObserver(persistenceObserver):null;
   const lotteryBoardStore=config.multiWorkspaceEnabled===true||config.demo?new LotteryBoardStore(config.operationsFile).setObserver(persistenceObserver):null;
   const donationAlertStore=config.multiWorkspaceEnabled===true||config.demo?new DonationAlertStore(config.operationsFile).setObserver(persistenceObserver):null;
+  const donationGoalStore=config.multiWorkspaceEnabled===true||config.demo?new DonationGoalStore(config.operationsFile).setObserver(persistenceObserver):null;
+  const chatCommandsStore=config.multiWorkspaceEnabled===true||config.demo?new ChatCommandsStore(config.operationsFile).setObserver(persistenceObserver):null;
   const featureVisibilityStore=config.multiWorkspaceEnabled===true||config.demo?new FeatureVisibilityStore(config.operationsFile).setObserver(persistenceObserver):null;
   const chzzkAuthStore=config.chzzkVerifyEnabled?new ChzzkVerificationStore(config.chzzkVerificationFile,config.chzzkTokenKey).setObserver(persistenceObserver):null;
-  persistentStores=[store,operations,recovery,discordPolicy,incidentWorkflow,idempotencyStore,naverMonitorStore,naverParticipationStore,participationQueueStore,...(callSettings?[callSettings]:[]),...(donationRouletteStore?[donationRouletteStore]:[]),...(chatOverlayStore?[chatOverlayStore]:[]),...(cardFlipStore?[cardFlipStore]:[]),...(featureVisibilityStore?[featureVisibilityStore]:[]),...(lotteryBoardStore?[lotteryBoardStore]:[]),...(donationAlertStore?[donationAlertStore]:[]),broadcastOpsStore,chzzkLiveStore,...(naverAuthStore?[naverAuthStore]:[])];operationsRef=operations;
+  persistentStores=[store,operations,recovery,discordPolicy,incidentWorkflow,idempotencyStore,naverMonitorStore,naverParticipationStore,participationQueueStore,...(callSettings?[callSettings]:[]),...(donationRouletteStore?[donationRouletteStore]:[]),...(chatOverlayStore?[chatOverlayStore]:[]),...(cardFlipStore?[cardFlipStore]:[]),...(featureVisibilityStore?[featureVisibilityStore]:[]),...(lotteryBoardStore?[lotteryBoardStore]:[]),...(donationAlertStore?[donationAlertStore]:[]),...(donationGoalStore?[donationGoalStore]:[]),...(chatCommandsStore?[chatCommandsStore]:[]),broadcastOpsStore,chzzkLiveStore,...(naverAuthStore?[naverAuthStore]:[])];operationsRef=operations;
   if(callSettings)await callSettings.init();
   if(donationRouletteStore)await donationRouletteStore.init();
   if(chatOverlayStore)await chatOverlayStore.init();
@@ -80,6 +84,8 @@ async function main(){
   if(featureVisibilityStore)await featureVisibilityStore.init();
   if(lotteryBoardStore)await lotteryBoardStore.init();
   if(donationAlertStore)await donationAlertStore.init();
+  if(donationGoalStore)await donationGoalStore.init();
+  if(chatCommandsStore)await chatCommandsStore.init();
   await store.init();await operations.init();await recovery.init();await discordPolicy.init();await incidentWorkflow.init();await idempotencyStore.init();await naverMonitorStore.init();await naverParticipationStore.init();await participationQueueStore.init();await broadcastOpsStore.init();await chzzkLiveStore.init();if(naverAuthStore)await naverAuthStore.init();
   if(chzzkAuthStore){persistentStores.push(chzzkAuthStore);await chzzkAuthStore.init();}
   const naverMonitorPending=await naverMonitorStore.recoverPending();
@@ -205,7 +211,7 @@ async function main(){
     else console.log(`업데이트 후 자동 점검 완료: ${APP_VERSION} / schema v${DATA_SCHEMA_VERSION}`);
   }
   if(config.multiWorkspaceEnabled)workspacePlatform=await createWorkspacePlatform({config,client});
-  const appContext={config,store,operations,recovery,discord,discordPolicy,incidentWorkflow,idempotencyStore,naver,naverMonitor,naverParticipation:naverParticipationStore,chzzkLiveMonitor,chzzkVerification,participationQueue:participationQueueStore,participationCalls,callSettings,donationRouletteStore,chatOverlayStore,cardFlipStore,featureVisibilityStore,lotteryBoardStore,donationAlertStore,broadcastOps:broadcastOpsStore,viewerAuth,instanceId,runtimeHealth,backupManager,releaseCenter,startupPreflight,startupEnvironmentValidation,
+  const appContext={config,store,operations,recovery,discord,discordPolicy,incidentWorkflow,idempotencyStore,naver,naverMonitor,naverParticipation:naverParticipationStore,chzzkLiveMonitor,chzzkVerification,participationQueue:participationQueueStore,participationCalls,callSettings,donationRouletteStore,chatOverlayStore,cardFlipStore,featureVisibilityStore,lotteryBoardStore,donationAlertStore,donationGoalStore,chatCommandsStore,broadcastOps:broadcastOpsStore,viewerAuth,instanceId,runtimeHealth,backupManager,releaseCenter,startupPreflight,startupEnvironmentValidation,
     workspaceAuthenticate:workspacePlatform?workspaceIdentity:null,workspaceViewerAuthenticate:workspacePlatform?workspaceViewerIdentity:null};
   runtime=createApp(appContext);
   await participationCalls.start();

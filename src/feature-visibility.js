@@ -10,9 +10,9 @@ export const OPERATOR_PAGES = Object.freeze([
   'home', 'queue', 'open', 'presets', 'round', 'ready', 'undo', 'onboarding', 'handoff', 'practice',
   'intake-capacity', 'intake-duplicates', 'intake-close', 'recruitment-rules', 'call-settings',
   'subscriptions', 'recruitment', 'my-panel', 'recap', 'publication', 'guide', 'tickets', 'card-flip',
-  'schedule', 'poll', 'studio', 'obs', 'obs-roulette', 'obs-chat', 'obs-alert', 'roulette', 'donation-roulette', 'lottery-board',
+  'schedule', 'poll', 'studio', 'obs', 'obs-roulette', 'obs-chat', 'obs-alert', 'obs-goal', 'roulette', 'donation-roulette', 'lottery-board',
   'archive', 'timeline', 'stats', 'notifications', 'naver', 'cafe', 'search', 'write', 'memo', 'monitor',
-  'discord', 'members', 'chzzk', 'live', 'panel'
+  'discord', 'members', 'chzzk', 'live', 'panel', 'chat-commands'
 ]);
 export const OPERATOR_LOCKED = Object.freeze(['home', 'queue']);
 
@@ -43,12 +43,14 @@ const OPERATOR_ROUTES = [
   P(/^\/api\/card-flip(?:\/|$)/, 'card-flip'),
   P(/^\/api\/broadcast-ops\/schedule$/, 'schedule'), P(/^\/api\/broadcast-ops\/poll$/, 'poll'),
   P(/^\/game-studio\.(?:html|js)$/, 'studio'),
-  P(/^\/obs$/, 'obs', 'obs-roulette', 'obs-chat', 'obs-alert', 'donation-roulette', 'lottery-board'),
+  P(/^\/obs$/, 'obs', 'obs-roulette', 'obs-chat', 'obs-alert', 'obs-goal', 'donation-roulette', 'lottery-board'),
   P(/^\/api\/lottery-board(?:\/|$)/, 'lottery-board'),
   P(/^\/(?:roulette\.html|api\/roulette(?:\/spin)?)$/, 'roulette'),
   P(/^\/api\/donation-roulette(?:\/test)?$/, 'donation-roulette'),
   P(/^\/api\/chat-overlay(?:\/test|\/clear)?$/, 'obs-chat'),
-  P(/^\/api\/donation-alert(?:\/test)?$/, 'obs-alert'),
+  P(/^\/api\/donation-alert(?:\/|$)/, 'obs-alert'),
+  P(/^\/api\/donation-goal(?:\/|$)/, 'obs-goal'),
+  P(/^\/api\/chat-commands(?:\/|$)/, 'chat-commands'),
   P(/^\/api\/broadcast-archive$/, 'archive'), P(/^\/api\/broadcast-ops\/notifications$/, 'notifications'),
   P(/^\/api\/naver\/(?:status|oauth\/start|disconnect)$/, 'naver'), P(/^\/settings$/, 'cafe'),
   P(/^\/api\/naver\/search$/, 'search'), P(/^\/api\/naver\/articles$/, 'write'),

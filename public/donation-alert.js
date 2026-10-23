@@ -4,7 +4,11 @@ const $ = id => document.getElementById(id);
 const token = new URLSearchParams(location.search).get('token') || '';
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 let boot = '', after = 0, primed = false, failures = 0, playing = false, audio = null;
-let settings = { template: '{닉네임}님 {금액}치즈 후원 감사합니다!', durationSeconds: 6, sound: true, showMessage: true };
+let settings = { durationSeconds: 6, sound: true, showMessage: true, tiers: [{ id: '', minAmount: 1, template: '{닉네임}님 {금액}치즈 후원 감사합니다!', image: null, audio: null }] };
+const media = name => `/broadcast/api/donation-alert/media/${encodeURIComponent(name)}?${new URLSearchParams({ token })}`;
+const MEDIA = /^t[a-f0-9]{8}-(?:image|audio)-[a-f0-9]{16}\.(?:png|jpg|webp|gif|mp3|ogg|wav)$/;
+/** The alert's tier (saved when it arrived), else the highest minimum not above the amount, else the lowest. */
+const tierOf = a => settings.tiers.find(t => t.id === a.tier) || [...settings.tiers].reverse().find(t => Number(a.amount) >= t.minAmount) || settings.tiers[0];
 const queue = [];
 
 /** Template text with {닉네임} and {금액} as highlighted spans. Everything stays plain text. */
@@ -38,14 +42,18 @@ async function play() {
   const box = $('alert');
   while (queue.length) {
     const a = queue.shift();
+    const tier = tierOf(a);
     $('tag').hidden = !a.test;
-    $('headline').replaceChildren(headline(settings.template, String(a.nickname || '익명').slice(0, 20), a.amount));
+    $('headline').replaceChildren(headline(tier.template, String(a.nickname || '익명').slice(0, 20), a.amount));
+    const picture = $('picture'), useImage = MEDIA.test(tier.image || '');
+    picture.hidden = !useImage; $('cheese').toggleAttribute('hidden', useImage);
+    if (useImage) picture.src = media(tier.image);
     const text = settings.showMessage ? String(a.message || '').slice(0, 100) : '';
     $('message').textContent = text; $('message').hidden = !text;
     box.classList.remove('leave'); box.hidden = false;
     // Restart the entry animation for back-to-back alerts.
     box.style.animation = 'none'; void box.offsetWidth; box.style.animation = '';
-    if (settings.sound) chime();
+    if (settings.sound) { if (MEDIA.test(tier.audio || '')) { try { const sound = new Audio(media(tier.audio)); sound.volume = 0.8; void sound.play().catch(chime); } catch { chime(); } } else chime(); }
     await sleep(settings.durationSeconds * 1000);
     box.classList.add('leave'); await sleep(450); box.hidden = true; await sleep(250);
   }
@@ -53,11 +61,11 @@ async function play() {
 }
 
 function accept(data) {
-  if (data.settings) settings = {
-    template: typeof data.settings.template === 'string' && data.settings.template ? data.settings.template : settings.template,
-    durationSeconds: Math.min(20, Math.max(3, Number(data.settings.durationSeconds) || 6)),
-    sound: data.settings.sound !== false, showMessage: data.settings.showMessage !== false
-  };
+  if (data.settings) {
+    const tiers = (Array.isArray(data.settings.tiers) ? data.settings.tiers : []).filter(t => t && typeof t.template === 'string' && t.template)
+      .map(t => ({ id: String(t.id || ''), minAmount: Number(t.minAmount) || 1, template: t.template.slice(0, 60), image: typeof t.image === 'string' ? t.image : null, audio: typeof t.audio === 'string' ? t.audio : null }));
+    settings = { durationSeconds: Math.min(20, Math.max(3, Number(data.settings.durationSeconds) || 6)), sound: data.settings.sound !== false, showMessage: data.settings.showMessage !== false, tiers: tiers.length ? tiers : settings.tiers };
+  }
   const serverTime = Number(data.serverTime) || Date.now(), alerts = Array.isArray(data.alerts) ? data.alerts : [];
   if (data.boot !== boot) {
     boot = String(data.boot || ''); after = 0;
