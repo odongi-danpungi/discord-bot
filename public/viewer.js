@@ -2,6 +2,10 @@ import { mountViewerCommunity } from './community-viewer.js';
 import { mountViewerCardFlip } from './card-flip-viewer.js';
 import {DEFAULT_AVATAR} from './avatar.js';
 const $=id=>document.getElementById(id);
+// Dark mode: the same browser choice as the user portal; follows the device until one is picked.
+function applyTheme(theme){document.documentElement.dataset.theme=theme;const t=$('themeToggle');if(t){t.textContent=theme==='dark'?'라이트 모드':'다크 모드';t.setAttribute('aria-pressed',String(theme==='dark'));}}
+{let saved=null;try{saved=localStorage.getItem('dd-portal-theme');}catch{}applyTheme(saved==='dark'||saved==='light'?saved:window.matchMedia?.('(prefers-color-scheme: dark)').matches?'dark':'light');}
+if($('themeToggle'))$('themeToggle').onclick=()=>{const next=document.documentElement.dataset.theme==='dark'?'light':'dark';applyTheme(next);try{localStorage.setItem('dd-portal-theme',next);}catch{}};
 let me,avatar={...DEFAULT_AVATAR},participation=null,participationClockOffset=0,participationBusy=false,participationLoadVersion=0,uncertainCall=null,participationNotice=null;
 const inFlight=new Map(),uncertainKeys=new Map();
 let accountLink=null,accountLinkBusy=false,accountLinkLoadVersion=0,accountLinkHidden=true,accountLinkConfirm=false,accountLinkUnknown=false;
