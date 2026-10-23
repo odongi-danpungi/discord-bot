@@ -53,3 +53,26 @@ test('the practice portal exists only in demo mode and keeps hidden features ref
   const blocked = await fetch(demo.base + '/w/demo/api/lottery-board/test', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': session.csrf, 'Idempotency-Key': randomUUID() }, body: JSON.stringify({ number: 7 }) });
   assert.equal(blocked.status, 403); assert.match((await blocked.json()).error, /숨긴 기능/);
 });
+
+test('practice mode serves the workspace-only screens with the same change checks', async t => {
+  const demo = await fixture(t, true), session = await (await fetch(demo.base + '/portal/auth/session')).json();
+  for (const url of ['/w/demo/readiness', '/w/demo/intake-settings', '/w/demo/call-settings', '/w/demo/settings', '/w/demo/live-settings']) {
+    const response = await fetch(demo.base + url);
+    assert.ok([200, 503].includes(response.status), url + ' ' + response.status);
+    assert.match(response.headers.get('content-type') || '', /json/, url);
+  }
+  assert.equal((await fetch(demo.base + '/w/demo/readiness')).status, 200);
+  assert.equal((await fetch(demo.base + '/w/demo/intake-settings')).status, 200);
+  const send = (url, body, headers = {}) => fetch(demo.base + url, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) });
+  assert.equal((await send('/w/demo/settings', { naverCafeId: '123' })).status, 403, 'no CSRF token');
+  assert.equal((await send('/w/demo/settings', { naverCafeId: '123' }, { 'X-CSRF-Token': session.csrf, 'Sec-Fetch-Site': 'cross-site' })).status, 403, 'cross-site');
+  assert.equal((await send('/w/demo/settings', { naverCafeId: 'abc' }, { 'X-CSRF-Token': session.csrf })).status, 400);
+  assert.equal((await send('/w/demo/settings', { secret: '1' }, { 'X-CSRF-Token': session.csrf })).status, 400);
+  assert.equal((await send('/w/demo/settings', { naverCafeId: '123' }, { 'X-CSRF-Token': session.csrf })).status, 200);
+  assert.equal((await (await fetch(demo.base + '/w/demo/settings')).json()).settings.naverCafeId, '123');
+  const { revision } = demo.featureVisibilityStore.snapshot();
+  await demo.featureVisibilityStore.configure({ hidden: { operator: ['cafe', 'intake-capacity', 'intake-duplicates', 'intake-close'], viewer: [] }, revision });
+  assert.equal((await fetch(demo.base + '/w/demo/settings')).status, 403, 'hidden screens are refused');
+  assert.equal((await fetch(demo.base + '/w/demo/intake-settings')).status, 403);
+  assert.equal((await fetch(demo.base + '/w/demo/readiness')).status, 200, 'other screens stay');
+});

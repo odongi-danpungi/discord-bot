@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>댕댕봇 · OBS 후원 알림</title>
+  <link rel="stylesheet" href="/broadcast/donation-alert.css">
+</head>
+<body>
+<section id="alert" class="alert" hidden aria-live="polite">
+  <svg class="cheese" viewBox="0 0 64 64" aria-hidden="true"><path d="M6 44 L58 26 L58 50 Q32 58 6 50 Z" fill="#f2c14e"/><path d="M6 44 L36 12 Q50 16 58 26 Z" fill="#f7d77e"/><circle cx="22" cy="48" r="4" fill="#d9a632"/><circle cx="42" cy="44" r="3" fill="#d9a632"/><circle cx="50" cy="51" r="2.5" fill="#d9a632"/><circle cx="34" cy="26" r="3" fill="#e2b444"/></svg>
+  <div class="body">
+    <p id="tag" class="tag" hidden>테스트</p>
+    <p id="headline" class="headline"></p>
+    <p id="message" class="message" hidden></p>
+  </div>
+</section>
+<p id="connection" class="connection" data-state="connecting">연결 중</p>
+<script type="module" src="/broadcast/donation-alert.js"></script>
+</body>
+</html>

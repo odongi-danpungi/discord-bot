@@ -7,6 +7,7 @@ import { ChatOverlayStore } from './chat-overlay.js';
 import { CardFlipStore } from './card-flip.js';
 import { FeatureVisibilityStore } from './feature-visibility.js';
 import { LotteryBoardStore } from './lottery-board.js';
+import { DonationAlertStore } from './donation-alert.js';
 import { installChzzkVerificationDiscord } from './chzzk-verification-discord.js';
 import 'dotenv/config';
 import { Client, Events, GatewayIntentBits, REST, Routes } from 'discord.js';
@@ -63,20 +64,22 @@ async function main(){
   const persistenceObserver=event=>runtimeHealth.recordPersistence(event);
   const store=new RegistrationStore(config.dataFile).setObserver(persistenceObserver),operations=new OperationsStore(config.operationsFile).setObserver(persistenceObserver),recovery=new RecoveryStore(config.recoveryFile).setObserver(persistenceObserver),discordPolicy=new DiscordPolicyStore(config.discordPolicyFile).setObserver(persistenceObserver),incidentWorkflow=new IncidentWorkflowStore(config.incidentWorkflowFile).setObserver(persistenceObserver),idempotencyStore=new PersistentIdempotencyStore(config.idempotencyFile).setObserver(persistenceObserver),naverMonitorStore=new NaverMonitorStore(config.naverMonitorFile,{enabled:config.naverMonitorEnabled,query:config.naverMonitorQuery,cafeUrl:config.naverMonitorCafeUrl,intervalMinutes:config.naverMonitorIntervalMinutes,discordAlerts:config.naverMonitorDiscordAlerts}).setObserver(persistenceObserver),naverParticipationStore=new NaverParticipationStore(config.naverParticipationFile).setObserver(persistenceObserver),participationQueueStore=new ParticipationQueueStore(config.participationQueueFile).setObserver(persistenceObserver),broadcastOpsStore=new BroadcastOpsStore(config.broadcastOpsFile).setObserver(persistenceObserver),chzzkLiveStore=new ChzzkLiveStore(config.chzzkLiveFile,{enabled:config.chzzkMonitorEnabled,channelId:config.chzzkChannelId,intervalMinutes:config.chzzkMonitorIntervalMinutes,discordAlerts:config.chzzkMonitorDiscordAlerts,maxPages:config.chzzkLiveScanMaxPages}).setObserver(persistenceObserver);
   const naverAuthStore=config.naverRedirectUri&&config.naverTokenKey?new NaverAuthStore(config.naverAuthFile,config.naverTokenKey).setObserver(persistenceObserver):null;
-  const callSettings=config.multiWorkspaceEnabled===true?new WorkspaceCallSettingsStore(config.operationsFile,config.participationCallTimeoutSeconds).setObserver(persistenceObserver):null;
+  const callSettings=config.multiWorkspaceEnabled===true||config.demo?new WorkspaceCallSettingsStore(config.operationsFile,config.participationCallTimeoutSeconds).setObserver(persistenceObserver):null;
   const donationRouletteStore=config.multiWorkspaceEnabled===true||config.demo?new DonationRouletteStore(config.operationsFile).setObserver(persistenceObserver):null;
   const chatOverlayStore=config.multiWorkspaceEnabled===true||config.demo?new ChatOverlayStore(config.operationsFile).setObserver(persistenceObserver):null;
   const cardFlipStore=config.multiWorkspaceEnabled===true||config.demo?new CardFlipStore(config.operationsFile).setObserver(persistenceObserver):null;
   const lotteryBoardStore=config.multiWorkspaceEnabled===true||config.demo?new LotteryBoardStore(config.operationsFile).setObserver(persistenceObserver):null;
+  const donationAlertStore=config.multiWorkspaceEnabled===true||config.demo?new DonationAlertStore(config.operationsFile).setObserver(persistenceObserver):null;
   const featureVisibilityStore=config.multiWorkspaceEnabled===true||config.demo?new FeatureVisibilityStore(config.operationsFile).setObserver(persistenceObserver):null;
   const chzzkAuthStore=config.chzzkVerifyEnabled?new ChzzkVerificationStore(config.chzzkVerificationFile,config.chzzkTokenKey).setObserver(persistenceObserver):null;
-  persistentStores=[store,operations,recovery,discordPolicy,incidentWorkflow,idempotencyStore,naverMonitorStore,naverParticipationStore,participationQueueStore,...(callSettings?[callSettings]:[]),...(donationRouletteStore?[donationRouletteStore]:[]),...(chatOverlayStore?[chatOverlayStore]:[]),...(cardFlipStore?[cardFlipStore]:[]),...(featureVisibilityStore?[featureVisibilityStore]:[]),...(lotteryBoardStore?[lotteryBoardStore]:[]),broadcastOpsStore,chzzkLiveStore,...(naverAuthStore?[naverAuthStore]:[])];operationsRef=operations;
+  persistentStores=[store,operations,recovery,discordPolicy,incidentWorkflow,idempotencyStore,naverMonitorStore,naverParticipationStore,participationQueueStore,...(callSettings?[callSettings]:[]),...(donationRouletteStore?[donationRouletteStore]:[]),...(chatOverlayStore?[chatOverlayStore]:[]),...(cardFlipStore?[cardFlipStore]:[]),...(featureVisibilityStore?[featureVisibilityStore]:[]),...(lotteryBoardStore?[lotteryBoardStore]:[]),...(donationAlertStore?[donationAlertStore]:[]),broadcastOpsStore,chzzkLiveStore,...(naverAuthStore?[naverAuthStore]:[])];operationsRef=operations;
   if(callSettings)await callSettings.init();
   if(donationRouletteStore)await donationRouletteStore.init();
   if(chatOverlayStore)await chatOverlayStore.init();
   if(cardFlipStore)await cardFlipStore.init();
   if(featureVisibilityStore)await featureVisibilityStore.init();
   if(lotteryBoardStore)await lotteryBoardStore.init();
+  if(donationAlertStore)await donationAlertStore.init();
   await store.init();await operations.init();await recovery.init();await discordPolicy.init();await incidentWorkflow.init();await idempotencyStore.init();await naverMonitorStore.init();await naverParticipationStore.init();await participationQueueStore.init();await broadcastOpsStore.init();await chzzkLiveStore.init();if(naverAuthStore)await naverAuthStore.init();
   if(chzzkAuthStore){persistentStores.push(chzzkAuthStore);await chzzkAuthStore.init();}
   const naverMonitorPending=await naverMonitorStore.recoverPending();
@@ -202,7 +205,7 @@ async function main(){
     else console.log(`업데이트 후 자동 점검 완료: ${APP_VERSION} / schema v${DATA_SCHEMA_VERSION}`);
   }
   if(config.multiWorkspaceEnabled)workspacePlatform=await createWorkspacePlatform({config,client});
-  const appContext={config,store,operations,recovery,discord,discordPolicy,incidentWorkflow,idempotencyStore,naver,naverMonitor,naverParticipation:naverParticipationStore,chzzkLiveMonitor,chzzkVerification,participationQueue:participationQueueStore,participationCalls,callSettings,donationRouletteStore,chatOverlayStore,cardFlipStore,featureVisibilityStore,lotteryBoardStore,broadcastOps:broadcastOpsStore,viewerAuth,instanceId,runtimeHealth,backupManager,releaseCenter,startupPreflight,startupEnvironmentValidation,
+  const appContext={config,store,operations,recovery,discord,discordPolicy,incidentWorkflow,idempotencyStore,naver,naverMonitor,naverParticipation:naverParticipationStore,chzzkLiveMonitor,chzzkVerification,participationQueue:participationQueueStore,participationCalls,callSettings,donationRouletteStore,chatOverlayStore,cardFlipStore,featureVisibilityStore,lotteryBoardStore,donationAlertStore,broadcastOps:broadcastOpsStore,viewerAuth,instanceId,runtimeHealth,backupManager,releaseCenter,startupPreflight,startupEnvironmentValidation,
     workspaceAuthenticate:workspacePlatform?workspaceIdentity:null,workspaceViewerAuthenticate:workspacePlatform?workspaceViewerIdentity:null};
   runtime=createApp(appContext);
   await participationCalls.start();
