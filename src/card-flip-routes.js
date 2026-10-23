@@ -4,7 +4,7 @@ const sendImage = (res, image) => res.set({ 'Content-Type': image.type, 'Cache-C
 
 /** Participant profiles of this server, used for names and the direct-grant picker. */
 export function cardFlipProfiles(store, guildId) {
-  return store.read().filter(record => record.guildId === guildId && /^\d{17,20}$/.test(record.discordId || ''))
+  return store.read().filter(record => record.guildId === guildId && /^(?:\d{17,20}|demo-\d{1,3})$/.test(record.discordId || ''))
     .map(record => ({ userId: record.discordId, name: String(record.chzzkName || record.discordUsername || '').slice(0, 32) || '이름 없음' }));
 }
 
@@ -20,6 +20,13 @@ export function installCardFlipRoutes({ app, service, profiles }) {
       if (!service) throw unavailable();
       const known = new Set(profiles().map(p => p.userId)), result = await service.grant(req.body, userId => known.has(userId));
       json(res, { ...service.adminView(profiles()), added: result.added });
+    } catch (error) { next(error); }
+  });
+  app.post('/api/card-flip/test', async (req, res, next) => {
+    try {
+      if (!service) throw unavailable();
+      const known = new Set(profiles().map(p => p.userId)), result = await service.testDonation(req.body, userId => known.has(userId));
+      json(res, { ...service.adminView(profiles()), test: result });
     } catch (error) { next(error); }
   });
   app.post('/api/card-flip/reward', async (req, res, next) => { try { if (!service) throw unavailable(); await service.resolveReward(req.body); json(res, service.adminView(profiles())); } catch (error) { next(error); } });

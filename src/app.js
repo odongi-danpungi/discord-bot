@@ -13,7 +13,7 @@ import { installChatOverlayRoutes } from './chat-overlay-routes.js';
 import { ChzzkSessionHub, normalizeChat, normalizeDonation } from './chzzk-session.js';
 import { CardFlipService } from './card-flip.js';
 import { cardFlipProfiles, installCardFlipRoutes } from './card-flip-routes.js';
-import { installFeatureVisibilityRoutes } from './feature-visibility.js';
+import { hiddenFeatureFor, installFeatureVisibilityRoutes } from './feature-visibility.js';
 import { LotteryBoardService } from './lottery-board.js';
 import { installLotteryBoardRoutes } from './lottery-board-routes.js';
 import { fairSelect } from './community.js';
@@ -227,6 +227,23 @@ export function createApp({config,store,operations,recovery,discord,discordPolic
   const incidentTimer=setInterval(()=>syncIncidentWorkflow().catch(error=>runtime.recordIncident({severity:'warn',source:'system',code:'incident_sync_failure',summary:'장애 워크플로 동기화 실패',detail:error?.message,persist:false})),30000);incidentTimer.unref?.();queueMicrotask(()=>syncIncidentWorkflow().catch(()=>{}));
   performanceSnapshot().catch(()=>{});
   app.use('/broadcast',broadcast.router);
+  // Practice mode only: the user portal with a fictional operator and one practice server ('demo'),
+  // so new screens can be tried without Discord login. `/w/demo/...` is served by this same app.
+  if(config.demo){
+    const portalRoot=fileURLToPath(new URL('../public/',import.meta.url)),portalFiles=new Set(['portal.js','portal.css','practice-model.js','portal-card-flip.js','portal-features.js','portal-lottery.js']);
+    const practiceServer={guildId:'demo',name:'연습 방송 서버'};
+    app.get(['/portal','/portal/'],(_req,res)=>res.sendFile('portal.html',{root:portalRoot}));
+    app.get('/portal/:file',(req,res,next)=>portalFiles.has(req.params.file)?res.sendFile(req.params.file,{root:portalRoot}):next());
+    app.get('/portal/auth/session',(_req,res)=>res.set('Cache-Control','no-store').json({authenticated:true,user:{id:'demo-operator',name:'연습 운영자'},guilds:[],csrf}));
+    app.post('/portal/auth/logout',(_req,res)=>res.json({ok:true}));
+    app.get('/portal/api/servers',(_req,res)=>res.json({servers:[{id:practiceServer.guildId,name:practiceServer.name,botPresent:true,prepared:true}],installUrl:''}));
+    app.get('/portal/api/servers/demo',(_req,res)=>res.set('Cache-Control','no-store').json({...practiceServer,role:'operator',hiddenPages:[...(featureVisibilityStore?.read().hidden.operator||[])]}));
+    app.get('/w/demo/obs',(req,res)=>{const origin=`http://${req.get('host')}`;res.json({url:origin+'/broadcast/overlay',donationRouletteUrl:origin+'/broadcast/donation-roulette',chatUrl:origin+'/broadcast/chat',lotteryBoardUrl:origin+'/broadcast/lottery-board'});});
+    app.use('/w/demo',(req,res,next)=>{
+      if(hiddenFeatureFor(featureVisibilityStore?.read().hidden,{method:req.method,path:req.path,query:req.query}))return res.status(403).json({error:'스트리머가 숨긴 기능입니다. 설정 → 기능 숨기기에서 다시 켤 수 있어요.'});
+      req.originalUrl=req.url;req.baseUrl='';return app(req,res,next);
+    });
+  }
   if(instanceId)app.use((_req,res,next)=>{res.set('X-DaengDaeng-Instance',instanceId);next();});
   app.get('/healthz',(_req,res)=>{
     res.set({'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});

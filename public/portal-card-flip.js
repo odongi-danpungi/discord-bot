@@ -1,7 +1,7 @@
 // 통합 운영 → 커뮤니티 → 시청자 보상 (카드 뒤집기 설정). The server checks every value again.
 export const CARD_SYMBOLS = ['♛', '♪', '♥', '★', '☀', '◆', '♣', '●'];
 const MAX_IMAGE = 1024 * 1024, TYPES = ['image/png', 'image/jpeg', 'image/webp'];
-const sources = { join: '시참 참가', cheese: '치즈 후원', direct: '직접 지급' };
+const sources = { join: '시참 참가', cheese: '치즈 후원', direct: '직접 지급', test: '테스트 후원' };
 const states = { disabled: ['치즈 기회 꺼짐', 'readiness-optional'], unavailable: ['준비 안 됨', 'readiness-optional'], not_connected: ['방송 계정 연결 필요', 'readiness-attention'], stopped: ['중지', 'readiness-optional'], connecting: ['연결 중', 'readiness-pending'], subscribing: ['구독 요청 중', 'readiness-pending'], subscribed: ['후원 구독 요청 완료', 'readiness-configured'], reconnecting: ['재연결 대기', 'readiness-attention'], auth_required: ['후원 조회 권한 동의 필요', 'readiness-attention'] };
 const time = at => new Date(at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
@@ -99,11 +99,19 @@ export async function renderCardFlip({ p, el, button, run, request, scope, reloa
     const go = el('button', '기회 주기'); go.type = 'submit'; form.append(whoWrap, countWrap, go);
     form.onsubmit = e => { e.preventDefault(); run(async () => { await request('/api/card-flip/grant', { userId: who.value, count: Number(count.value) }); await reload(); }); };
     grant.append(form);
+    // Test donation: checks the cheese rule without CHZZK. It gives real chances and shows 테스트 후원 in the log.
+    const tf = el('form', undefined, 'cf-grant-form cf-test'), tWhoWrap = el('label', '테스트 후원 시청자'), tWho = el('select'), tAmtWrap = el('label', '치즈'), tAmt = el('input');
+    for (const v of data.viewers) tWho.append(new Option(v.name, v.userId));
+    tAmt.type = 'number'; tAmt.min = '100'; tAmt.step = '100'; tAmt.value = String(s.chances.cheese.amount); tAmt.required = true;
+    tWhoWrap.append(tWho); tAmtWrap.append(tAmt);
+    const tGo = el('button', '테스트 후원', 'secondary'); tGo.type = 'submit'; tf.append(tWhoWrap, tAmtWrap, tGo);
+    tf.onsubmit = e => { e.preventDefault(); run(async () => { await request('/api/card-flip/test', { userId: tWho.value, amount: Number(tAmt.value) }); await reload(); }); };
+    grant.append(el('p', '테스트 후원은 치지직 연결 없이 치즈 후원 규칙을 확인해요. 실제로 기회가 들어가고 기록에 "테스트 후원"으로 남아요. 치즈 후원 기회가 켜져 있어야 해요.', 'field-help'), tf);
   }
   if (data.grants.length) {
     const log = el('div', undefined, 'cf-table'), t = el('table'), head = el('tr');
     for (const h of ['시간', '시청자', '기회', '이유']) head.append(el('th', h)); t.append(head);
-    for (const g of data.grants.slice(0, 10)) { const tr = el('tr'); tr.append(el('td', time(g.at)), el('td', g.name), el('td', '+' + g.count), el('td', g.source === 'cheese' ? `치즈 ${Number(g.amount || 0).toLocaleString('ko-KR')} 후원` : sources[g.source] || '')); t.append(tr); }
+    for (const g of data.grants.slice(0, 10)) { const tr = el('tr'); tr.append(el('td', time(g.at)), el('td', g.name), el('td', '+' + g.count), el('td', g.source === 'cheese' ? `치즈 ${Number(g.amount || 0).toLocaleString('ko-KR')} 후원` : g.source === 'test' ? `테스트 후원 ${Number(g.amount || 0).toLocaleString('ko-KR')}치즈` : sources[g.source] || '')); t.append(tr); }
     log.append(t); grant.append(log);
   }
   p.append(grant);

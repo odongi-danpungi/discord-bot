@@ -8,7 +8,8 @@
   - 시참 참가: 통합 Queue에서 참가 확정(`joined`)된 Discord 참가자에게 회차당 한 번. 지급 키(해시)를 저장해 재시작해도 중복 지급하지 않습니다.
   - 치즈 후원: 공식 Session API 후원 이벤트의 후원자 채널 ID를 **메모리에서만** 팔로워 인증 연결(`chzzk-verification.json`)과 맞춥니다. 연결하지 않은 후원자, 다른 채널 후원은 지급하지 않습니다. 후원자 채널 ID·닉네임·메시지는 저장하지 않습니다.
   - 직접 지급: /연동으로 등록된 시청자에게 1~10회. 하루 최대와 상관없고 보유 최대 99회.
-- API: `GET/POST /api/card-flip`, `POST /api/card-flip/image`, `/image/remove`, `/grant`, `/reward`, `GET /api/card-flip/image/:파일`(운영자, `broadcast` 권한) · `GET /viewer/api/card-flip`, `POST /viewer/api/card-flip/new`, `/flip`, `/use`, `GET /viewer/api/card-flip/image/:파일`(시청자, 등록된 프로필 필요).
+  - 테스트 후원: 스트리머 화면에서 등록된 시청자와 치즈 금액을 골라 실제 후원처럼 기회를 넣어 봅니다(치즈 후원 기회가 켜져 있을 때만, 1초에 한 번, 하루 최대 적용). 지급 기록에 "테스트 후원"으로 남고 치지직에는 연결하지 않습니다.
+- API: `GET/POST /api/card-flip`, `POST /api/card-flip/image`, `/image/remove`, `/grant`, `/test`, `/reward`, `GET /api/card-flip/image/:파일`(운영자, `broadcast` 권한) · `GET /viewer/api/card-flip`, `POST /viewer/api/card-flip/new`, `/flip`, `/use`, `GET /viewer/api/card-flip/image/:파일`(시청자, 등록된 프로필 필요).
 
 ## 기능 숨기기
 - 포털 오른쪽 위 톱니바퀴 → 기능 숨기기. 대분류 전체, 중분류, 기능 하나씩 숨길 수 있습니다.
@@ -17,6 +18,11 @@
 - 숨길 수 없는 기능: 운영 홈, 통합 Queue, 시청자 참가 현황. 저장: `operations.json.feature-visibility.json`.
 - 숨겨도 켜 둔 자동 기능(치즈 후원 룰렛, 후원 기회 등)은 계속 동작합니다. 끄려면 각 화면에서 사용을 끈 뒤 숨기세요.
 
+## 연습 모드
+- `npm run demo` 후 `http://127.0.0.1:3001/portal/` → 연습 방송 서버. 로그인 없이 가짜 운영자로 새 화면(시청자 보상·뽑기판·기능 숨기기 등)을 써 볼 수 있습니다. 시청자 화면은 `http://127.0.0.1:3001/viewer/` → 연습 로그인.
+- 연습 모드에서만 켜집니다(`config.demo`). 숨긴 기능은 연습에서도 서버가 거절합니다. 서버별 공간 전용 화면(운영 준비 점검·참가 설정·호출 설정·카페 설정·라이브 설정)은 연습 포털에서 열리지 않습니다.
+- 연습 성공은 실제 Discord·치지직 인증 성공이 아닙니다.
+
 ## 확인 상태
-- 직접 실행: `node --test test/card-flip.test.js test/feature-visibility.test.js test/portal-theme.test.js`, `npm run verify:final`.
+- 직접 실행: `node --test test/card-flip.test.js test/feature-visibility.test.js test/portal-theme.test.js test/practice-portal.test.js`, 연습 모드 화면 확인(테스트 후원 → 기회 3회 → 시청자 화면에서 판 시작), `npm run verify:final`.
 - **PENDING**: 실제 치지직 후원으로 기회가 들어오는지, 실제 Discord 참가 확정으로 기회가 들어오는지, Railway 배포.

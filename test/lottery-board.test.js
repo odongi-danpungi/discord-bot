@@ -143,3 +143,25 @@ async function fixture(t){
 }
 
 
+
+test('test donations show a practice result for OBS and never open the real board', async t => {
+  let clock = 1_700_000_000_000;
+  const dir = await mkdtemp(path.join(tmpdir(), 'lottery-test-')); t.after(() => rm(dir, { recursive: true, force: true }));
+  const store = new LotteryBoardStore(path.join(dir, 'operations.json')); await store.init();
+  const service = new LotteryBoardService({ store, now: () => clock, random: () => 0 }); t.after(() => service.close());
+  await assert.rejects(async () => service.testDonation({ number: 7 }), { status: 409 }, 'needs a board first');
+  await service.configure({ ...input(store), prizes: [{ name: '금상', count: 1 }, { name: '은상', count: 2 }, { name: '동상', count: 3 }] });
+  await service.newBoard({ revision: store.read().revision });
+  const before = JSON.stringify(store.read());
+  for (const bad of [{}, { number: 0 }, { number: 101 }, { number: 7, nickname: 3 }, { number: 7, extra: 1 }]) assert.throws(() => service.testDonation(bad), { status: 400 });
+  const event = service.testDonation({ number: 7, nickname: '연습' });
+  assert.deepEqual({ test: event.test, n: event.n, nickname: event.nickname, rank: event.rank, name: event.name, place: event.place }, { test: true, n: 7, nickname: '연습', rank: '1등', name: '금상', place: 1 });
+  assert.throws(() => service.testDonation({ number: 8 }), { status: 429 });
+  clock += 3000;
+  assert.equal(service.testDonation({ number: 8 }).nickname, '테스트');
+  assert.equal(JSON.stringify(store.read()), before, 'the saved board, pending chances and log are unchanged');
+  assert.equal(service.publicBoard().opened.length, 0);
+  assert.equal(service.tests.length, 2);
+  assert.equal(workspaceRouteAllowed('POST', '/api/lottery-board/test'), true);
+  assert.equal(dashboardCapabilityForRequest('POST', '/api/lottery-board/test'), 'broadcast');
+});

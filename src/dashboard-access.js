@@ -58,9 +58,9 @@ export function dashboardCapabilityForRequest(method,path){
   if(pathname==='/api/chat-overlay'&&['GET','POST'].includes(verb))return 'broadcast';
   if(['/api/chat-overlay/test','/api/chat-overlay/clear'].includes(pathname)&&verb==='POST')return 'broadcast';
   if(pathname==='/api/card-flip'&&['GET','POST'].includes(verb))return 'broadcast';
-  if(['/api/card-flip/image','/api/card-flip/image/remove','/api/card-flip/grant','/api/card-flip/reward'].includes(pathname)&&verb==='POST')return 'broadcast';
+  if(['/api/card-flip/image','/api/card-flip/image/remove','/api/card-flip/grant','/api/card-flip/reward','/api/card-flip/test'].includes(pathname)&&verb==='POST')return 'broadcast';
   if(pathname==='/api/lottery-board'&&['GET','POST'].includes(verb))return 'broadcast';
-  if(['/api/lottery-board/new','/api/lottery-board/open','/api/lottery-board/pending/remove'].includes(pathname)&&verb==='POST')return 'broadcast';
+  if(['/api/lottery-board/new','/api/lottery-board/open','/api/lottery-board/pending/remove','/api/lottery-board/test'].includes(pathname)&&verb==='POST')return 'broadcast';
   // /api/lottery-board/layout is creator-only: no operator capability grants it.
   // /api/feature-visibility is a workspace (streamer) setting: no basic-auth operator capability grants it.
   if(/^\/api\/card-flip\/image\/c[a-f0-9]{8}-[a-f0-9]{16}\.(?:png|jpg|webp)$/.test(pathname)&&verb==='GET')return 'broadcast';

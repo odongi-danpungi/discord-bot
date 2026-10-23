@@ -79,3 +79,5 @@ table{width:100%;border-collapse:collapse}td,th{padding:12px;text-align:left;bor
 .lb-cell.prize.lb-place1{background:radial-gradient(circle at 35% 30%,#fff6c8,#f2c14e 55%,#c98a1a);color:#4a2a06}.lb-cell.prize.lb-place2{background:radial-gradient(circle at 35% 30%,#ffffff,#d9dde3 55%,#9aa2ad);color:#2f3540}.lb-cell.prize.lb-place3{background:radial-gradient(circle at 35% 30%,#ffe2c4,#d99560 55%,#9a5a28);color:#3e1f08}.lb-cell.prize.lb-place4{background:#7fc8a0;color:#0f2a1c}.lb-cell.prize[class*=lb-place]{border-color:transparent}
 .lb-prize-row{grid-template-columns:auto minmax(0,1fr) 120px}
 @media(max-width:760px){.lb-prize-row{grid-template-columns:auto 1fr}.lb-prize-row label:nth-child(2){grid-column:auto}.lb-prize-row label:nth-child(3){grid-column:1/-1}}
+.lb-test{display:grid;grid-template-columns:minmax(0,1fr) 120px auto;gap:12px;align-items:end}.lb-test h2,.lb-test>p{grid-column:1/-1;margin:0}.lb-test label{margin:0}.cf-test{margin-top:14px}
+@media(max-width:760px){.lb-test{grid-template-columns:1fr 1fr}.lb-test button{grid-column:1/-1}}

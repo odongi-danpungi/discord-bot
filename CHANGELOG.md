@@ -1,5 +1,8 @@
 # Unreleased — 2026-10-23
 
+- **연습 모드 포털**: `npm run demo` 후 `http://127.0.0.1:3001/portal/`에서 로그인 없이 가짜 운영자·연습 방송 서버로 새 화면(시청자 보상·뽑기판·기능 숨기기·다크 모드)을 써 볼 수 있습니다. `config.demo`일 때만 켜지고 숨긴 기능은 연습에서도 서버가 거절합니다. 서버별 공간 전용 설정 화면은 연습 포털에서 열리지 않습니다.
+- **테스트 후원**: 카드 뒤집기(등록된 시청자 + 치즈 금액 → 실제 후원과 같은 계산으로 기회, 지급 기록 "테스트 후원")와 뽑기판(번호 → 상품 비율 무작위 결과를 OBS에 `[테스트]`로 잠깐 표시, 실제 판은 그대로). 새 API `POST /api/card-flip/test`, `POST /api/lottery-board/test`를 `dashboard-access.js`·`workspace-policy.js`에 함께 등록(`broadcast` 권한).
+
 - **뽑기판**(방송 → 룰렛 → 뽑기판, OBS `/broadcast/lottery-board`): 1~100번 판. 치즈 후원 메시지의 번호(예: `11 23`)를 번호 1개당 금액만큼 앞에서부터 엽니다. 등수 개수와 등수별 개수·상품 이름은 스트리머가 정하고(1등 금·2등 은·3등 동) 배치는 서버가 섞습니다. 열 수 없는 번호는 보류 기회로 남아 스트리머가 대신 엽니다. 전체 배치는 제작자 화면에서만 보이며 열람 기록을 남기지 않습니다. 후원 메시지·후원자 채널 ID는 저장하지 않습니다. `operations.json.lottery-board.json`, 안내 `docs/lottery-board.md`. 실제 후원 수신은 **PENDING**.
 
 - **세이지 2차 통일**: 기존 대시보드(`business-theme.css`·`reference-layout.css`·`studio-theme.css`·`navigation-tree.css`), 커뮤니티 운영, Mobile Live Control, 시청자 화면을 세이지 색으로 바꿨습니다. 대시보드 왼쪽 위 🐾를 `brand-logo.svg`로 바꿨습니다. 방송 송출 화면(`broadcast.*`·`overlay.*`)은 방송에 그대로 나가는 화면이라 기존 어두운 디자인을 유지합니다.

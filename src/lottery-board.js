@@ -77,7 +77,7 @@ export class LotteryBoardService {
   constructor({ store, chzzkVerification = null, guard = () => {}, now = Date.now, random = randomInt,
     sessionFactory = options => new ChzzkEventSession({ accessToken: options.accessToken, onStatus: options.onStatus, handlers: { DONATION: payload => options.onDonation(payload) } }), reporter = () => {} }) {
     Object.assign(this, { store, chzzkVerification, guard, now, random, sessionFactory, reporter });
-    this.session = null; this.sessionChannel = ''; this.ignored = { otherChannel: 0 };
+    this.session = null; this.sessionChannel = ''; this.ignored = { otherChannel: 0 }; this.tests = []; this.lastTestAt = 0;
     const off = [store.subscribe(() => this.sync()), chzzkVerification?.store?.subscribe?.(() => this.sync()) || (() => {})];
     this.unsubscribe = () => off.forEach(fn => fn());
   }
@@ -178,6 +178,25 @@ export class LotteryBoardService {
     this.guard();
     await this.store.update(state => { const before = state.pending.length; state.pending = state.pending.filter(p => p.id !== input.pendingId); if (state.pending.length !== before) this.bump(state); });
     return this.adminView();
+  }
+  /**
+   * Test donation for checking OBS: a practice result drawn from the prize counts, shown on OBS as [테스트].
+   * It never opens or reveals the real board and is kept in memory only.
+   */
+  testDonation(input) {
+    if (!plain(input) || Object.keys(input).some(key => !['nickname', 'number'].includes(key)) || !int(input.number, [1, BOARD_SIZE]) || (input.nickname !== undefined && typeof input.nickname !== 'string')) throw fail('테스트할 번호(1~100)를 확인해 주세요.');
+    const now = this.now();
+    if (now - this.lastTestAt < 3000) throw fail('테스트 후원은 3초에 한 번만 보낼 수 있어요.', 429);
+    this.guard();
+    const { settings, board } = this.store.read();
+    if (!board) throw fail('먼저 뽑기판을 만들어 주세요. 테스트는 지금 뽑기판 위에 잠깐 표시돼요.', 409);
+    this.lastTestAt = now;
+    const roll = this.random(BOARD_SIZE);
+    let edge = 0, result = { rank: '꽝', name: '', place: 0 };
+    settings.prizes.forEach((p, index) => { if (result.place === 0 && roll >= edge && roll < edge + p.count) result = { rank: p.rank, name: p.name, place: index + 1 }; edge += p.count; });
+    const event = { id: newId('t'), test: true, at: now, n: input.number, nickname: clean(input.nickname, 20) || '테스트', ...result };
+    this.tests.unshift(event); this.tests.length = Math.min(this.tests.length, 20);
+    return event;
   }
   /** Board as the streamer and OBS see it: opened numbers and what is left, never the hidden layout. */
   publicBoard() {

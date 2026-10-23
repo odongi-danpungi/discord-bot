@@ -52,7 +52,7 @@ export function createBroadcastRouter({config,store,operations,version,participa
     res.json({serverTime:Date.now(),events});
   });
   // OBS 뽑기판 feed: opened numbers and what is left, never the hidden layout.
-  router.get('/api/lottery-board',(_req,res)=>{const service=lotteryFeed();if(!service)return res.status(404).json({error:'뽑기판이 준비되지 않았습니다.'});res.json({serverTime:Date.now(),board:service.publicBoard()});});
+  router.get('/api/lottery-board',(_req,res)=>{const service=lotteryFeed();if(!service)return res.status(404).json({error:'뽑기판이 준비되지 않았습니다.'});res.json({serverTime:Date.now(),board:service.publicBoard(),tests:service.tests.slice(0,20)});});
   // OBS chat window feed: in-memory messages only, no sender channel ids.
   router.get('/api/chat',(req,res)=>{
     const service=chatFeed();if(!service)return res.status(404).json({error:'OBS 채팅창이 준비되지 않았습니다.'});

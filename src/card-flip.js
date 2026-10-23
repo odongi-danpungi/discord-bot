@@ -25,7 +25,8 @@ const fail = (message, status = 400) => Object.assign(Error(message), { status }
 const plain = value => Boolean(value && typeof value === 'object' && !Array.isArray(value));
 const revision = value => Number.isSafeInteger(value) && value >= 0;
 const int = (value, [min, max]) => Number.isInteger(value) && value >= min && value <= max;
-const snowflake = value => typeof value === 'string' && /^\d{17,20}$/.test(value);
+// Discord user ids; `demo-N` is the practice-mode participant id (never a real Discord id).
+const snowflake = value => typeof value === 'string' && /^(?:\d{17,20}|demo-\d{1,3})$/.test(value);
 const cardId = value => typeof value === 'string' && /^c[a-f0-9]{8}$/.test(value);
 const imageName = value => typeof value === 'string' && /^c[a-f0-9]{8}-[a-f0-9]{16}\.(png|jpg|webp)$/.test(value);
 const clean = (value, limit) => String(value ?? '').replace(/[\u0000-\u001f\u007f‪-‮⁦-⁩]/g, '').trim().slice(0, limit);
@@ -68,7 +69,7 @@ function validPlayer(p) {
 function validState(state) {
   return plain(state) && state.version === 1 && revision(state.revision) && validSettings(state.settings) && plain(state.players) &&
     Object.keys(state.players).length <= PLAYER_LIMIT && Object.entries(state.players).every(([id, p]) => snowflake(id) && validPlayer(p)) &&
-    Array.isArray(state.grants) && state.grants.length <= GRANT_LOG_LIMIT && state.grants.every(g => plain(g) && snowflake(g.userId) && Number.isInteger(g.count) && ['join', 'cheese', 'direct'].includes(g.source) && Number.isFinite(g.at)) &&
+    Array.isArray(state.grants) && state.grants.length <= GRANT_LOG_LIMIT && state.grants.every(g => plain(g) && snowflake(g.userId) && Number.isInteger(g.count) && ['join', 'cheese', 'direct', 'test'].includes(g.source) && Number.isFinite(g.at)) &&
     Array.isArray(state.awarded) && state.awarded.length <= AWARDED_LIMIT && state.awarded.every(k => typeof k === 'string' && /^[a-f0-9]{24}$/.test(k));
 }
 
@@ -161,13 +162,14 @@ export class CardFlipService {
     let added = 0;
     await this.store.update(state => {
       if (!state.settings.enabled && source !== 'direct') return;
+      if (source === 'test' && !state.settings.chances.cheese.enabled) return;
       if (key && state.awarded.includes(key)) return;
       const p = this.player(state, userId), room = CARD_FLIP_LIMITS.held - p.chances;
       added = Math.min(count, room, source === 'direct' ? count : Math.max(0, state.settings.chances.dailyMax - p.earned));
       if (key) { state.awarded.push(key); if (state.awarded.length > AWARDED_LIMIT) state.awarded.splice(0, state.awarded.length - AWARDED_LIMIT); }
       if (added <= 0) { added = 0; if (key) this.bump(state); return; }
       p.chances += added; if (source !== 'direct') p.earned += added;
-      state.grants.unshift({ at: this.now(), userId, count: added, source, ...(source === 'cheese' ? { amount } : {}) });
+      state.grants.unshift({ at: this.now(), userId, count: added, source, ...(['cheese', 'test'].includes(source) ? { amount } : {}) });
       state.grants.length = Math.min(state.grants.length, GRANT_LOG_LIMIT);
       this.bump(state);
     });
@@ -332,6 +334,18 @@ export class CardFlipService {
     const added = await this.credit(input.userId, input.count, 'direct');
     if (!added) throw fail('이 시청자는 기회를 더 받을 수 없어요. (최대 99회 보유)', 409);
     return { added };
+  }
+  /** Test cheese donation: credits a registered viewer as a real donation would (daily limit included), labelled 테스트 in the log. */
+  async testDonation(input, knownUser) {
+    if (!plain(input) || Object.keys(input).sort().join() !== 'amount,userId' || !snowflake(input.userId) || !int(input.amount, [1, 10000000])) throw fail('테스트할 시청자와 치즈 금액을 확인해 주세요.');
+    if (!knownUser(input.userId)) throw fail('이 서버에 등록된 시청자만 고를 수 있어요.', 404);
+    const { settings } = this.store.snapshot();
+    if (!settings.enabled) throw fail('카드 뒤집기를 켠 뒤 테스트해 주세요.', 409);
+    if (!settings.chances.cheese.enabled) throw fail('치즈 후원 기회를 켠 뒤 테스트해 주세요.', 409);
+    const now = this.now(); if (now - (this.lastTestAt || 0) < 1000) throw fail('테스트 후원은 1초에 한 번만 보낼 수 있어요.', 429);
+    this.guard(); this.lastTestAt = now;
+    const count = Math.floor(input.amount / settings.chances.cheese.amount) * settings.chances.cheese.count;
+    return { count, added: count > 0 ? await this.credit(input.userId, count, 'test', { amount: input.amount }) : 0 };
   }
   async resolveReward(input) {
     if (!plain(input) || Object.keys(input).sort().join() !== 'rewardId,userId' || !snowflake(input.userId) || typeof input.rewardId !== 'string') throw fail('처리할 보상을 확인해 주세요.');
