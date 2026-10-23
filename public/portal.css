@@ -50,3 +50,12 @@ table{width:100%;border-collapse:collapse}td,th{padding:12px;text-align:left;bor
 .cf-form>.secondary{margin:12px 0 4px}.cf-chance-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.cf-chance-grid label{margin:8px 0}.cf-form .setting-toggle{margin:10px 0}
 .cf-grant-form{display:grid;grid-template-columns:minmax(0,1fr) 140px auto;gap:12px;align-items:end}.cf-grant-form label{margin:0}.cf-table{overflow-x:auto;-webkit-overflow-scrolling:touch;margin-top:12px}
 @media(max-width:760px){.cf-card-row,.cf-grant-form{grid-template-columns:1fr}.cf-chance-grid{grid-template-columns:1fr 1fr}.cf-card-row .cf-remove,.cf-grant-form button{width:100%}.cf-table table{min-width:480px}}
+
+/* Dark mode (user choice 2026-10-23): black and grey surfaces, the Sage accent stays. Applied only when the portal sets data-theme="dark". */
+:root[data-theme="dark"]{--bg:#0b0b0c;--panel:#151517;--panel-2:#1e1e21;--nav:#111113;--text:#ededef;--muted:#a4a4ab;--muted-strong:#c4c4ca;--line:#2e2e33;--accent:#456b59;--accent-hover:#517a67;--on:#f8fbf6;--soft:#1f2a25;--good:#8fd3b3;--danger:#f0b3a5;color-scheme:dark}
+:root[data-theme="dark"] input,:root[data-theme="dark"] select,:root[data-theme="dark"] textarea{background:#101012;color:var(--text);border-color:var(--line)}
+:root[data-theme="dark"] #panel{box-shadow:none}:root[data-theme="dark"] .settings-guidance{color:#b8d5c5}:root[data-theme="dark"] .settings-feedback{color:#e2c48f}:root[data-theme="dark"] :focus-visible{outline-color:#8fbca5}
+:root[data-theme="dark"] .readiness-configured{background:#1d3127;color:#9fd8bb}:root[data-theme="dark"] .readiness-attention{background:#3a3020;color:#ecd29b}:root[data-theme="dark"] .readiness-pending{background:#2a2640;color:#cfc8f0}:root[data-theme="dark"] .readiness-optional{background:#26262a;color:#b4b4ba}:root[data-theme="dark"] .readiness-paused{background:#3a2420;color:#f0b3a5}
+:root[data-theme="dark"] .readiness-list>li::before{background:#1f2a25;color:#9fd8bb}:root[data-theme="dark"] .practice-banner{background:#2a2640;color:#cfc8f0}:root[data-theme="dark"] .practice-progress li{background:#26262a;color:#b4b4ba}:root[data-theme="dark"] .practice-progress li.current{background:#2a2640;color:#cfc8f0}:root[data-theme="dark"] .practice-progress li.complete{background:#1d3127;color:#9fd8bb}
+:root[data-theme="dark"] .donation-count.over{color:#f0b3a5}:root[data-theme="dark"] .cf-symbol,:root[data-theme="dark"] .cf-thumb{background:#fbf6ec}
+.theme-toggle{min-height:40px;padding:6px 12px;font-size:13px}

@@ -325,6 +325,10 @@ async function selectServer(initialPage='home'){
   else await page(knownPage(initialPage)?initialPage:'home');
 }
 $('servers').onchange=()=>selectServer().catch(e=>notice(e.message));
+// Dark mode: remembered per browser; follows the device until the user picks one.
+function applyTheme(theme){document.documentElement.dataset.theme=theme;const t=$('theme-toggle');if(t){t.textContent=theme==='dark'?'라이트 모드':'다크 모드';t.setAttribute('aria-pressed',String(theme==='dark'));}}
+{let saved=null;try{saved=localStorage.getItem('dd-portal-theme');}catch{}applyTheme(saved==='dark'||saved==='light'?saved:window.matchMedia?.('(prefers-color-scheme: dark)').matches?'dark':'light');}
+if($('theme-toggle'))$('theme-toggle').onclick=()=>{const next=document.documentElement.dataset.theme==='dark'?'light':'dark';applyTheme(next);try{localStorage.setItem('dd-portal-theme',next);}catch{}};
 $('logout').onclick=()=>run(async()=>{await api('/portal/auth/logout',{});location.assign('/portal/');});
 try{
   session=await api('/portal/auth/session');
