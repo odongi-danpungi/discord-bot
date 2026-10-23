@@ -35,12 +35,13 @@ test('donation messages give numbers in order', () => {
   assert.deepEqual(messageNumbers('1234 7'), [0, 7], 'long numbers are invalid');
 });
 
-test('prize settings validate ranks, counts, the 100-tile limit and the latest revision', async t => {
+test('prize settings validate counts, the 100-tile limit and the latest revision', async t => {
   const { store, service } = await setup(t), base = input(store);
-  for (const bad of [{ prizes: [] }, { prizes: [{ rank: '', name: 'x', count: 1 }] }, { prizes: [{ rank: '1등', name: 'x', count: 101 }] },
+  for (const bad of [{ prizes: [] }, { prizes: [{ name: 'x', count: 0 }] }, { prizes: [{ rank: '1등', name: 'x', count: 101 }] },
     { prizes: [{ rank: '1등', name: 'a', count: 60 }, { rank: '2등', name: 'b', count: 41 }] }, { amount: 50 }, { perDonation: 21 }, { extra: 1 }])
     assert.throws(() => validateLotteryInput({ ...base, ...bad }, store.read().settings), Object.keys(bad)[0]);
-  await service.configure(base);
+  const saved = await service.configure({ ...base, prizes: [{ rank: '아무거나', name: '금', count: 1 }, { name: '은', count: 2 }, { name: '동', count: 3 }, { name: '참가상', count: 4 }] });
+  assert.deepEqual(saved.settings.prizes.map(p => [p.rank, p.count]), [['1등', 1], ['2등', 2], ['3등', 3], ['4등', 4]], 'ranks follow the order the streamer chose');
   await assert.rejects(service.configure(base), e => e.status === 409);
 });
 
@@ -55,6 +56,7 @@ test('a new board hides exactly the prize counts and never sends the layout to t
   for (const id of new Set(layout.filter(Boolean))) assert.equal(JSON.stringify(service.publicBoard()).includes(id), false, 'OBS gets results only, not prize ids');
   const creator = service.layout();
   assert.equal(creator.board.tiles.filter(tile => tile.rank === '1등').length, 1);
+  assert.deepEqual(view.board.prizes.map(p => p.place), [1, 2], '1등 gold and 2등 silver follow the order');
 });
 
 test('donations open numbers per cheese amount and save chances for numbers that cannot be used', async t => {

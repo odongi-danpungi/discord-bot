@@ -41,17 +41,18 @@ const validState = state => plain(state) && state.version === 1 && revision(stat
 /** Numbers written in a donation message, in order ("11 23", "11번, 23번"). */
 export const messageNumbers = text => (String(text || '').match(/\d+/g) || []).slice(0, 40).map(value => (value.length > 3 ? 0 : Number(value)));
 
-/** Validates streamer input: {enabled, amount, perDonation, prizes:[{id?, rank, name, count}], revision}. */
+/** Validates streamer input: {enabled, amount, perDonation, prizes:[{id?, name, count}], revision}.
+ * Ranks follow the order (1등, 2등, …): the streamer picks how many ranks and how many of each.
+ * 1등·2등·3등 are shown as gold, silver and bronze. */
 export function validateLotteryInput(input, current) {
   if (!plain(input) || Object.keys(input).sort().join() !== 'amount,enabled,perDonation,prizes,revision' || !revision(input.revision)) throw fail('뽑기판 설정과 최신 버전을 확인해 주세요.');
   if (typeof input.enabled !== 'boolean' || !int(input.amount, LOTTERY_LIMITS.amount)) throw fail(`번호 1개당 금액은 ${LOTTERY_LIMITS.amount[0]}~${LOTTERY_LIMITS.amount[1].toLocaleString('ko-KR')}치즈로 정해 주세요.`);
   if (!int(input.perDonation, LOTTERY_LIMITS.perDonation)) throw fail('후원 1건에 열 수 있는 번호는 1~20개로 정해 주세요.');
   if (!Array.isArray(input.prizes) || input.prizes.length < 1 || input.prizes.length > LOTTERY_LIMITS.prizes[1]) throw fail('상품은 1~10개 등수로 정해 주세요.');
   const known = new Set(current.prizes.map(p => p.id)), seen = new Set();
-  const prizes = input.prizes.map(p => {
+  const prizes = input.prizes.map((p, index) => {
     if (!plain(p) || Object.keys(p).some(key => !['id', 'rank', 'name', 'count'].includes(key))) throw fail('상품 정보를 확인해 주세요.');
-    const rank = clean(p.rank, LOTTERY_LIMITS.rank + 1), name = clean(p.name, LOTTERY_LIMITS.name + 1);
-    if (!rank || rank.length > LOTTERY_LIMITS.rank) throw fail('등수는 1~10자로 입력해 주세요. 예) 1등');
+    const rank = `${index + 1}등`, name = clean(p.name, LOTTERY_LIMITS.name + 1);
     if (name.length > LOTTERY_LIMITS.name) throw fail('상품 이름은 20자까지 입력해 주세요.');
     if (!int(p.count, LOTTERY_LIMITS.count)) throw fail('등수별 개수는 1개 이상으로 정해 주세요.');
     if (p.id !== undefined && (!known.has(p.id) || seen.has(p.id))) throw fail('상품 목록이 바뀌었습니다. 새로고침한 뒤 다시 저장하세요.', 409);
@@ -69,7 +70,8 @@ export class LotteryBoardStore extends JsonStore {
   }
 }
 
-const label = (board, n) => { const id = board.layout[n - 1], prize = board.prizes.find(p => p.id === id); return prize ? { rank: prize.rank, name: prize.name } : { rank: '꽝', name: '' }; };
+// `place` is the prize position (1 = 1등 gold, 2 = silver, 3 = bronze); 0 is 꽝.
+const label = (board, n) => { const id = board.layout[n - 1], index = board.prizes.findIndex(p => p.id === id), prize = board.prizes[index]; return prize ? { rank: prize.rank, name: prize.name, place: index + 1 } : { rank: '꽝', place: 0, name: '' }; };
 
 export class LotteryBoardService {
   constructor({ store, chzzkVerification = null, guard = () => {}, now = Date.now, random = randomInt,
@@ -103,7 +105,7 @@ export class LotteryBoardService {
     if (!board || !Number.isInteger(n) || n < 1 || n > BOARD_SIZE || board.opened.some(o => o.n === n)) return false;
     const at = this.now(), result = label(board, n);
     board.opened.push({ n, at, nickname });
-    state.log.unshift({ at, n, nickname, rank: result.rank, name: result.name });
+    state.log.unshift({ at, n, nickname, rank: result.rank, name: result.name, place: result.place });
     state.log.length = Math.min(state.log.length, LOG_LIMIT);
     return true;
   }
@@ -183,7 +185,7 @@ export class LotteryBoardService {
     if (!board) return null;
     const opened = board.opened.map(o => ({ n: o.n, at: o.at, nickname: o.nickname, ...label(board, o.n) }));
     const openedIds = board.opened.map(o => board.layout[o.n - 1]);
-    const prizes = board.prizes.map(p => ({ rank: p.rank, name: p.name, count: p.count, left: p.count - openedIds.filter(id => id === p.id).length }));
+    const prizes = board.prizes.map((p, index) => ({ rank: p.rank, name: p.name, place: index + 1, count: p.count, left: p.count - openedIds.filter(id => id === p.id).length }));
     const missCount = board.layout.filter(id => id === '').length;
     return { id: board.id, createdAt: board.createdAt, size: BOARD_SIZE, opened, prizes, miss: { count: missCount, left: missCount - openedIds.filter(id => id === '').length } };
   }

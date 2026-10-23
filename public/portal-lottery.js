@@ -29,7 +29,7 @@ export async function renderLotteryBoard({ p, el, button, run, request, reload }
     now.append(el('p', `${board.opened.length}/100칸 열림 · 남은 상품: ${left || '없음'} · 꽝 ${board.miss.left}/${board.miss.count}`, 'muted'));
     const grid = el('div', undefined, 'lb-grid'), opened = new Map(board.opened.map(o => [o.n, o]));
     for (let n = 1; n <= 100; n++) {
-      const o = opened.get(n), cell = el('span', o ? (o.rank === '꽝' ? '꽝' : o.rank) : String(n), 'lb-cell' + (o ? (o.rank === '꽝' ? ' miss' : ' prize') : ''));
+      const o = opened.get(n), cell = el('span', o ? (o.rank === '꽝' ? '꽝' : o.rank) : String(n), 'lb-cell' + (o ? (o.place ? ' prize lb-place' + Math.min(o.place, 4) : ' miss') : ''));
       cell.title = o ? `${n}번 · ${o.rank}${o.name ? ' ' + o.name : ''} · ${o.nickname}` : `${n}번`; grid.append(cell);
     }
     now.append(grid);
@@ -65,31 +65,37 @@ export async function renderLotteryBoard({ p, el, button, run, request, reload }
   const grid = el('div', undefined, 'cf-chance-grid lb-two'); grid.append(amountWrap, perWrap); f.append(grid);
   f.append(el('p', '예) 1,000치즈마다 1개라면 3,000치즈 후원에 메시지 "11 23 45"로 세 칸이 열려요. 금액보다 번호가 많으면 앞에서부터 금액만큼만 열고, 모자라거나 열 수 없는 번호는 보류 기회로 남아요.', 'field-help'));
   f.append(el('h2', '등수와 상품'));
+  // Ranks follow the order: the streamer picks how many ranks and how many of each. 1·2·3등 = 금·은·동.
   const list = el('div', undefined, 'lb-prizes'), rows = [], sum = el('p', '', 'field-help');
-  const update = () => { const total = rows.reduce((t, r) => t + (Number(r.count.value) || 0), 0); sum.textContent = `상품 ${total}개 · 꽝 ${Math.max(0, 100 - total)}개${total > 100 ? ' · 100개를 넘을 수 없어요' : ''}`; add.disabled = rows.length >= 10; for (const r of rows) r.remove.disabled = rows.length <= 1; };
-  const add = el('button', '등수 추가', 'secondary'); add.type = 'button';
+  const countWrap = el('label', '등수 개수'), rankCount = el('select');
+  for (let n = 1; n <= 10; n++) rankCount.append(new Option(`${n}개 등수 (1등~${n}등)`, String(n), false, n === s.prizes.length));
+  countWrap.append(rankCount); f.append(countWrap);
+  const update = () => { const total = rows.reduce((t, r) => t + (Number(r.count.value) || 0), 0); sum.textContent = `상품 ${total}개 · 꽝 ${Math.max(0, 100 - total)}개${total > 100 ? ' · 100개를 넘을 수 없어요' : ''}`; };
   const prizeRow = (prize, index) => {
-    const row = el('div', undefined, 'lb-prize-row'), field = (title, value, max) => { const wrap = el('label', title), input = el('input'); input.value = value; input.maxLength = max; wrap.append(input); row.append(wrap); return input; };
-    const rank = field('등수', prize?.rank || `${index + 1}등`, 10), name = field('상품 이름', prize?.name || '', 20);
-    const countWrap = el('label', '개수'), count = el('input'); count.type = 'number'; count.min = '1'; count.max = '100'; count.value = String(prize?.count || 1); count.oninput = update; countWrap.append(count); row.append(countWrap);
-    const remove = el('button', '삭제', 'secondary'); remove.type = 'button'; row.append(remove);
-    const entry = { id: prize?.id, rank, name, count, remove };
-    remove.onclick = () => { if (rows.length <= 1) return; rows.splice(rows.indexOf(entry), 1); row.remove(); update(); };
-    rows.push(entry); list.append(row);
+    const row = el('div', undefined, 'lb-prize-row'), medal = el('span', `${index + 1}등`, 'lb-medal lb-place' + Math.min(index + 1, 4));
+    const nameWrap = el('label', '상품 이름'), name = el('input'); name.maxLength = 20; name.value = prize?.name || ''; name.placeholder = '예) 신청곡 1곡'; nameWrap.append(name);
+    const numWrap = el('label', `${index + 1}등 개수`), count = el('input'); count.type = 'number'; count.min = '1'; count.max = '100'; count.required = true; count.value = String(prize?.count || 1); count.oninput = update; numWrap.append(count);
+    row.append(medal, nameWrap, numWrap); rows.push({ id: prize?.id, name, count, row }); list.append(row);
   };
-  s.prizes.forEach(prizeRow);
-  add.onclick = () => { if (rows.length < 10) { prizeRow(null, rows.length); update(); } };
-  f.append(list, add, sum, el('p', '바꾼 상품은 다음에 만드는 뽑기판부터 적용돼요. 지금 뽑기판은 그대로예요.', 'field-help'));
+  const kept = [...s.prizes];
+  const setRanks = n => {
+    while (rows.length > n) { const r = rows.pop(); r.row.remove(); }
+    while (rows.length < n) prizeRow(kept[rows.length] || null, rows.length);
+    update();
+  };
+  rankCount.onchange = () => setRanks(Number(rankCount.value));
+  setRanks(s.prizes.length);
+  f.append(list, sum, el('p', '1등은 금, 2등은 은, 3등은 동으로 OBS에 표시돼요. 바꾼 상품은 다음에 만드는 뽑기판부터 적용돼요. 지금 뽑기판은 그대로예요.', 'field-help'));
   const save = el('button', '설정 저장'); save.type = 'submit'; f.append(save);
   f.onsubmit = e => {
     e.preventDefault();
     run(async () => {
       const body = { enabled: enabled.checked, amount: Number(amount.value), perDonation: Number(per.value), revision: data.revision,
-        prizes: rows.map(r => ({ ...(r.id ? { id: r.id } : {}), rank: r.rank.value.trim(), name: r.name.value.trim(), count: Number(r.count.value) })) };
+        prizes: rows.map(r => ({ ...(r.id ? { id: r.id } : {}), name: r.name.value.trim(), count: Number(r.count.value) })) };
       await request('/api/lottery-board', body); await reload();
     });
   };
-  update(); p.append(f);
+  p.append(f);
 
   if (data.log.length) {
     const log = el('section', undefined, 'intake-setting-card'), wrap = el('div', undefined, 'cf-table'), t = el('table'), head = el('tr');

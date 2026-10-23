@@ -17,7 +17,7 @@ function build(board) {
 function reveal(o, fresh) {
   const tile = $('grid').querySelector(`[data-n="${o.n}"]`); if (!tile) return;
   const back = tile.querySelector('.back'), miss = o.rank === '꽝';
-  back.textContent = miss ? '꽝' : o.rank; tile.classList.add(miss ? 'miss' : 'prize', 'open'); if (fresh) tile.classList.add('fresh');
+  back.textContent = miss ? '꽝' : o.rank; tile.classList.add(miss ? 'miss' : 'prize', 'open'); if (!miss) tile.classList.add('place' + Math.min(Number(o.place) || 4, 4)); if (fresh) tile.classList.add('fresh');
   shown.add(o.n);
 }
 function left(board) {
@@ -30,7 +30,7 @@ async function play() {
     const o = queue.shift(), banner = $('banner'), miss = o.rank === '꽝';
     reveal(o, true);
     banner.textContent = `${o.nickname}님 · ${o.n}번 · ${miss ? '꽝!' : `${o.rank}${o.name ? ' ' + o.name : ''}!`}`;
-    banner.className = 'banner' + (miss ? '' : ' win'); banner.hidden = false;
+    banner.className = 'banner' + (miss ? '' : ' win place' + Math.min(Number(o.place) || 4, 4)); banner.hidden = false;
     await sleep(miss ? 1800 : 3500);
   }
   $('banner').hidden = true; playing = false;
