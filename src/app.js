@@ -16,6 +16,8 @@ import { cardFlipProfiles, installCardFlipRoutes } from './card-flip-routes.js';
 import { hiddenFeatureFor, installFeatureVisibilityRoutes } from './feature-visibility.js';
 import { LotteryBoardService } from './lottery-board.js';
 import { DonationAlertService, installDonationAlertRoutes } from './donation-alert.js';
+import { DonationGoalService, installDonationGoalRoutes } from './donation-goal.js';
+import { ChatCommandsService, installChatCommandsRoutes } from './chat-commands.js';
 import { installLotteryBoardRoutes } from './lottery-board-routes.js';
 import { fairSelect } from './community.js';
 import { createViewerRouter,createViewerAuth } from './viewer.js';
@@ -56,7 +58,7 @@ import { createIdempotencyGuard } from './idempotency.js';
 import { authenticateDashboardBasic, canDashboard, dashboardCapabilityForRequest, operatorStaticAllowed, publicDashboardAccess, sanitizeOperatorCall, sanitizeOperatorQueueEntry, sanitizeOperatorSnapshot, sanitizeOperatorBroadcastOps, sanitizeOperatorNaverParticipation } from './dashboard-access.js';
 import { assertLiveControlFresh, createLiveControlMutationGate, readExpectedLiveRevisions } from './live-control-guard.js';
 const equal=(a,b)=>{const x=Buffer.from(a||''),y=Buffer.from(b||'');return x.length===y.length&&timingSafeEqual(x,y)};
-export function createApp({config,store,operations,recovery,discord,discordPolicy=null,incidentWorkflow=null,idempotencyStore=null,naver=null,naverMonitor=null,naverParticipation=null,chzzkLiveMonitor=null,chzzkVerification=null,participationQueue=null,participationCalls=null,callSettings=null,donationRouletteStore=null,chatOverlayStore=null,cardFlipStore=null,featureVisibilityStore=null,lotteryBoardStore=null,donationAlertStore=null,broadcastOps=null,viewerAuth=createViewerAuth(),instanceId='',runtimeHealth=null,performanceCapacity=null,backupManager=null,releaseCenter=null,startupPreflight=null,startupEnvironmentValidation=null,workspaceAuthenticate=null,workspaceViewerAuthenticate=null,workspaceOperationGuard=null}) {
+export function createApp({config,store,operations,recovery,discord,discordPolicy=null,incidentWorkflow=null,idempotencyStore=null,naver=null,naverMonitor=null,naverParticipation=null,chzzkLiveMonitor=null,chzzkVerification=null,participationQueue=null,participationCalls=null,callSettings=null,donationRouletteStore=null,chatOverlayStore=null,cardFlipStore=null,featureVisibilityStore=null,lotteryBoardStore=null,donationAlertStore=null,donationGoalStore=null,chatCommandsStore=null,broadcastOps=null,viewerAuth=createViewerAuth(),instanceId='',runtimeHealth=null,performanceCapacity=null,backupManager=null,releaseCenter=null,startupPreflight=null,startupEnvironmentValidation=null,workspaceAuthenticate=null,workspaceViewerAuthenticate=null,workspaceOperationGuard=null}) {
   const app=express();if(Number(config.trustProxyHops)>0)app.set('trust proxy',Number(config.trustProxyHops));
   const requestScope=new AsyncLocalStorage();
   app.use((req,_res,next)=>requestScope.run(req,next));
@@ -214,8 +216,8 @@ export function createApp({config,store,operations,recovery,discord,discordPolic
   };
   const unsubscribeOperations=operations.subscribe(pushLive),unsubscribeStore=store.subscribe(pushLive),unsubscribeRecovery=typeof recoveryStore.subscribe==='function'?recoveryStore.subscribe(pushLive):()=>{},unsubscribeBroadcastOps=typeof broadcastOps?.subscribe==='function'?broadcastOps.subscribe(pushLive):()=>{},unsubscribePolicy=typeof policyStore.subscribe==='function'?policyStore.subscribe(pushLive):()=>{},unsubscribeIncident=typeof incidentStore.subscribe==='function'?incidentStore.subscribe(pushLive):()=>{},unsubscribeNaverParticipation=typeof naverParticipation?.subscribe==='function'?naverParticipation.subscribe(pushLive):()=>{},unsubscribeChzzkLive=typeof chzzkLiveMonitor?.store?.subscribe==='function'?chzzkLiveMonitor.store.subscribe(pushLive):()=>{},unsubscribeParticipationQueue=typeof participationQueue?.subscribe==='function'?participationQueue.subscribe(pushLive):()=>{};
   app.disable('x-powered-by');
-  let chatOverlay=null,cardFlip=null,lotteryBoard=null,donationAlert=null;
-  const broadcast=createBroadcastRouter({config,store,operations,version:APP_VERSION,participationQueue,donationRouletteStore,chatFeed:()=>chatOverlay,lotteryFeed:()=>lotteryBoard,alertFeed:()=>donationAlert,sessionIdentity:req=>dashboardSessions.identity(req)});
+  let chatOverlay=null,cardFlip=null,lotteryBoard=null,donationAlert=null,donationGoal=null,chatCommands=null;
+  const broadcast=createBroadcastRouter({config,store,operations,version:APP_VERSION,participationQueue,donationRouletteStore,chatFeed:()=>chatOverlay,lotteryFeed:()=>lotteryBoard,alertFeed:()=>donationAlert,goalFeed:()=>donationGoal,sessionIdentity:req=>dashboardSessions.identity(req)});
   const performanceSnapshot=async()=>{
     const current=operations.read(),runtimeState=runtime.snapshot({liveClients:streams.size,version:APP_VERSION,revision:Number(current.revision)||0,recovered:hasRecoveredStore()}),broadcastStats=broadcast.stats?.()||{liveClients:0,limit:8};
     const dataFootprint=await measureDataFootprint([store.file,operations.file,recoveryStore.file,policyStore.file,incidentStore.file,idempotencyStore?.file,naver?.authStore?.file,naverMonitor?.store?.file,naverParticipation?.file,chzzkLiveMonitor?.store?.file,chzzkVerification?.store?.file,participationQueue?.file,broadcastOps?.file].filter(Boolean));
@@ -233,7 +235,7 @@ export function createApp({config,store,operations,recovery,discord,discordPolic
   // Practice mode only: the user portal with a fictional operator and one practice server ('demo'),
   // so new screens can be tried without Discord login. `/w/demo/...` is served by this same app.
   if(config.demo){
-    const portalRoot=fileURLToPath(new URL('../public/',import.meta.url)),portalFiles=new Set(['portal.js','portal.css','practice-model.js','portal-card-flip.js','portal-features.js','portal-lottery.js','portal-alert.js']);
+    const portalRoot=fileURLToPath(new URL('../public/',import.meta.url)),portalFiles=new Set(['portal.js','portal.css','practice-model.js','portal-card-flip.js','portal-features.js','portal-lottery.js','portal-alert.js','portal-goal.js','portal-chat-commands.js']);
     const practiceServer={guildId:'demo',name:'연습 방송 서버'};
     app.get(['/portal','/portal/'],(_req,res)=>res.sendFile('portal.html',{root:portalRoot}));
     app.get('/portal/:file',(req,res,next)=>portalFiles.has(req.params.file)?res.sendFile(req.params.file,{root:portalRoot}):next());
@@ -241,7 +243,7 @@ export function createApp({config,store,operations,recovery,discord,discordPolic
     app.post('/portal/auth/logout',(_req,res)=>res.json({ok:true}));
     app.get('/portal/api/servers',(_req,res)=>res.json({servers:[{id:practiceServer.guildId,name:practiceServer.name,botPresent:true,prepared:true}],installUrl:''}));
     app.get('/portal/api/servers/demo',(_req,res)=>res.set('Cache-Control','no-store').json({...practiceServer,role:'operator',hiddenPages:[...(featureVisibilityStore?.read().hidden.operator||[])]}));
-    app.get('/w/demo/obs',(req,res)=>{const origin=`http://${req.get('host')}`;res.json({url:origin+'/broadcast/overlay',donationRouletteUrl:origin+'/broadcast/donation-roulette',chatUrl:origin+'/broadcast/chat',lotteryBoardUrl:origin+'/broadcast/lottery-board',donationAlertUrl:origin+'/broadcast/donation-alert'});});
+    app.get('/w/demo/obs',(req,res)=>{const origin=`http://${req.get('host')}`;res.json({url:origin+'/broadcast/overlay',donationRouletteUrl:origin+'/broadcast/donation-roulette',chatUrl:origin+'/broadcast/chat',lotteryBoardUrl:origin+'/broadcast/lottery-board',donationAlertUrl:origin+'/broadcast/donation-alert',donationGoalUrl:origin+'/broadcast/donation-goal'});});
     // The workspace-only screens (served by the workspace platform in production) work on this practice server too.
     // Same checks as the platform: hidden features refused, JSON + CSRF + same-site for changes, emergency lock.
     const demoHidden=(req,res,next)=>hiddenFeatureFor(featureVisibilityStore?.read().hidden,{method:req.method,path:req.path.slice('/w/demo'.length),query:req.query})?res.status(403).json({error:'스트리머가 숨긴 기능입니다. 설정 → 기능 숨기기에서 다시 켤 수 있어요.'}):next();
@@ -402,6 +404,16 @@ export function createApp({config,store,operations,recovery,discord,discordPolic
     sessionFactory:options=>chzzkHub.lease('DONATION',{accessToken:options.accessToken,onStatus:options.onStatus,onEvent:payload=>options.onDonation(payload)})}):null;
   donationAlert?.sync();
   installDonationAlertRoutes({app,store:donationAlertStore,service:donationAlert,guard:participantOperationGuard});
+  // OBS 후원 목표: shares the donation subscription; only the running total is saved.
+  donationGoal=donationGoalStore?new DonationGoalService({store:donationGoalStore,chzzkVerification,guard:participantOperationGuard,reporter:chzzkReporter,
+    sessionFactory:options=>chzzkHub.lease('DONATION',{accessToken:options.accessToken,onStatus:options.onStatus,onEvent:payload=>options.onDonation(payload)})}):null;
+  donationGoal?.sync();
+  installDonationGoalRoutes({app,service:donationGoal});
+  // 채팅 명령어: shares the chat subscription with the OBS chat window; replies go out as the broadcaster account.
+  chatCommands=chatCommandsStore?new ChatCommandsService({store:chatCommandsStore,chzzkVerification,participationQueue,guard:participantOperationGuard,reporter:chzzkReporter,
+    sessionFactory:options=>chzzkHub.lease('CHAT',{accessToken:options.accessToken,onStatus:options.onStatus,onEvent:payload=>options.onChat(payload)})}):null;
+  chatCommands?.sync();
+  installChatCommandsRoutes({app,store:chatCommandsStore,service:chatCommands,guard:participantOperationGuard});
   app.get(['/', '/index.html'],async(req,res,next)=>{
     if(!config.multiWorkspaceEnabled||req.dashboardIdentity?.role!=='admin')return next();
     try{const html=await readFile(new URL('../public/index.html',import.meta.url),'utf8');
@@ -788,7 +800,7 @@ export function createApp({config,store,operations,recovery,discord,discordPolic
   },Math.min(3600,monitorInterval)*1000):null;
   productionMonitorTimer?.unref?.();
   let backgroundStopped=false;
-  const stopBackground=()=>{if(backgroundStopped)return;backgroundStopped=true;clearInterval(productionMonitorTimer);clearInterval(capacityTimer);clearInterval(backupTimer);clearInterval(policyMonitorTimer);clearInterval(naverMonitorTimer);clearInterval(chzzkLiveTimer);clearInterval(incidentTimer);void donationRoulette?.close();void chatOverlay?.close();void cardFlip?.close();void lotteryBoard?.close();donationAlert?.close();unsubscribeChzzkHub();chzzkHub.close();soak.close();broadcast.close();for(const res of [...streams]){try{streamClosers.get(res)?.();res.end()}catch{}}streams.clear();streamClosers.clear();streamIdentities.clear();};
+  const stopBackground=()=>{if(backgroundStopped)return;backgroundStopped=true;clearInterval(productionMonitorTimer);clearInterval(capacityTimer);clearInterval(backupTimer);clearInterval(policyMonitorTimer);clearInterval(naverMonitorTimer);clearInterval(chzzkLiveTimer);clearInterval(incidentTimer);void donationRoulette?.close();void chatOverlay?.close();void cardFlip?.close();void lotteryBoard?.close();donationAlert?.close();donationGoal?.close();chatCommands?.close();unsubscribeChzzkHub();chzzkHub.close();soak.close();broadcast.close();for(const res of [...streams]){try{streamClosers.get(res)?.();res.end()}catch{}}streams.clear();streamClosers.clear();streamIdentities.clear();};
   const beginShutdown=(reason='shutdown')=>{if(draining)return;draining=true;runtime.recordIncident({severity:'info',source:'system',code:'graceful_shutdown',summary:'안전 종료 시작',detail:String(reason),persist:false});stopBackground();};
   const close=()=>{draining=true;stopBackground();dashboardSessions.clear();apiIdempotency.clear();unsubscribeOperations();unsubscribeStore();unsubscribeRecovery();unsubscribeBroadcastOps();unsubscribePolicy();unsubscribeIncident();unsubscribeNaverParticipation();unsubscribeChzzkLive();unsubscribeParticipationQueue();};
   const creatorIdentity=req=>{

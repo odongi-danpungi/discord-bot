@@ -1,5 +1,9 @@
 # Unreleased — 2026-10-24
 
+- **채팅 명령어**(CHZZK → 채팅 → 채팅 명령어): 치지직 채팅의 `!대기`·`!순번`·`!명령어`와 직접 만든 명령어(최대 30개)에 방송 계정으로 답합니다(공식 `chats/send`, Scope "채팅 메시지 쓰기"). 명령어별 다시 답하기 간격, 1초 1회 전송, 자기 답장 무시, 미리 보기. 채팅·보낸 사람은 저장하지 않음. `operations.json.chat-commands.json`, 안내 `docs/chzzk-chat-commands.md`. 실제 채팅 답장은 **PENDING**.
+- **OBS 후원 목표**(방송 → OBS → OBS 후원 목표): 목표 제목·금액, 누적 막대, 0부터 다시 시작, 테스트(미리 보기 또는 더하기). 누적 금액·횟수만 `operations.json.donation-goal.json`에 저장. 안내 `docs/obs-donation-goal.md`.
+- **후원 알림 꾸미기**: 금액 구간 1~5개, 구간별 문구·그림(PNG·JPG·WEBP·GIF)·소리(MP3·OGG·WAV, 각 2MB, 파일 앞부분으로 형식 확인). 저장 형식 버전 2(버전 1은 구간 하나로 읽음). 서버별 공간에서 올리기 요청만 본문 3MB.
+- 새 API `/api/chat-commands*`, `/api/donation-goal*`, `/api/donation-alert/media*`를 `dashboard-access.js`·`workspace-policy.js`·기능 숨기기에 함께 등록.
 - **OBS 후원 알림**(방송 → OBS → OBS 후원 알림, OBS `/broadcast/donation-alert`): 치즈 후원이 들어오면 알림 문구(`{닉네임}`·`{금액}`), 최소 금액, 표시 시간, 효과음, 후원 메시지 보이기를 설정해 띄웁니다. 설정만 `operations.json.donation-alert.json`에 저장하고 알림·메시지는 메모리에 최근 30개만 둡니다. 테스트 알림 포함. 새 API `/api/donation-alert`, `/api/donation-alert/test`를 `dashboard-access.js`·`workspace-policy.js`에 함께 등록. 안내 `docs/obs-donation-alert.md`. 실제 후원 수신은 **PENDING**.
 - **연습 모드**: 운영 시작 안내·접수 설정·호출 응답 시간·카페 설정·방송 시작 알림 화면도 연습 포털에서 열립니다. 변경은 운영과 같게 JSON·CSRF·같은 사이트·긴급 잠금을 검사하고, 숨긴 기능은 거절합니다. 카페 설정은 연습 서버 메모리에만 반영됩니다.
 - 이름 표기를 **댕댕봇**으로 통일(시청자 화면·방송 화면·레이스 스튜디오의 "댕댕 플레이" 제거). 저장된 방송 화면 제목은 바뀌지 않고 새 기본값만 바뀝니다. 대시보드 홈의 `D` 표시를 로고로 바꿨습니다.
