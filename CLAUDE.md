@@ -42,5 +42,6 @@ npm run demo              # 연습 모드(외부 연결 없음). 데모 성공 �
   2. 치즈 후원 룰렛 — `src/chzzk-session.js`, `src/donation-roulette*.js`, `public/donation-roulette.*`. 1회/금액만큼 여러 번, 테스트 후원 포함. 실제 후원 수신 PENDING, 안내: `docs/chzzk-donation-roulette.md`
 - 2026-10-23 브랜치 `feat/viewer-card-flip`(기준 `main` @ 5d5966a): 카드 뒤집기 보상(`src/card-flip*.js`, `public/card-flip*`, `public/portal-card-flip.js`, 안내 `docs/viewer-card-flip.md`), 기능 숨기기(`src/feature-visibility.js`, `public/portal-features.js`, 서버에서도 거절), 포털 다크 모드(검정 바탕·세이지 강조, 사용자 결정으로 세이지 밝은 색 규칙의 예외). 실제 후원 수신·배포 PENDING.
 - 2026-10-23 뽑기판(`src/lottery-board*.js`, PR #15) · 연습 모드 포털(`src/app.js` `config.demo` 블록, `/portal/`) · 테스트 후원(`/api/card-flip/test`, `/api/lottery-board/test`). 실제 후원 수신 PENDING.
+- 2026-10-24 OBS 후원 알림(`src/donation-alert.js`, `public/donation-alert.*`, `public/portal-alert.js`) · 연습 모드에서 서버별 공간 전용 화면 5개 · 이름 댕댕봇 통일 · 문서 `docs/hosting-options.md`, `docs/real-e2e-checklist.md`. 새 캐릭터(가칭 "모아") 시안은 보류(사용자 결정), 코드 미반영.
 - SOOP 연동: 보류(사용자 결정). 조사: `docs/soop-integration-research.md`. 구현 완료로 표시하지 않는다.
 - 상세 인수인계: 핸드오프 폴더의 `CLAUDE_HANDOFF.md`.

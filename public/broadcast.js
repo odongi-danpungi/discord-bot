@@ -6,7 +6,7 @@ const authQuery=token?`?token=${encodeURIComponent(token)}`:'';
 if(params.get('transparent')==='1')$('broadcastRoot').classList.add('transparent');
 
 const DEFAULT_SETTINGS={
-  brandTitle:'댕댕 플레이',footerTitle:'DAENGDAENG PLAY · LIVE',standbyTitle:'다음 시참을 준비 중입니다',standbyMessage:'모집이 시작되면 신청 현황과 추첨 결과가 이 화면에 자동으로 표시됩니다.',
+  brandTitle:'댕댕봇',footerTitle:'DAENGDAENG BOT · LIVE',standbyTitle:'다음 시참을 준비 중입니다',standbyMessage:'모집이 시작되면 신청 현황과 추첨 결과가 이 화면에 자동으로 표시됩니다.',
   theme:'midnight',layout:'cinematic',transition:'fade',soundCue:'off',winnerRevealSeconds:5.5,
   showHeader:true,showFooter:true,showTelemetry:true,showRecentApplicants:true,showCountdown:true,
   scenes:{recruit:true,drawReady:true,winners:true,attendance:true,teams:true,ended:true}

@@ -81,3 +81,6 @@ table{width:100%;border-collapse:collapse}td,th{padding:12px;text-align:left;bor
 @media(max-width:760px){.lb-prize-row{grid-template-columns:auto 1fr}.lb-prize-row label:nth-child(2){grid-column:auto}.lb-prize-row label:nth-child(3){grid-column:1/-1}}
 .lb-test{display:grid;grid-template-columns:minmax(0,1fr) 120px auto;gap:12px;align-items:end}.lb-test h2,.lb-test>p{grid-column:1/-1;margin:0}.lb-test label{margin:0}.cf-test{margin-top:14px}
 @media(max-width:760px){.lb-test{grid-template-columns:1fr 1fr}.lb-test button{grid-column:1/-1}}
+.da-test{display:grid;grid-template-columns:minmax(0,1fr) 140px minmax(0,1.4fr) auto;gap:12px;align-items:end}.da-test h2,.da-test>p{grid-column:1/-1;margin:0}.da-test label{margin:0}
+.da-preview{margin:0;padding:10px 14px;border-radius:12px;background:var(--soft,#dce7dc);font-weight:600;overflow-wrap:anywhere}
+@media(max-width:760px){.da-test{grid-template-columns:1fr 1fr}.da-test label:nth-of-type(3),.da-test button{grid-column:1/-1}}

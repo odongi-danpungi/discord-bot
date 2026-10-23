@@ -1,6 +1,6 @@
 export const DEFAULT_BROADCAST_SETTINGS = Object.freeze({
-  brandTitle:'댕댕 플레이',
-  footerTitle:'DAENGDAENG PLAY · LIVE',
+  brandTitle:'댕댕봇',
+  footerTitle:'DAENGDAENG BOT · LIVE',
   standbyTitle:'다음 시참을 준비 중입니다',
   standbyMessage:'모집이 시작되면 신청 현황과 추첨 결과가 이 화면에 자동으로 표시됩니다.',
   theme:'midnight',

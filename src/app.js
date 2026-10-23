@@ -15,6 +15,7 @@ import { CardFlipService } from './card-flip.js';
 import { cardFlipProfiles, installCardFlipRoutes } from './card-flip-routes.js';
 import { hiddenFeatureFor, installFeatureVisibilityRoutes } from './feature-visibility.js';
 import { LotteryBoardService } from './lottery-board.js';
+import { DonationAlertService, installDonationAlertRoutes } from './donation-alert.js';
 import { installLotteryBoardRoutes } from './lottery-board-routes.js';
 import { fairSelect } from './community.js';
 import { createViewerRouter,createViewerAuth } from './viewer.js';
@@ -26,7 +27,9 @@ import { dashboardExposureWarning } from './dashboard-exposure.js';
 import { randomInt, randomUUID, randomBytes, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { applyAction } from './operations.js';
-import { readIntakeSettings } from './intake-policy.js';
+import { readIntakeSettings,saveIntakeSettings } from './intake-policy.js';
+import { buildWorkspaceReadiness } from './workspace-readiness.js';
+import { saveWorkspaceCallSettings } from './workspace-call-settings.js';
 import { hasGame } from './profiles.js';
 import { simulateDraw } from '../public/draw-engine.js';
 import { normalizeBroadcastSettings, validateBroadcastSettings } from './broadcast-settings.js';
@@ -53,7 +56,7 @@ import { createIdempotencyGuard } from './idempotency.js';
 import { authenticateDashboardBasic, canDashboard, dashboardCapabilityForRequest, operatorStaticAllowed, publicDashboardAccess, sanitizeOperatorCall, sanitizeOperatorQueueEntry, sanitizeOperatorSnapshot, sanitizeOperatorBroadcastOps, sanitizeOperatorNaverParticipation } from './dashboard-access.js';
 import { assertLiveControlFresh, createLiveControlMutationGate, readExpectedLiveRevisions } from './live-control-guard.js';
 const equal=(a,b)=>{const x=Buffer.from(a||''),y=Buffer.from(b||'');return x.length===y.length&&timingSafeEqual(x,y)};
-export function createApp({config,store,operations,recovery,discord,discordPolicy=null,incidentWorkflow=null,idempotencyStore=null,naver=null,naverMonitor=null,naverParticipation=null,chzzkLiveMonitor=null,chzzkVerification=null,participationQueue=null,participationCalls=null,callSettings=null,donationRouletteStore=null,chatOverlayStore=null,cardFlipStore=null,featureVisibilityStore=null,lotteryBoardStore=null,broadcastOps=null,viewerAuth=createViewerAuth(),instanceId='',runtimeHealth=null,performanceCapacity=null,backupManager=null,releaseCenter=null,startupPreflight=null,startupEnvironmentValidation=null,workspaceAuthenticate=null,workspaceViewerAuthenticate=null,workspaceOperationGuard=null}) {
+export function createApp({config,store,operations,recovery,discord,discordPolicy=null,incidentWorkflow=null,idempotencyStore=null,naver=null,naverMonitor=null,naverParticipation=null,chzzkLiveMonitor=null,chzzkVerification=null,participationQueue=null,participationCalls=null,callSettings=null,donationRouletteStore=null,chatOverlayStore=null,cardFlipStore=null,featureVisibilityStore=null,lotteryBoardStore=null,donationAlertStore=null,broadcastOps=null,viewerAuth=createViewerAuth(),instanceId='',runtimeHealth=null,performanceCapacity=null,backupManager=null,releaseCenter=null,startupPreflight=null,startupEnvironmentValidation=null,workspaceAuthenticate=null,workspaceViewerAuthenticate=null,workspaceOperationGuard=null}) {
   const app=express();if(Number(config.trustProxyHops)>0)app.set('trust proxy',Number(config.trustProxyHops));
   const requestScope=new AsyncLocalStorage();
   app.use((req,_res,next)=>requestScope.run(req,next));
@@ -211,8 +214,8 @@ export function createApp({config,store,operations,recovery,discord,discordPolic
   };
   const unsubscribeOperations=operations.subscribe(pushLive),unsubscribeStore=store.subscribe(pushLive),unsubscribeRecovery=typeof recoveryStore.subscribe==='function'?recoveryStore.subscribe(pushLive):()=>{},unsubscribeBroadcastOps=typeof broadcastOps?.subscribe==='function'?broadcastOps.subscribe(pushLive):()=>{},unsubscribePolicy=typeof policyStore.subscribe==='function'?policyStore.subscribe(pushLive):()=>{},unsubscribeIncident=typeof incidentStore.subscribe==='function'?incidentStore.subscribe(pushLive):()=>{},unsubscribeNaverParticipation=typeof naverParticipation?.subscribe==='function'?naverParticipation.subscribe(pushLive):()=>{},unsubscribeChzzkLive=typeof chzzkLiveMonitor?.store?.subscribe==='function'?chzzkLiveMonitor.store.subscribe(pushLive):()=>{},unsubscribeParticipationQueue=typeof participationQueue?.subscribe==='function'?participationQueue.subscribe(pushLive):()=>{};
   app.disable('x-powered-by');
-  let chatOverlay=null,cardFlip=null,lotteryBoard=null;
-  const broadcast=createBroadcastRouter({config,store,operations,version:APP_VERSION,participationQueue,donationRouletteStore,chatFeed:()=>chatOverlay,lotteryFeed:()=>lotteryBoard,sessionIdentity:req=>dashboardSessions.identity(req)});
+  let chatOverlay=null,cardFlip=null,lotteryBoard=null,donationAlert=null;
+  const broadcast=createBroadcastRouter({config,store,operations,version:APP_VERSION,participationQueue,donationRouletteStore,chatFeed:()=>chatOverlay,lotteryFeed:()=>lotteryBoard,alertFeed:()=>donationAlert,sessionIdentity:req=>dashboardSessions.identity(req)});
   const performanceSnapshot=async()=>{
     const current=operations.read(),runtimeState=runtime.snapshot({liveClients:streams.size,version:APP_VERSION,revision:Number(current.revision)||0,recovered:hasRecoveredStore()}),broadcastStats=broadcast.stats?.()||{liveClients:0,limit:8};
     const dataFootprint=await measureDataFootprint([store.file,operations.file,recoveryStore.file,policyStore.file,incidentStore.file,idempotencyStore?.file,naver?.authStore?.file,naverMonitor?.store?.file,naverParticipation?.file,chzzkLiveMonitor?.store?.file,chzzkVerification?.store?.file,participationQueue?.file,broadcastOps?.file].filter(Boolean));
@@ -230,7 +233,7 @@ export function createApp({config,store,operations,recovery,discord,discordPolic
   // Practice mode only: the user portal with a fictional operator and one practice server ('demo'),
   // so new screens can be tried without Discord login. `/w/demo/...` is served by this same app.
   if(config.demo){
-    const portalRoot=fileURLToPath(new URL('../public/',import.meta.url)),portalFiles=new Set(['portal.js','portal.css','practice-model.js','portal-card-flip.js','portal-features.js','portal-lottery.js']);
+    const portalRoot=fileURLToPath(new URL('../public/',import.meta.url)),portalFiles=new Set(['portal.js','portal.css','practice-model.js','portal-card-flip.js','portal-features.js','portal-lottery.js','portal-alert.js']);
     const practiceServer={guildId:'demo',name:'연습 방송 서버'};
     app.get(['/portal','/portal/'],(_req,res)=>res.sendFile('portal.html',{root:portalRoot}));
     app.get('/portal/:file',(req,res,next)=>portalFiles.has(req.params.file)?res.sendFile(req.params.file,{root:portalRoot}):next());
@@ -238,7 +241,40 @@ export function createApp({config,store,operations,recovery,discord,discordPolic
     app.post('/portal/auth/logout',(_req,res)=>res.json({ok:true}));
     app.get('/portal/api/servers',(_req,res)=>res.json({servers:[{id:practiceServer.guildId,name:practiceServer.name,botPresent:true,prepared:true}],installUrl:''}));
     app.get('/portal/api/servers/demo',(_req,res)=>res.set('Cache-Control','no-store').json({...practiceServer,role:'operator',hiddenPages:[...(featureVisibilityStore?.read().hidden.operator||[])]}));
-    app.get('/w/demo/obs',(req,res)=>{const origin=`http://${req.get('host')}`;res.json({url:origin+'/broadcast/overlay',donationRouletteUrl:origin+'/broadcast/donation-roulette',chatUrl:origin+'/broadcast/chat',lotteryBoardUrl:origin+'/broadcast/lottery-board'});});
+    app.get('/w/demo/obs',(req,res)=>{const origin=`http://${req.get('host')}`;res.json({url:origin+'/broadcast/overlay',donationRouletteUrl:origin+'/broadcast/donation-roulette',chatUrl:origin+'/broadcast/chat',lotteryBoardUrl:origin+'/broadcast/lottery-board',donationAlertUrl:origin+'/broadcast/donation-alert'});});
+    // The workspace-only screens (served by the workspace platform in production) work on this practice server too.
+    // Same checks as the platform: hidden features refused, JSON + CSRF + same-site for changes, emergency lock.
+    const demoHidden=(req,res,next)=>hiddenFeatureFor(featureVisibilityStore?.read().hidden,{method:req.method,path:req.path.slice('/w/demo'.length),query:req.query})?res.status(403).json({error:'스트리머가 숨긴 기능입니다. 설정 → 기능 숨기기에서 다시 켤 수 있어요.'}):next();
+    const demoChange=[express.json({limit:'64kb'}),(req,res,next)=>{
+      if(!req.is('application/json')||!equal(req.get('X-CSRF-Token'),csrf)||req.get('Sec-Fetch-Site')==='cross-site')return res.status(403).json({error:'페이지를 새로고침한 뒤 다시 실행해 주세요.'});
+      if(!req.body||typeof req.body!=='object'||Array.isArray(req.body))return res.status(400).json({error:'요청 형식이 올바르지 않습니다.'});
+      try{participantOperationGuard();}catch(error){return next(error);}next();
+    }];
+    const demoAction=fn=>async(req,res,next)=>{try{res.set('Cache-Control','no-store').json(await fn(req));}catch(error){next(error);}};
+    const failDemo=(message,status=400)=>Object.assign(Error(message),{status});
+    app.get('/w/demo/readiness',demoHidden,demoAction(()=>{let paused=false;try{participantOperationGuard();}catch{paused=true;}return buildWorkspaceReadiness({context:{config,discord,operations,chzzkVerification,naver},paused});}));
+    app.get('/w/demo/call-settings',demoHidden,demoAction(()=>{if(!callSettings)throw failDemo('호출 설정을 준비하지 못했습니다.',503);return callSettings.snapshot();}));
+    app.post('/w/demo/call-settings',demoHidden,...demoChange,demoAction(req=>saveWorkspaceCallSettings({store:callSettings,calls:participationCalls,input:req.body,guard:participantOperationGuard})));
+    app.get('/w/demo/intake-settings',demoHidden,demoAction(()=>readIntakeSettings(operations.read())));
+    app.post('/w/demo/intake-settings',demoHidden,...demoChange,demoAction(req=>saveIntakeSettings({operations,input:req.body,guard:participantOperationGuard})));
+    app.get('/w/demo/settings',demoHidden,demoAction(()=>({settings:{naverCafeId:config.naverCafeId||'',naverMenuId:config.naverMenuId||'',naverMemoMenuId:config.naverMemoMenuId||''}})));
+    app.post('/w/demo/settings',demoHidden,...demoChange,demoAction(req=>{
+      const input=req.body,allowed=['naverCafeId','naverMenuId','naverMemoMenuId'];
+      if(Object.keys(input).some(key=>!allowed.includes(key)))throw failDemo('변경할 수 없는 연결 설정입니다.');
+      if(Object.values(input).some(value=>typeof value!=='string'||!/^\d{0,20}$/.test(value)))throw failDemo('카페와 게시판 ID는 숫자로 입력하세요.');
+      // Practice only: kept in memory, never written to the real settings.
+      Object.assign(config,input);return {ok:true};
+    }));
+    app.get('/w/demo/live-settings',demoHidden,demoAction(()=>{if(!chzzkLiveMonitor)throw failDemo('방송 감지를 준비하지 못했습니다.',503);return {settings:chzzkLiveMonitor.summary().settings};}));
+    app.post('/w/demo/live-settings',demoHidden,...demoChange,demoAction(async req=>{
+      const body=req.body;
+      if(!chzzkLiveMonitor)throw failDemo('방송 감지를 준비하지 못했습니다.',503);
+      if(Object.keys(body).some(k=>!['enabled','intervalMinutes','discordAlerts'].includes(k))||typeof body.enabled!=='boolean'||typeof body.discordAlerts!=='boolean'||![1,2,5,10,15].includes(body.intervalMinutes))throw failDemo('방송 감지 설정을 확인하세요.');
+      let channelId='';try{channelId=chzzkVerification?.targetChannelId()||'';}catch{}
+      if(body.enabled&&(!chzzkVerification?.summary().ownerConnected||!channelId))throw failDemo('이 서버의 방송 계정을 먼저 연결하세요.',409);
+      await chzzkLiveMonitor.store.update(state=>{state.settings={...state.settings,...body,channelId:channelId||state.settings.channelId};});
+      return {settings:chzzkLiveMonitor.summary().settings};
+    }));
     app.use('/w/demo',(req,res,next)=>{
       if(hiddenFeatureFor(featureVisibilityStore?.read().hidden,{method:req.method,path:req.path,query:req.query}))return res.status(403).json({error:'스트리머가 숨긴 기능입니다. 설정 → 기능 숨기기에서 다시 켤 수 있어요.'});
       req.originalUrl=req.url;req.baseUrl='';return app(req,res,next);
@@ -361,6 +397,11 @@ export function createApp({config,store,operations,recovery,discord,discordPolic
     sessionFactory:options=>chzzkHub.lease('DONATION',{accessToken:options.accessToken,onStatus:options.onStatus,onEvent:payload=>options.onDonation(payload)})}):null;
   lotteryBoard?.sync();
   installLotteryBoardRoutes({app,service:lotteryBoard});
+  // OBS 후원 알림: shares the CHZZK donation subscription; alerts stay in memory only.
+  donationAlert=donationAlertStore?new DonationAlertService({store:donationAlertStore,chzzkVerification,guard:participantOperationGuard,reporter:chzzkReporter,
+    sessionFactory:options=>chzzkHub.lease('DONATION',{accessToken:options.accessToken,onStatus:options.onStatus,onEvent:payload=>options.onDonation(payload)})}):null;
+  donationAlert?.sync();
+  installDonationAlertRoutes({app,store:donationAlertStore,service:donationAlert,guard:participantOperationGuard});
   app.get(['/', '/index.html'],async(req,res,next)=>{
     if(!config.multiWorkspaceEnabled||req.dashboardIdentity?.role!=='admin')return next();
     try{const html=await readFile(new URL('../public/index.html',import.meta.url),'utf8');
@@ -747,7 +788,7 @@ export function createApp({config,store,operations,recovery,discord,discordPolic
   },Math.min(3600,monitorInterval)*1000):null;
   productionMonitorTimer?.unref?.();
   let backgroundStopped=false;
-  const stopBackground=()=>{if(backgroundStopped)return;backgroundStopped=true;clearInterval(productionMonitorTimer);clearInterval(capacityTimer);clearInterval(backupTimer);clearInterval(policyMonitorTimer);clearInterval(naverMonitorTimer);clearInterval(chzzkLiveTimer);clearInterval(incidentTimer);void donationRoulette?.close();void chatOverlay?.close();void cardFlip?.close();void lotteryBoard?.close();unsubscribeChzzkHub();chzzkHub.close();soak.close();broadcast.close();for(const res of [...streams]){try{streamClosers.get(res)?.();res.end()}catch{}}streams.clear();streamClosers.clear();streamIdentities.clear();};
+  const stopBackground=()=>{if(backgroundStopped)return;backgroundStopped=true;clearInterval(productionMonitorTimer);clearInterval(capacityTimer);clearInterval(backupTimer);clearInterval(policyMonitorTimer);clearInterval(naverMonitorTimer);clearInterval(chzzkLiveTimer);clearInterval(incidentTimer);void donationRoulette?.close();void chatOverlay?.close();void cardFlip?.close();void lotteryBoard?.close();donationAlert?.close();unsubscribeChzzkHub();chzzkHub.close();soak.close();broadcast.close();for(const res of [...streams]){try{streamClosers.get(res)?.();res.end()}catch{}}streams.clear();streamClosers.clear();streamIdentities.clear();};
   const beginShutdown=(reason='shutdown')=>{if(draining)return;draining=true;runtime.recordIncident({severity:'info',source:'system',code:'graceful_shutdown',summary:'안전 종료 시작',detail:String(reason),persist:false});stopBackground();};
   const close=()=>{draining=true;stopBackground();dashboardSessions.clear();apiIdempotency.clear();unsubscribeOperations();unsubscribeStore();unsubscribeRecovery();unsubscribeBroadcastOps();unsubscribePolicy();unsubscribeIncident();unsubscribeNaverParticipation();unsubscribeChzzkLive();unsubscribeParticipationQueue();};
   const creatorIdentity=req=>{

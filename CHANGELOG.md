@@ -1,4 +1,9 @@
-# Unreleased — 2026-10-23
+# Unreleased — 2026-10-24
+
+- **OBS 후원 알림**(방송 → OBS → OBS 후원 알림, OBS `/broadcast/donation-alert`): 치즈 후원이 들어오면 알림 문구(`{닉네임}`·`{금액}`), 최소 금액, 표시 시간, 효과음, 후원 메시지 보이기를 설정해 띄웁니다. 설정만 `operations.json.donation-alert.json`에 저장하고 알림·메시지는 메모리에 최근 30개만 둡니다. 테스트 알림 포함. 새 API `/api/donation-alert`, `/api/donation-alert/test`를 `dashboard-access.js`·`workspace-policy.js`에 함께 등록. 안내 `docs/obs-donation-alert.md`. 실제 후원 수신은 **PENDING**.
+- **연습 모드**: 운영 시작 안내·접수 설정·호출 응답 시간·카페 설정·방송 시작 알림 화면도 연습 포털에서 열립니다. 변경은 운영과 같게 JSON·CSRF·같은 사이트·긴급 잠금을 검사하고, 숨긴 기능은 거절합니다. 카페 설정은 연습 서버 메모리에만 반영됩니다.
+- 이름 표기를 **댕댕봇**으로 통일(시청자 화면·방송 화면·레이스 스튜디오의 "댕댕 플레이" 제거). 저장된 방송 화면 제목은 바뀌지 않고 새 기본값만 바뀝니다. 대시보드 홈의 `D` 표시를 로고로 바꿨습니다.
+- 문서: `docs/hosting-options.md`(호스팅 비교·이전 순서, 실제 배포 없음), `docs/real-e2e-checklist.md`(실제 연결 확인 순서).
 
 - **연습 모드 포털**: `npm run demo` 후 `http://127.0.0.1:3001/portal/`에서 로그인 없이 가짜 운영자·연습 방송 서버로 새 화면(시청자 보상·뽑기판·기능 숨기기·다크 모드)을 써 볼 수 있습니다. `config.demo`일 때만 켜지고 숨긴 기능은 연습에서도 서버가 거절합니다. 서버별 공간 전용 설정 화면은 연습 포털에서 열리지 않습니다.
 - **테스트 후원**: 카드 뒤집기(등록된 시청자 + 치즈 금액 → 실제 후원과 같은 계산으로 기회, 지급 기록 "테스트 후원")와 뽑기판(번호 → 상품 비율 무작위 결과를 OBS에 `[테스트]`로 잠깐 표시, 실제 판은 그대로). 새 API `POST /api/card-flip/test`, `POST /api/lottery-board/test`를 `dashboard-access.js`·`workspace-policy.js`에 함께 등록(`broadcast` 권한).

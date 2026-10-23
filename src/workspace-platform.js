@@ -103,7 +103,7 @@ export async function createWorkspacePlatform({config,client,fetchImpl=fetch,run
   app.use((req,res,next)=>{res.set({'Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'});next();});
   app.use('/portal/auth',login.router);
   app.get(['/portal','/portal/'],(_req,res)=>res.sendFile('portal.html',{root:publicDir}));
-  for(const file of ['portal.js','portal.css','practice-model.js','portal-card-flip.js','portal-features.js','portal-lottery.js'])app.get('/portal/'+file,(_req,res)=>res.sendFile(file,{root:publicDir}));
+  for(const file of ['portal.js','portal.css','practice-model.js','portal-card-flip.js','portal-features.js','portal-lottery.js','portal-alert.js'])app.get('/portal/'+file,(_req,res)=>res.sendFile(file,{root:publicDir}));
   app.get('/portal/api/servers',(req,res)=>{
     const auth=login.session(req);if(!auth)return res.status(401).json({error:'Discord 로그인이 필요합니다.'});
     res.json({servers:auth.guilds.map(g=>({...g,botPresent:client.guilds.cache.has(g.id),prepared:g.id===config.guildId||Boolean(registry.find(g.id))})),
@@ -285,7 +285,7 @@ export async function createWorkspacePlatform({config,client,fetchImpl=fetch,run
       });
       return res.json({settings:ctx.chzzkLiveMonitor.summary().settings});
     }
-    if(req.path==='/obs'&&req.method==='GET'){const url=new URL(`/w/${guildId}/broadcast/overlay`,config.publicBaseUrl),donation=new URL(`/w/${guildId}/broadcast/donation-roulette`,config.publicBaseUrl),chat=new URL(`/w/${guildId}/broadcast/chat`,config.publicBaseUrl),lottery=new URL(`/w/${guildId}/broadcast/lottery-board`,config.publicBaseUrl);for(const item of [url,donation,chat,lottery])item.searchParams.set('token',ctx.config.broadcastToken);return res.json({url:url.href,donationRouletteUrl:donation.href,chatUrl:chat.href,lotteryBoardUrl:lottery.href});}
+    if(req.path==='/obs'&&req.method==='GET'){const url=new URL(`/w/${guildId}/broadcast/overlay`,config.publicBaseUrl),donation=new URL(`/w/${guildId}/broadcast/donation-roulette`,config.publicBaseUrl),chat=new URL(`/w/${guildId}/broadcast/chat`,config.publicBaseUrl),lottery=new URL(`/w/${guildId}/broadcast/lottery-board`,config.publicBaseUrl),alert=new URL(`/w/${guildId}/broadcast/donation-alert`,config.publicBaseUrl);for(const item of [url,donation,chat,lottery,alert])item.searchParams.set('token',ctx.config.broadcastToken);return res.json({url:url.href,donationRouletteUrl:donation.href,chatUrl:chat.href,lotteryBoardUrl:lottery.href,donationAlertUrl:alert.href});}
     if(req.path.startsWith('/viewer/api/'))return target.runtime.app(req,res,next);
     if(await workspaceAsset(req,res,guildId))return;
     if(req.path==='/api/naver/oauth/start'&&req.method==='POST'){
