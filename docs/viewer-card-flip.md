@@ -1,0 +1,22 @@
+# 시청자 보상 · 카드 뒤집기 / 기능 숨기기
+
+## 카드 뒤집기
+- 스트리머: 포털 → 통합 운영 → 커뮤니티 → 시청자 보상. 사용 여부, 모을 장수(2·3장), 카드 2~8종(상품 이름 20자, 그림 PNG·JPG·WEBP 1MB), 기회 주는 방법, 직접 지급, 상품 사용 요청 처리.
+- 시청자: 시청자 화면의 카드 뒤집기. 기회 1회로 판을 받고, 서버가 섞은 카드를 한 장씩 뒤집습니다. 같은 카드가 정한 장수만큼 먼저 모이면 그 상품을 받습니다. 꽝은 없습니다.
+- 저장: `operations.json.card-flip.json`(설정·기회·상품·지급 기록 50건), 그림은 같은 폴더의 `card-flip-images/`. 카드나 장수를 바꾸면 진행 중인 판은 취소되고 기회 1회가 돌아갑니다.
+- 기회
+  - 시참 참가: 통합 Queue에서 참가 확정(`joined`)된 Discord 참가자에게 회차당 한 번. 지급 키(해시)를 저장해 재시작해도 중복 지급하지 않습니다.
+  - 치즈 후원: 공식 Session API 후원 이벤트의 후원자 채널 ID를 **메모리에서만** 팔로워 인증 연결(`chzzk-verification.json`)과 맞춥니다. 연결하지 않은 후원자, 다른 채널 후원은 지급하지 않습니다. 후원자 채널 ID·닉네임·메시지는 저장하지 않습니다.
+  - 직접 지급: /연동으로 등록된 시청자에게 1~10회. 하루 최대와 상관없고 보유 최대 99회.
+- API: `GET/POST /api/card-flip`, `POST /api/card-flip/image`, `/image/remove`, `/grant`, `/reward`, `GET /api/card-flip/image/:파일`(운영자, `broadcast` 권한) · `GET /viewer/api/card-flip`, `POST /viewer/api/card-flip/new`, `/flip`, `/use`, `GET /viewer/api/card-flip/image/:파일`(시청자, 등록된 프로필 필요).
+
+## 기능 숨기기
+- 포털 오른쪽 위 톱니바퀴 → 기능 숨기기. 대분류 전체, 중분류, 기능 하나씩 숨길 수 있습니다.
+- 숨긴 운영 화면은 메뉴에서 사라지고, 서버(`/w/:서버` 처리)가 그 화면의 요청을 403으로 거절합니다. 여러 화면이 함께 쓰는 요청(예: `/readiness`, `/obs`)은 그 화면을 모두 숨겼을 때만 거절합니다.
+- 숨긴 시청자 기능은 시청자 화면에서 사라지고 `/viewer/api/...` 요청도 거절합니다(예전 `/viewer` 입구 포함).
+- 숨길 수 없는 기능: 운영 홈, 통합 Queue, 시청자 참가 현황. 저장: `operations.json.feature-visibility.json`.
+- 숨겨도 켜 둔 자동 기능(치즈 후원 룰렛, 후원 기회 등)은 계속 동작합니다. 끄려면 각 화면에서 사용을 끈 뒤 숨기세요.
+
+## 확인 상태
+- 직접 실행: `node --test test/card-flip.test.js test/feature-visibility.test.js test/portal-theme.test.js`, `npm run verify:final`.
+- **PENDING**: 실제 치지직 후원으로 기회가 들어오는지, 실제 Discord 참가 확정으로 기회가 들어오는지, Railway 배포.

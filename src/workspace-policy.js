@@ -8,13 +8,14 @@ const reads = new Set([
   '/api/access', '/api/snapshot', '/api/participation-queue',
   '/api/broadcast-ops', '/api/broadcast-runbook', '/api/broadcast-archive',
   '/api/broadcast-control', '/api/chzzk/live', '/api/chzzk/verification',
-  '/api/community', '/api/community-options', '/api/operation-tools', '/api/roulette', '/api/donation-roulette', '/api/chat-overlay',
+  '/api/community', '/api/community-options', '/api/operation-tools', '/api/roulette', '/api/donation-roulette', '/api/chat-overlay', '/api/card-flip', '/api/feature-visibility',
   '/api/naver/status', '/api/naver/monitor', '/api/naver/participation',
   '/api/naver/profile', '/api/naver/search', '/api/broadcast-settings', '/api/broadcast-export'
 ]);
 const writes = new Set([
   '/api/chzzk/verification/owner/start', '/api/chzzk/verification/panel', '/api/roulette/spin', '/api/donation-roulette', '/api/donation-roulette/test',
   '/api/chat-overlay', '/api/chat-overlay/test', '/api/chat-overlay/clear',
+  '/api/card-flip', '/api/card-flip/image', '/api/card-flip/image/remove', '/api/card-flip/grant', '/api/card-flip/reward', '/api/feature-visibility',
   '/api/naver/oauth/start', '/api/naver/disconnect', '/api/naver/join',
   '/api/naver/articles', '/api/naver/monitor/settings', '/api/naver/monitor/run', '/api/naver/monitor/retry',
   '/api/naver/participation/register', '/api/naver/participation/cancel',
@@ -32,7 +33,7 @@ const productActions = {
 
 export function workspaceRouteAllowed(method, pathname) {
   if (typeof pathname !== 'string' || /[\\%?#]/.test(pathname) || pathname.includes('//')) return false;
-  if (method === 'GET') return reads.has(pathname);
+  if (method === 'GET') return reads.has(pathname) || /^\/api\/card-flip\/image\/c[a-f0-9]{8}-[a-f0-9]{16}\.(?:png|jpg|webp)$/.test(pathname);
   if (method !== 'POST') return false;
   if (writes.has(pathname)) return true;
   if (/^\/api\/participation-queue\/[A-Za-z0-9_-]{1,100}\/(call|call-cancel|status|reorder)$/.test(pathname)) return true;

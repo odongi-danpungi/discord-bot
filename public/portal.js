@@ -1,6 +1,6 @@
 import {newPractice,practiceAction} from './practice-model.js';
 const $=id=>document.getElementById(id);
-let session,workspace=null,selected='',generation=0,selectionGeneration=0,busy=false;
+let hiddenPages=new Set(),session,workspace=null,selected='',generation=0,selectionGeneration=0,busy=false;
 const el=(tag,text,cls)=>{const node=document.createElement(tag);if(text!==undefined)node.textContent=text;if(cls)node.className=cls;return node;};
 const notice=text=>{$('notice').textContent=text||'';};
 function closeMenu(){$('sidebar').classList.remove('nav-open');$('menu-toggle').setAttribute('aria-expanded','false');}
@@ -39,7 +39,7 @@ function form(fields,submit,label='저장',confirmation=''){
 }
 function table(rows,columns){const t=el('table'),head=el('tr');for(const [,label]of columns)head.append(el('th',label));t.append(head);for(const row of rows||[]){const tr=el('tr');for(const [key]of columns)tr.append(el('td',String(row[key]??'—')));t.append(tr);}return t;}
 const menu=[
-  ['통합 운영',[['참가 진행',['home','queue','open','presets','round','ready','undo']],['운영 준비',['onboarding','handoff','practice']],['참가 설정',['intake-capacity','intake-duplicates','intake-close','recruitment-rules','call-settings']],['커뮤니티',['subscriptions','recruitment','my-panel','recap','publication','guide','tickets']]]],
+  ['통합 운영',[['참가 진행',['home','queue','open','presets','round','ready','undo']],['운영 준비',['onboarding','handoff','practice']],['참가 설정',['intake-capacity','intake-duplicates','intake-close','recruitment-rules','call-settings']],['커뮤니티',['subscriptions','recruitment','my-panel','recap','publication','guide','tickets','card-flip']]]],
   ['방송',[['방송 도구',['schedule','poll','studio']],['OBS',['obs','obs-roulette','obs-chat']],['룰렛',['roulette','donation-roulette']],['방송 기록',['archive','timeline','stats','notifications']]]],
   ['네이버 카페',[['계정·게시판',['naver','cafe']],['카페 운영',['search','write','memo','monitor']]]],
   ['Discord',[['서버 운영',['discord','members']]]],
@@ -51,23 +51,27 @@ Object.assign(titles,{presets:'모집 프리셋',timeline:'방송 타임라인',
 Object.assign(titles,{onboarding:'운영 시작 안내',handoff:'운영 인수인계'});
 Object.assign(titles,{'recruitment-rules':'참가 선발 규칙','call-settings':'호출 응답 시간'});
 Object.assign(titles,{'intake-capacity':'접수 인원 제한','intake-duplicates':'중복 접수 처리','intake-close':'정원 도달 마감'});
+Object.assign(titles,{'card-flip':'시청자 보상','feature-visibility':'기능 숨기기'});
 Object.assign(titles,{roulette:'직접 입력 룰렛','donation-roulette':'치즈 후원 룰렛','obs-roulette':'OBS 룰렛','obs-chat':'OBS 채팅창'});
 const knownPage=id=>id==='fairness'||typeof id==='string'&&menu.some(([,middle])=>middle.some(([,leaves])=>leaves.includes(id)));
 const safeText=(value,limit=600)=>typeof value==='string'?value.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g,'').slice(0,limit):'';
 const readinessStatuses={configured:'설정 완료',attention:'확인 필요',pending:'검증 대기',optional:'선택 사항'};
 function navigation(){
   $('menu').replaceChildren();if(workspace?.role==='participant'){const a=link('내 참가 상태',viewerUrl());$('menu').append(a);return;}
-  for(const [group,middle]of menu){const d=el('details');d.append(el('summary',group));for(const [title,leaves]of middle){const m=el('details');m.append(el('summary',title));for(const id of leaves){const b=el('button',titles[id]);b.dataset.page=id;b.onclick=()=>{if(!busy)void page(id).catch(e=>{if(!e.stale)notice(e.message);});};m.append(b);}m.ontoggle=()=>{if(m.open)for(const sibling of d.children)if(sibling!==m&&sibling.tagName==='DETAILS')sibling.open=false;};d.append(m);}d.ontoggle=()=>{if(d.open)for(const sibling of $('menu').children)if(sibling!==d)sibling.open=false;};$('menu').append(d);}
+  // Pages the streamer hid (설정 → 기능 숨기기) leave the menu; a category or group with nothing left is left out.
+  for(const [group,allMiddle]of menu){const middle=allMiddle.map(([title,leaves])=>[title,leaves.filter(id=>!hiddenPages.has(id))]).filter(([,leaves])=>leaves.length);if(!middle.length)continue;const d=el('details');d.append(el('summary',group));for(const [title,leaves]of middle){const m=el('details');m.append(el('summary',title));for(const id of leaves){const b=el('button',titles[id]);b.dataset.page=id;b.onclick=()=>{if(!busy)void page(id).catch(e=>{if(!e.stale)notice(e.message);});};m.append(b);}m.ontoggle=()=>{if(m.open)for(const sibling of d.children)if(sibling!==m&&sibling.tagName==='DETAILS')sibling.open=false;};d.append(m);}d.ontoggle=()=>{if(d.open)for(const sibling of $('menu').children)if(sibling!==d)sibling.open=false;};$('menu').append(d);}
 }
 async function page(id){
   if(!workspace||workspace.role!=='operator')return;
   if(id==='fairness')id='recruitment-rules';
+  if(hiddenPages.has(id))id='home';
+  $('settings').classList.toggle('active',id==='feature-visibility');
   closeMenu();
   const myGeneration=++generation,scope=base(),guildId=selected;let snapshot=null;
   const current=()=>myGeneration===generation&&selected===guildId;
   const assertCurrent=()=>{if(!current())throw Object.assign(Error('서버 또는 화면이 변경되었습니다. 다시 선택해 주세요.'),{stale:true});};
   notice('');$('title').textContent=titles[id]||'내 참가 상태';$('intro').textContent=workspace.name+' · 운영자';
-  const group=menu.find(([,mid])=>mid.some(([,leaves])=>leaves.includes(id))),mid=group?.[1].find(([,leaves])=>leaves.includes(id));$('breadcrumb').textContent=[group?.[0],mid?.[0],titles[id]].filter(Boolean).join(' / ');
+  const group=menu.find(([,mid])=>mid.some(([,leaves])=>leaves.includes(id))),mid=group?.[1].find(([,leaves])=>leaves.includes(id));$('breadcrumb').textContent=id==='feature-visibility'?'설정 / 기능 숨기기':[group?.[0],mid?.[0],titles[id]].filter(Boolean).join(' / ');
   for(const b of document.querySelectorAll('[data-page]')){b.classList.toggle('active',b.dataset.page===id);if(b.dataset.page===id)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');if(b.dataset.page===id){b.parentElement.open=true;b.parentElement.parentElement.open=true;}}
   // Expand only the selected path right away (toggle events are asynchronous), across top-level categories too.
   const holds=node=>[...node.querySelectorAll('[data-page]')].some(item=>item.dataset.page===id);for(const top of $('menu').querySelectorAll(':scope>details')){const has=holds(top);top.open=has;if(has)for(const mid of top.querySelectorAll(':scope>details'))mid.open=holds(mid);}
@@ -201,6 +205,12 @@ async function page(id){
     p.append(el('p','연결한 방송 계정의 시작·종료를 확인하고 이 서버에 알림을 보냅니다.'),el('p',s.channelId?'방송 계정 연결됨 · 확인 대상은 연결한 채널로 고정됩니다.':'방송 계정 연결 메뉴에서 채널을 먼저 연결해 주세요.','muted'),form([['enabled','방송 상태 확인',String(s.enabled),'select',[['true','사용'],['false','중지']]],['intervalMinutes','확인 간격',String(s.intervalMinutes||2),'select',[['1','1분'],['2','2분'],['5','5분'],['10','10분'],['15','15분']]],['discordAlerts','Discord 알림',String(s.discordAlerts!==false),'select',[['true','알림 전송'],['false','전송하지 않음']]]],body=>request('/live-settings',{enabled:body.enabled==='true',intervalMinutes:Number(body.intervalMinutes),discordAlerts:body.discordAlerts==='true'})));
   }else if(id==='panel'){
     const options=await request('/api/community-options');p.append(form([['channelId','인증 안내를 게시할 채널','','select',(options.channels||[]).map(c=>[c.id,c.name])]],body=>request('/api/chzzk/verification/panel',body),'인증 안내 게시','선택한 Discord 채널에 인증 안내를 게시할까요?'));
+  }else if(id==='feature-visibility'){
+    const {renderFeatureVisibility}=await import('./portal-features.js');assertCurrent();
+    await renderFeatureVisibility({p,el,button,run,request,menu,titles,locked:['home','queue'],reload:()=>page('feature-visibility'),applied:hidden=>{hiddenPages=new Set(hidden);navigation();}});
+  }else if(id==='card-flip'){
+    const {renderCardFlip}=await import('./portal-card-flip.js');assertCurrent();
+    await renderCardFlip({p,el,button,run,request,scope,reload:()=>page('card-flip')});
   }else if(id==='donation-roulette'){
     const data=await request('/api/donation-roulette'),s=data.settings,st=data.status||{};
     const validTiers=s&&typeof s.enabled==='boolean'&&Array.isArray(s.tiers)&&s.tiers.length<=5&&s.tiers.every(t=>t&&Number.isSafeInteger(t.minAmount)&&t.minAmount>0&&Array.isArray(t.items)&&t.items.every(i=>typeof i==='string'));
@@ -311,16 +321,21 @@ async function page(id){
 }
 async function selectServer(initialPage='home'){
   closeMenu();
-  generation++;const mySelection=++selectionGeneration,guildId=$('servers').value;selected=guildId;workspace=null;$('menu').replaceChildren();$('breadcrumb').textContent='내 방송 공간';$('intro').textContent='';$('title').textContent='서버 선택';$('panel').replaceChildren(el('p',guildId?'접근 권한을 확인하는 중…':'운영하거나 참여할 서버를 선택하세요.'));if(!guildId)return;
+  generation++;const mySelection=++selectionGeneration,guildId=$('servers').value;selected=guildId;workspace=null;hiddenPages=new Set();$('settings').hidden=true;$('menu').replaceChildren();$('breadcrumb').textContent='내 방송 공간';$('intro').textContent='';$('title').textContent='서버 선택';$('panel').replaceChildren(el('p',guildId?'접근 권한을 확인하는 중…':'운영하거나 참여할 서버를 선택하세요.'));if(!guildId)return;
   const current=()=>mySelection===selectionGeneration&&selected===guildId;
-  notice('');try{const result=await api('/portal/api/servers/'+guildId);if(!current())return;workspace=result;}catch(e){
+  notice('');try{const result=await api('/portal/api/servers/'+guildId);if(!current())return;workspace=result;hiddenPages=new Set(Array.isArray(result?.hiddenPages)?result.hiddenPages.filter(id=>typeof id==='string'&&!['home','queue'].includes(id)):[]);}catch(e){
     if(!current())return;$('title').textContent='서버 연결';$('panel').replaceChildren(el('p',e.message));if(e.status===409)$('panel').append(button('이 서버의 운영 공간 만들기',async()=>{if(!current())return;await api('/portal/api/servers/'+guildId,{});if(current())await selectServer();}));return;
   }
-  history.replaceState(null,'','/portal/?server='+selected+(validEntry&&selected===entryServer?'&session='+encodeURIComponent(entrySession):''));navigation();
+  $('settings').hidden=workspace.role!=='operator';history.replaceState(null,'','/portal/?server='+selected+(validEntry&&selected===entryServer?'&session='+encodeURIComponent(entrySession):''));navigation();
   if(workspace.role==='participant'){$('title').textContent='내 참가 상태';$('intro').textContent=workspace.name+' · 참가자';$('panel').replaceChildren(el('p','내 순번·호출 응답·예약·준비 상태를 확인하세요.'),link('내 참가 화면 열기',viewerUrl()));}
   else await page(knownPage(initialPage)?initialPage:'home');
 }
 $('servers').onchange=()=>selectServer().catch(e=>notice(e.message));
+// Dark mode: remembered per browser; follows the device until the user picks one.
+function applyTheme(theme){document.documentElement.dataset.theme=theme;const t=$('theme-toggle');if(t){t.textContent=theme==='dark'?'라이트 모드':'다크 모드';t.setAttribute('aria-pressed',String(theme==='dark'));}}
+{let saved=null;try{saved=localStorage.getItem('dd-portal-theme');}catch{}applyTheme(saved==='dark'||saved==='light'?saved:window.matchMedia?.('(prefers-color-scheme: dark)').matches?'dark':'light');}
+$('settings').onclick=()=>{if(!busy&&workspace?.role==='operator')void page('feature-visibility').catch(e=>{if(!e.stale)notice(e.message);});};
+if($('theme-toggle'))$('theme-toggle').onclick=()=>{const next=document.documentElement.dataset.theme==='dark'?'light':'dark';applyTheme(next);try{localStorage.setItem('dd-portal-theme',next);}catch{}};
 $('logout').onclick=()=>run(async()=>{await api('/portal/auth/logout',{});location.assign('/portal/');});
 try{
   session=await api('/portal/auth/session');

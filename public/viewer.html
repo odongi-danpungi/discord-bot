@@ -6,6 +6,7 @@
 <meta name="theme-color" content="#f7f6ef">
 <title>댕댕 플레이 · 시청자 대시보드</title>
 <link rel="stylesheet" href="/viewer/viewer.css">
+<link rel="stylesheet" href="/viewer/card-flip.css">
 </head>
 <body>
 <header><strong>댕댕 플레이 <small>DAENGDAENG PLAY</small></strong><span>시청자 대시보드 · 시참 / 투표 / 레이스 프로필</span></header>
@@ -48,6 +49,8 @@
       <div id="participantReady" class="call-panel" hidden><strong>경기 준비 확인</strong><p id="participantReadyStatus" role="status"></p><button id="participantReadyAnswer">준비 완료</button></div>
       <p id="participationStatus" class="inline-status" role="status" aria-live="polite"></p>
     </section>
+
+    <section id="viewerCardFlip" class="cf-viewer" aria-label="카드 뒤집기" hidden></section>
 
     <details id="viewerAccountLink" class="account-link" hidden>
       <summary><span>계정 연결</span><span id="accountLinkBadge" class="account-link-badge">확인 중</span></summary>

@@ -40,5 +40,6 @@ npm run demo              # 연습 모드(외부 연결 없음). 데모 성공 �
   1. 세이지 1차 UI 통일 + 로고 + 포털 제작자 링크 제거
   3. OBS 룰렛 안내 + OBS 채팅창 — `src/chat-overlay*.js`, `public/chat-overlay.*`, 세션 공유 `ChzzkSessionHub`(`src/chzzk-session.js`). 실제 채팅 수신 PENDING, 안내: `docs/chzzk-chat-overlay.md`
   2. 치즈 후원 룰렛 — `src/chzzk-session.js`, `src/donation-roulette*.js`, `public/donation-roulette.*`. 1회/금액만큼 여러 번, 테스트 후원 포함. 실제 후원 수신 PENDING, 안내: `docs/chzzk-donation-roulette.md`
+- 2026-10-23 브랜치 `feat/viewer-card-flip`(기준 `main` @ 5d5966a): 카드 뒤집기 보상(`src/card-flip*.js`, `public/card-flip*`, `public/portal-card-flip.js`, 안내 `docs/viewer-card-flip.md`), 기능 숨기기(`src/feature-visibility.js`, `public/portal-features.js`, 서버에서도 거절), 포털 다크 모드(검정 바탕·세이지 강조, 사용자 결정으로 세이지 밝은 색 규칙의 예외). 실제 후원 수신·배포 PENDING.
 - SOOP 연동: 보류(사용자 결정). 조사: `docs/soop-integration-research.md`. 구현 완료로 표시하지 않는다.
 - 상세 인수인계: 핸드오프 폴더의 `CLAUDE_HANDOFF.md`.
