@@ -9,7 +9,23 @@
 </head>
 <body>
 <section id="alert" class="alert" hidden aria-live="polite">
-  <svg class="cheese" viewBox="0 0 64 64" aria-hidden="true"><path d="M6 44 L58 26 L58 50 Q32 58 6 50 Z" fill="#f2c14e"/><path d="M6 44 L36 12 Q50 16 58 26 Z" fill="#f7d77e"/><circle cx="22" cy="48" r="4" fill="#d9a632"/><circle cx="42" cy="44" r="3" fill="#d9a632"/><circle cx="50" cy="51" r="2.5" fill="#d9a632"/><circle cx="34" cy="26" r="3" fill="#e2b444"/></svg>
+  <svg class="cheese" viewBox="0 0 96 96" aria-hidden="true">
+    <defs>
+      <linearGradient id="cheeseTop" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff0a8"/><stop offset="1" stop-color="#fbd25a"/></linearGradient>
+      <linearGradient id="cheeseSide" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f9c843"/><stop offset="1" stop-color="#e9a426"/></linearGradient>
+    </defs>
+    <ellipse cx="49" cy="82" rx="34" ry="5" fill="#00000040"/>
+    <path d="M12 52 L80 38 L82 66 Q48 78 14 72 Z" fill="url(#cheeseSide)" stroke="#7a4a0e" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M12 52 L52 18 Q70 24 80 38 Z" fill="url(#cheeseTop)" stroke="#7a4a0e" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M20 50 L50 24" stroke="#fffbe6" stroke-width="3" stroke-linecap="round" opacity=".85"/>
+    <ellipse cx="30" cy="62" rx="5.5" ry="4.5" fill="#c9861b"/><ellipse cx="29" cy="61" rx="2.5" ry="1.8" fill="#e8a83a"/>
+    <ellipse cx="55" cy="58" rx="4" ry="3.5" fill="#c9861b"/>
+    <ellipse cx="70" cy="64" rx="3" ry="2.6" fill="#c9861b"/>
+    <ellipse cx="52" cy="35" rx="4" ry="2.4" fill="#e6ad35"/>
+    <ellipse cx="65" cy="40" rx="2.6" ry="1.6" fill="#e6ad35"/>
+    <path d="M80 10 L82.5 16.5 L89 19 L82.5 21.5 L80 28 L77.5 21.5 L71 19 L77.5 16.5 Z" fill="#fff3c4"/>
+    <path d="M88 32 L89.2 35.3 L92.5 36.5 L89.2 37.7 L88 41 L86.8 37.7 L83.5 36.5 L86.8 35.3 Z" fill="#fff3c4"/>
+  </svg>
   <div class="body">
     <p id="tag" class="tag" hidden>테스트</p>
     <p id="headline" class="headline"></p>
