@@ -6,7 +6,7 @@ import path from 'node:path';
 import express from 'express';
 import { ChzzkSessionHub, normalizeDonationDonor } from '../src/chzzk-session.js';
 import { CardFlipService, CardFlipStore, cardFlipDay, decodeCardImage, validateCardFlipInput } from '../src/card-flip.js';
-import { installCardFlipRoutes, installCardFlipViewerRoutes } from '../src/card-flip-routes.js';
+import { cardFlipProfiles, installCardFlipRoutes, installCardFlipViewerRoutes } from '../src/card-flip-routes.js';
 import { workspaceRouteAllowed } from '../src/workspace-policy.js';
 import { dashboardCapabilityForRequest } from '../src/dashboard-access.js';
 
@@ -193,3 +193,34 @@ test('viewer and streamer routes keep each viewer to their own game and need a r
   assert.equal(granted.added, 2); assert.equal(granted.grants[0].source, 'direct');
   assert.equal((await call(as, '/api/card-flip/grant', null, { userId: VIEWER, count: 11 })).status, 400);
 });
+
+test('test donations give chances like cheese without CHZZK, only while cheese chances are on, and are rate limited', async t => {
+  let clock = 1_700_000_000_000;
+  const { store, service } = await setup(t, { now: () => clock }), known = id => id === VIEWER;
+  const cheese = enabled => settingsInput(store, { chances: { join: { enabled: false, count: 1 }, cheese: { enabled, amount: 1000, count: 2 }, dailyMax: 20 } });
+  await service.configure(cheese(false));
+  await assert.rejects(service.testDonation({ userId: VIEWER, amount: 3000 }, known), { status: 409 });
+  await service.configure(cheese(true));
+  for (const bad of [{ userId: VIEWER }, { userId: VIEWER, amount: 0 }, { userId: 'x', amount: 1000 }, { userId: VIEWER, amount: 1000, extra: 1 }]) await assert.rejects(service.testDonation(bad, known), { status: 400 });
+  await assert.rejects(service.testDonation({ userId: VIEWER2, amount: 1000 }, known), { status: 404 });
+  assert.deepEqual(await service.testDonation({ userId: VIEWER, amount: 3000 }, known), { count: 6, added: 6 });
+  await assert.rejects(service.testDonation({ userId: VIEWER, amount: 3000 }, known), { status: 429 });
+  clock += 1000;
+  assert.deepEqual(await service.testDonation({ userId: VIEWER, amount: 999 }, known), { count: 0, added: 0 });
+  assert.equal(service.view(VIEWER).chances, 6);
+  assert.deepEqual(service.adminView([{ userId: VIEWER, name: '봄이' }]).grants[0], { at: 1_700_000_000_000, name: '봄이', count: 6, source: 'test', amount: 3000 });
+  assert.equal(service.status().ignored.unlinked ?? 0, 0, 'a test is not a received donation');
+  await service.configure(cheese(false)); clock += 1000;
+  await assert.rejects(service.testDonation({ userId: VIEWER, amount: 1000 }, known), { status: 409 });
+  assert.equal(workspaceRouteAllowed('POST', '/api/card-flip/test'), true);
+  assert.equal(dashboardCapabilityForRequest('POST', '/api/card-flip/test'), 'broadcast');
+});
+
+test('practice-mode viewer ids work for profiles and test donations', async t => {
+  const { store, service } = await setup(t);
+  await service.configure(settingsInput(store, { chances: { join: { enabled: false, count: 1 }, cheese: { enabled: true, amount: 1000, count: 1 }, dailyMax: 20 } }));
+  const profiles = installedProfiles([{ guildId: 'demo', discordId: 'demo-1', chzzkName: '연습별1' }, { guildId: 'demo', discordId: 'demo-x' }, { guildId: 'other', discordId: 'demo-2' }]);
+  assert.deepEqual(profiles, [{ userId: 'demo-1', name: '연습별1' }]);
+  assert.deepEqual(await service.testDonation({ userId: 'demo-1', amount: 2000 }, id => id === 'demo-1'), { count: 2, added: 2 });
+});
+const installedProfiles = records => cardFlipProfiles({ read: () => records }, 'demo');

@@ -10,6 +10,7 @@ export function installLotteryBoardRoutes({ app, service }) {
   post('/api/lottery-board/new', body => service.newBoard(body));
   post('/api/lottery-board/open', body => service.openPending(body));
   post('/api/lottery-board/pending/remove', body => service.removePending(body));
+  post('/api/lottery-board/test', body => ({ ...service.adminView(), test: service.testDonation(body) }));
   // Creator only: not in the workspace allowlist and no basic-auth operator capability grants it.
   // The read is deliberately not written to the audit log or any other record.
   app.get('/api/lottery-board/layout', (req, res, next) => {

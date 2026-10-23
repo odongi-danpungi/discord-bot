@@ -20,6 +20,15 @@ export async function renderLotteryBoard({ p, el, button, run, request, reload }
       p.append(box);
     }
   } catch { /* The board still works without the address box. */ }
+  // Test donation: a practice result shown on OBS as [테스트]; the real board does not change.
+  const test = el('form', undefined, 'intake-setting-card lb-test'), nickWrap = el('label', '테스트 닉네임'), nick = el('input'), numWrap = el('label', '번호'), number = el('input');
+  nick.value = '테스트'; nick.maxLength = 20; number.type = 'number'; number.min = '1'; number.max = '100'; number.value = '7'; number.required = true;
+  nickWrap.append(nick); numWrap.append(number);
+  const go = el('button', '테스트 후원', 'secondary'); go.type = 'submit';
+  const testResult = el('p', '', 'field-help lb-test-result'); testResult.setAttribute('role', 'status');
+  test.append(el('h2', 'OBS 테스트'), el('p', '실제 치즈 없이 OBS 연출을 확인해요. 결과는 상품 비율로 무작위로 정해지는 연습 결과이고, 실제 뽑기판은 열리지 않아요. 3초에 한 번 보낼 수 있어요.', 'field-help'), nickWrap, numWrap, go, testResult);
+  test.onsubmit = e => { e.preventDefault(); run(async () => { const r = await request('/api/lottery-board/test', { nickname: nick.value, number: Number(number.value) }); const t = r.test; testResult.textContent = `테스트 결과 · ${t.n}번 · ${t.rank}${t.name ? ' ' + t.name : ''} (OBS에 [테스트]로 표시)`; }); };
+  p.append(test);
   // Current board
   const now = el('section', undefined, 'intake-setting-card lb-board');
   now.append(el('h2', '지금 뽑기판'));
