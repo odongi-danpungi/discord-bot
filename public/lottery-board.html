@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>댕댕봇 · 뽑기판 OBS</title>
+  <link rel="stylesheet" href="/broadcast/lottery-board.css">
+</head>
+<body>
+<main id="stage" class="stage" hidden>
+  <header class="lb-head"><strong>치즈 뽑기판</strong><span id="left"></span></header>
+  <div id="grid" class="grid" role="img" aria-label="1번부터 100번까지 뽑기판"></div>
+  <p id="banner" class="banner" hidden aria-live="polite"></p>
+</main>
+<p id="connection" class="connection" data-state="connecting">연결 중</p>
+<script type="module" src="/broadcast/lottery-board.js"></script>
+</body>
+</html>

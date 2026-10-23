@@ -48,6 +48,19 @@ export function normalizeDonation(raw) {
 }
 
 /**
+ * Donation with its message, for the 뽑기판 numbers ("11 23"). The text must stay in memory:
+ * callers read the numbers and drop it.
+ */
+export function normalizeDonationText(raw) {
+  const event = parse(raw);
+  if (!event || typeof event !== 'object' || Array.isArray(event)) return null;
+  const amount = Number(String(event.payAmount ?? '').replace(/,/g, ''));
+  const channelId = String(event.channelId || '').toLowerCase();
+  if (!/^[a-f0-9]{32}$/.test(channelId) || !Number.isSafeInteger(amount) || amount <= 0) return null;
+  return { channelId, amount, nickname: text(event.donatorNickname, 20) || '익명', text: String(event.donationText ?? '').slice(0, 200) };
+}
+
+/**
  * Donation with the donor's CHZZK channel id, for features that credit a linked viewer.
  * The donor id must stay in memory: callers match it against an existing account link and drop it.
  */

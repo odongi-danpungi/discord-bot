@@ -10,7 +10,7 @@ export const OPERATOR_PAGES = Object.freeze([
   'home', 'queue', 'open', 'presets', 'round', 'ready', 'undo', 'onboarding', 'handoff', 'practice',
   'intake-capacity', 'intake-duplicates', 'intake-close', 'recruitment-rules', 'call-settings',
   'subscriptions', 'recruitment', 'my-panel', 'recap', 'publication', 'guide', 'tickets', 'card-flip',
-  'schedule', 'poll', 'studio', 'obs', 'obs-roulette', 'obs-chat', 'roulette', 'donation-roulette',
+  'schedule', 'poll', 'studio', 'obs', 'obs-roulette', 'obs-chat', 'roulette', 'donation-roulette', 'lottery-board',
   'archive', 'timeline', 'stats', 'notifications', 'naver', 'cafe', 'search', 'write', 'memo', 'monitor',
   'discord', 'members', 'chzzk', 'live', 'panel'
 ]);
@@ -43,7 +43,8 @@ const OPERATOR_ROUTES = [
   P(/^\/api\/card-flip(?:\/|$)/, 'card-flip'),
   P(/^\/api\/broadcast-ops\/schedule$/, 'schedule'), P(/^\/api\/broadcast-ops\/poll$/, 'poll'),
   P(/^\/game-studio\.(?:html|js)$/, 'studio'),
-  P(/^\/obs$/, 'obs', 'obs-roulette', 'obs-chat', 'donation-roulette'),
+  P(/^\/obs$/, 'obs', 'obs-roulette', 'obs-chat', 'donation-roulette', 'lottery-board'),
+  P(/^\/api\/lottery-board(?:\/|$)/, 'lottery-board'),
   P(/^\/(?:roulette\.html|api\/roulette(?:\/spin)?)$/, 'roulette'),
   P(/^\/api\/donation-roulette(?:\/test)?$/, 'donation-roulette'),
   P(/^\/api\/chat-overlay(?:\/test|\/clear)?$/, 'obs-chat'),
