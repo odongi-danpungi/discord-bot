@@ -13,6 +13,7 @@ import { installChatOverlayRoutes } from './chat-overlay-routes.js';
 import { ChzzkSessionHub, normalizeChat, normalizeDonation } from './chzzk-session.js';
 import { CardFlipService } from './card-flip.js';
 import { cardFlipProfiles, installCardFlipRoutes } from './card-flip-routes.js';
+import { installFeatureVisibilityRoutes } from './feature-visibility.js';
 import { fairSelect } from './community.js';
 import { createViewerRouter,createViewerAuth } from './viewer.js';
 import { createBroadcastRouter } from './broadcast.js';
@@ -50,7 +51,7 @@ import { createIdempotencyGuard } from './idempotency.js';
 import { authenticateDashboardBasic, canDashboard, dashboardCapabilityForRequest, operatorStaticAllowed, publicDashboardAccess, sanitizeOperatorCall, sanitizeOperatorQueueEntry, sanitizeOperatorSnapshot, sanitizeOperatorBroadcastOps, sanitizeOperatorNaverParticipation } from './dashboard-access.js';
 import { assertLiveControlFresh, createLiveControlMutationGate, readExpectedLiveRevisions } from './live-control-guard.js';
 const equal=(a,b)=>{const x=Buffer.from(a||''),y=Buffer.from(b||'');return x.length===y.length&&timingSafeEqual(x,y)};
-export function createApp({config,store,operations,recovery,discord,discordPolicy=null,incidentWorkflow=null,idempotencyStore=null,naver=null,naverMonitor=null,naverParticipation=null,chzzkLiveMonitor=null,chzzkVerification=null,participationQueue=null,participationCalls=null,callSettings=null,donationRouletteStore=null,chatOverlayStore=null,cardFlipStore=null,broadcastOps=null,viewerAuth=createViewerAuth(),instanceId='',runtimeHealth=null,performanceCapacity=null,backupManager=null,releaseCenter=null,startupPreflight=null,startupEnvironmentValidation=null,workspaceAuthenticate=null,workspaceViewerAuthenticate=null,workspaceOperationGuard=null}) {
+export function createApp({config,store,operations,recovery,discord,discordPolicy=null,incidentWorkflow=null,idempotencyStore=null,naver=null,naverMonitor=null,naverParticipation=null,chzzkLiveMonitor=null,chzzkVerification=null,participationQueue=null,participationCalls=null,callSettings=null,donationRouletteStore=null,chatOverlayStore=null,cardFlipStore=null,featureVisibilityStore=null,broadcastOps=null,viewerAuth=createViewerAuth(),instanceId='',runtimeHealth=null,performanceCapacity=null,backupManager=null,releaseCenter=null,startupPreflight=null,startupEnvironmentValidation=null,workspaceAuthenticate=null,workspaceViewerAuthenticate=null,workspaceOperationGuard=null}) {
   const app=express();if(Number(config.trustProxyHops)>0)app.set('trust proxy',Number(config.trustProxyHops));
   const requestScope=new AsyncLocalStorage();
   app.use((req,_res,next)=>requestScope.run(req,next));
@@ -232,7 +233,7 @@ export function createApp({config,store,operations,recovery,discord,discordPolic
   });
   const participantOperationGuard=()=>{workspaceOperationGuard?.();if(draining||emergencyState().locked||['staging','applying','rolling-back','restart-required','rollback-restart-required'].includes(releaseCenter?.snapshot?.()?.status))throw Object.assign(Error('운영 잠금 또는 재시작 대기 중입니다.'),{status:423,statusCode:423});};
   installChzzkOAuthRoutes(app,chzzkVerification,participantOperationGuard);
-  app.use('/viewer',createViewerRouter({config,store,operations,viewerAuth,broadcastOps,participationQueue,participationCalls,emergencyState,readyCheckGuard:participantOperationGuard,workspaceViewerAuthenticate,cardFlip:()=>cardFlip}));
+  app.use('/viewer',createViewerRouter({config,store,operations,viewerAuth,broadcastOps,participationQueue,participationCalls,emergencyState,readyCheckGuard:participantOperationGuard,workspaceViewerAuthenticate,cardFlip:()=>cardFlip,featureVisibility:featureVisibilityStore}));
   app.use('/auth',dashboardSessions.router);
   app.get('/naver/callback',async(req,res)=>{
     res.set({'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; form-action 'none'; frame-ancestors 'none'"});
@@ -335,6 +336,7 @@ export function createApp({config,store,operations,recovery,discord,discordPolic
     sessionFactory:options=>chzzkHub.lease('DONATION',{accessToken:options.accessToken,onStatus:options.onStatus,onEvent:payload=>options.onDonation(payload)})}):null;
   cardFlip?.sync();void cardFlip?.awardJoins().catch(()=>{});
   installCardFlipRoutes({app,service:cardFlip,profiles:()=>cardFlipProfiles(store,config.guildId)});
+  installFeatureVisibilityRoutes({app,store:featureVisibilityStore,guard:participantOperationGuard});
   app.get(['/', '/index.html'],async(req,res,next)=>{
     if(!config.multiWorkspaceEnabled||req.dashboardIdentity?.role!=='admin')return next();
     try{const html=await readFile(new URL('../public/index.html',import.meta.url),'utf8');

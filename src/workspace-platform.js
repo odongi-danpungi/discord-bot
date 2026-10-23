@@ -15,6 +15,7 @@ import { readIntakeSettings,saveIntakeSettings } from './intake-policy.js';
 import { discordId, workspaceError, workspaceRouteAllowed } from './workspace-policy.js';
 import { DISCORD_RECOMMENDED_INSTALL_PERMISSIONS } from './discord-permission-audit.js';
 import { ParticipantNaverLinkStore,createParticipantNaverLinkService } from './participant-naver-link.js';
+import { hiddenFeatureFor } from './feature-visibility.js';
 
 const requestIdentity=Symbol('verified-workspace-identity');
 const hash=value=>createHash('sha256').update(String(value||'')).digest('hex');
@@ -116,8 +117,9 @@ export async function createWorkspacePlatform({config,client,fetchImpl=fetch,run
     res.json({ok:true,guildId:member.guildId});
   }catch(error){next(error);}});
   app.get('/portal/api/servers/:guildId',async(req,res,next)=>{try{
-    const {member}=await authorize(req,req.params.guildId);await runtimeFor(member.guildId);
-    res.json({guildId:member.guildId,name:member.name,role:member.manager?'operator':'participant'});
+    const {member}=await authorize(req,req.params.guildId),target=await runtimeFor(member.guildId);
+    const hiddenPages=member.manager?[...(target.context.featureVisibilityStore?.read().hidden.operator||[])]:[];
+    res.json({guildId:member.guildId,name:member.name,role:member.manager?'operator':'participant',...(member.manager?{hiddenPages}:{})});
   }catch(error){next(error);}});
 
   // Creator sessions are verified by the original dashboard; portal roles can
@@ -218,6 +220,8 @@ export async function createWorkspacePlatform({config,client,fetchImpl=fetch,run
     const accessPath=req.path.replace(/\/+$/,'').toLowerCase();
     const {auth,member}=await authorize(req,guildId,!(req.path==='/viewer'||req.path.startsWith('/viewer/')),['/readiness','/call-settings','/intake-settings','/api/roulette','/viewer/api/participation','/viewer/api/account-link'].includes(accessPath));
     const target=await runtimeFor(guildId),ctx=target.context;
+    // Features the streamer hid are refused on the server, not only removed from the menu.
+    if(hiddenFeatureFor(ctx.featureVisibilityStore?.read().hidden,{method:req.method,path:req.path,query:req.query}))throw workspaceError('스트리머가 숨긴 기능입니다. 설정 → 기능 숨기기에서 다시 켤 수 있어요.',403);
     if(req.path==='/readiness'&&req.method==='GET'){
       let paused=false;try{legacy?.runtime.operationGuard();target.runtime.operationGuard();}catch{paused=true;}
       return res.json(buildWorkspaceReadiness({context:ctx,paused}));
