@@ -39,7 +39,7 @@ function form(fields,submit,label='저장',confirmation=''){
 }
 function table(rows,columns){const t=el('table'),head=el('tr');for(const [,label]of columns)head.append(el('th',label));t.append(head);for(const row of rows||[]){const tr=el('tr');for(const [key]of columns)tr.append(el('td',String(row[key]??'—')));t.append(tr);}return t;}
 const menu=[
-  ['통합 운영',[['참가 진행',['home','queue','open','presets','round','ready','undo']],['운영 준비',['onboarding','handoff','practice']],['참가 설정',['intake-capacity','intake-duplicates','intake-close','recruitment-rules','call-settings']],['커뮤니티',['subscriptions','recruitment','my-panel','recap','publication','guide','tickets']]]],
+  ['통합 운영',[['참가 진행',['home','queue','open','presets','round','ready','undo']],['운영 준비',['onboarding','handoff','practice']],['참가 설정',['intake-capacity','intake-duplicates','intake-close','recruitment-rules','call-settings']],['커뮤니티',['subscriptions','recruitment','my-panel','recap','publication','guide','tickets','card-flip']]]],
   ['방송',[['방송 도구',['schedule','poll','studio']],['OBS',['obs','obs-roulette','obs-chat']],['룰렛',['roulette','donation-roulette']],['방송 기록',['archive','timeline','stats','notifications']]]],
   ['네이버 카페',[['계정·게시판',['naver','cafe']],['카페 운영',['search','write','memo','monitor']]]],
   ['Discord',[['서버 운영',['discord','members']]]],
@@ -51,6 +51,7 @@ Object.assign(titles,{presets:'모집 프리셋',timeline:'방송 타임라인',
 Object.assign(titles,{onboarding:'운영 시작 안내',handoff:'운영 인수인계'});
 Object.assign(titles,{'recruitment-rules':'참가 선발 규칙','call-settings':'호출 응답 시간'});
 Object.assign(titles,{'intake-capacity':'접수 인원 제한','intake-duplicates':'중복 접수 처리','intake-close':'정원 도달 마감'});
+Object.assign(titles,{'card-flip':'시청자 보상'});
 Object.assign(titles,{roulette:'직접 입력 룰렛','donation-roulette':'치즈 후원 룰렛','obs-roulette':'OBS 룰렛','obs-chat':'OBS 채팅창'});
 const knownPage=id=>id==='fairness'||typeof id==='string'&&menu.some(([,middle])=>middle.some(([,leaves])=>leaves.includes(id)));
 const safeText=(value,limit=600)=>typeof value==='string'?value.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g,'').slice(0,limit):'';
@@ -201,6 +202,9 @@ async function page(id){
     p.append(el('p','연결한 방송 계정의 시작·종료를 확인하고 이 서버에 알림을 보냅니다.'),el('p',s.channelId?'방송 계정 연결됨 · 확인 대상은 연결한 채널로 고정됩니다.':'방송 계정 연결 메뉴에서 채널을 먼저 연결해 주세요.','muted'),form([['enabled','방송 상태 확인',String(s.enabled),'select',[['true','사용'],['false','중지']]],['intervalMinutes','확인 간격',String(s.intervalMinutes||2),'select',[['1','1분'],['2','2분'],['5','5분'],['10','10분'],['15','15분']]],['discordAlerts','Discord 알림',String(s.discordAlerts!==false),'select',[['true','알림 전송'],['false','전송하지 않음']]]],body=>request('/live-settings',{enabled:body.enabled==='true',intervalMinutes:Number(body.intervalMinutes),discordAlerts:body.discordAlerts==='true'})));
   }else if(id==='panel'){
     const options=await request('/api/community-options');p.append(form([['channelId','인증 안내를 게시할 채널','','select',(options.channels||[]).map(c=>[c.id,c.name])]],body=>request('/api/chzzk/verification/panel',body),'인증 안내 게시','선택한 Discord 채널에 인증 안내를 게시할까요?'));
+  }else if(id==='card-flip'){
+    const {renderCardFlip}=await import('./portal-card-flip.js');assertCurrent();
+    await renderCardFlip({p,el,button,run,request,scope,reload:()=>page('card-flip')});
   }else if(id==='donation-roulette'){
     const data=await request('/api/donation-roulette'),s=data.settings,st=data.status||{};
     const validTiers=s&&typeof s.enabled==='boolean'&&Array.isArray(s.tiers)&&s.tiers.length<=5&&s.tiers.every(t=>t&&Number.isSafeInteger(t.minAmount)&&t.minAmount>0&&Array.isArray(t.items)&&t.items.every(i=>typeof i==='string'));

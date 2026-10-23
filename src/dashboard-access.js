@@ -57,6 +57,9 @@ export function dashboardCapabilityForRequest(method,path){
   if(pathname==='/api/donation-roulette/test'&&verb==='POST')return 'broadcast';
   if(pathname==='/api/chat-overlay'&&['GET','POST'].includes(verb))return 'broadcast';
   if(['/api/chat-overlay/test','/api/chat-overlay/clear'].includes(pathname)&&verb==='POST')return 'broadcast';
+  if(pathname==='/api/card-flip'&&['GET','POST'].includes(verb))return 'broadcast';
+  if(['/api/card-flip/image','/api/card-flip/image/remove','/api/card-flip/grant','/api/card-flip/reward'].includes(pathname)&&verb==='POST')return 'broadcast';
+  if(/^\/api\/card-flip\/image\/c[a-f0-9]{8}-[a-f0-9]{16}\.(?:png|jpg|webp)$/.test(pathname)&&verb==='GET')return 'broadcast';
   if(pathname==='/api/broadcast-runbook'&&verb==='GET')return 'broadcast';
   if(pathname==='/api/broadcast-archive'&&verb==='GET')return 'broadcast';
   if(pathname.startsWith('/api/broadcast-runbook/')&&verb==='POST')return 'broadcast';

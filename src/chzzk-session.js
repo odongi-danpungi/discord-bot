@@ -47,6 +47,19 @@ export function normalizeDonation(raw) {
   };
 }
 
+/**
+ * Donation with the donor's CHZZK channel id, for features that credit a linked viewer.
+ * The donor id must stay in memory: callers match it against an existing account link and drop it.
+ */
+export function normalizeDonationDonor(raw) {
+  const event = parse(raw);
+  if (!event || typeof event !== 'object' || Array.isArray(event)) return null;
+  const amount = Number(String(event.payAmount ?? '').replace(/,/g, ''));
+  const channelId = String(event.channelId || '').toLowerCase(), donorChannelId = String(event.donatorChannelId || '').toLowerCase();
+  if (!/^[a-f0-9]{32}$/.test(channelId) || !/^[a-f0-9]{32}$/.test(donorChannelId) || !Number.isSafeInteger(amount) || amount <= 0) return null;
+  return { channelId, donorChannelId, amount };
+}
+
 const EVENTS = Object.freeze({ DONATION: { path: 'donation', scope: '후원 조회', noun: '후원' }, CHAT: { path: 'chat', scope: '채팅 메시지 조회', noun: '채팅' } });
 export const CHZZK_EVENT_TYPES = Object.freeze(Object.keys(EVENTS));
 const scopes = types => types.map(type => EVENTS[type].scope).join('·');
@@ -241,16 +254,18 @@ export class ChzzkDonationSession extends ChzzkEventSession {
 export class ChzzkSessionHub {
   constructor({ sessionFactory = options => new ChzzkEventSession(options), defer = queueMicrotask } = {}) {
     Object.assign(this, { sessionFactory, defer });
-    this.leases = new Map(); this.session = null; this.pending = false; this.closed = false;
+    this.leases = new Set(); this.session = null; this.pending = false; this.closed = false;
   }
-  /** Returns an object with the start/stop/status contract feature services already use. */
+  /** Returns an object with the start/stop/status contract feature services already use.
+   * Several leases may share one event type (for example two features that both need donations);
+   * every started lease of that type receives each event. */
   lease(type, { accessToken, onEvent, onStatus = () => {} }) {
     if (!EVENTS[type] || typeof accessToken !== 'function' || typeof onEvent !== 'function') throw TypeError('a known event type, accessToken and onEvent are required');
     const hub = this, lease = {
       type, accessToken, onEvent, onStatus,
-      start() { if (hub.leases.get(type) !== lease) { hub.leases.set(type, lease); hub.schedule(); } },
-      stop() { if (hub.leases.get(type) === lease) { hub.leases.delete(type); hub.schedule(); } },
-      status() { return hub.session?.eventStatus(type) || { status: hub.leases.get(type) === lease ? 'connecting' : 'stopped', detail: '', since: 0, lastEventAt: 0 }; }
+      start() { if (!hub.leases.has(lease)) { hub.leases.add(lease); hub.schedule(); } },
+      stop() { if (hub.leases.delete(lease)) hub.schedule(); },
+      status() { return hub.session?.eventStatus(type) || { status: hub.leases.has(lease) ? 'connecting' : 'stopped', detail: '', since: 0, lastEventAt: 0 }; }
     };
     return lease;
   }
@@ -264,10 +279,15 @@ export class ChzzkSessionHub {
     if (this.closed) return;
     if (this.session) { try { this.session.stop(); } catch {} this.session = null; }
     if (!this.leases.size) return;
-    const leases = [...this.leases.values()], latest = leases.at(-1);
+    const leases = [...this.leases], latest = leases.at(-1), handlers = {};
+    for (const type of new Set(leases.map(lease => lease.type))) {
+      const group = leases.filter(lease => lease.type === type);
+      // One feature failing must not keep the event from the others.
+      handlers[type] = async payload => { let used = false; for (const lease of group) { try { if (await lease.onEvent(payload) !== false) used = true; } catch {} } return used; };
+    }
     this.session = this.sessionFactory({
       accessToken: () => latest.accessToken(),
-      handlers: Object.fromEntries(leases.map(lease => [lease.type, lease.onEvent])),
+      handlers,
       onStatus: () => { for (const lease of leases) { try { lease.onStatus(lease.status()); } catch {} } }
     });
     this.session.start();

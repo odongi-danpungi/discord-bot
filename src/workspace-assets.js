@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { discordId } from './workspace-policy.js';
 
 const root=new URL('../public/',import.meta.url),cache=new Map();
-const viewer=new Set(['viewer.html','viewer.js','viewer.css','avatar.js','art.js','community-viewer.js']);
+const viewer=new Set(['viewer.html','viewer.js','viewer.css','avatar.js','art.js','community-viewer.js','card-flip-viewer.js','card-flip.css']);
 const raceAssets=['live-director.js','avatar.js','avatar-legacy.js','art.js','maps.js','draw-engine.js','race-engine.js','race-renderer.js','race-renderer-legacy.js','replay.js'];
 const product=new Set(['community.html','community-panel.js','community.css','operation-tools.html','operation-tools.js','practice.html','practice.js','practice-model.js','game-studio.html','game-studio.js','studio-core.js','studio.css','login.css','roulette.html','roulette.js','roulette.css',...raceAssets]);
 const broadcast=new Set(['broadcast.html','broadcast.js','broadcast.css','overlay.html','overlay.js','overlay.css','donation-roulette.html','donation-roulette.js','donation-roulette.css','chat-overlay.html','chat-overlay.js','chat-overlay.css',...raceAssets]);

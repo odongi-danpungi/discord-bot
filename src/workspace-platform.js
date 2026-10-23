@@ -102,7 +102,7 @@ export async function createWorkspacePlatform({config,client,fetchImpl=fetch,run
   app.use((req,res,next)=>{res.set({'Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'});next();});
   app.use('/portal/auth',login.router);
   app.get(['/portal','/portal/'],(_req,res)=>res.sendFile('portal.html',{root:publicDir}));
-  for(const file of ['portal.js','portal.css','practice-model.js'])app.get('/portal/'+file,(_req,res)=>res.sendFile(file,{root:publicDir}));
+  for(const file of ['portal.js','portal.css','practice-model.js','portal-card-flip.js','portal-features.js'])app.get('/portal/'+file,(_req,res)=>res.sendFile(file,{root:publicDir}));
   app.get('/portal/api/servers',(req,res)=>{
     const auth=login.session(req);if(!auth)return res.status(401).json({error:'Discord 로그인이 필요합니다.'});
     res.json({servers:auth.guilds.map(g=>({...g,botPresent:client.guilds.cache.has(g.id),prepared:g.id===config.guildId||Boolean(registry.find(g.id))})),
@@ -199,7 +199,9 @@ export async function createWorkspacePlatform({config,client,fetchImpl=fetch,run
     }
   });
 
-  app.use('/w/:guildId',express.json({limit:'128kb'}));
+  // Card pictures (up to 1 MB, sent as base64 JSON) are the only larger workspace request body.
+  const smallJson=express.json({limit:'128kb'}),cardImageJson=express.json({limit:'1500kb'});
+  app.use('/w/:guildId',(req,res,next)=>(req.method==='POST'&&req.path==='/api/card-flip/image'?cardImageJson:smallJson)(req,res,next));
   app.use('/w/:guildId',async(req,res,next)=>{try{
     const guildId=req.params.guildId;
     if(!discordId(guildId))throw workspaceError('서버 주소가 올바르지 않습니다.',400);

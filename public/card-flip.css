@@ -1,0 +1,32 @@
+/* Viewer reward: card flip. The green felt and red card backs are the casino card-table look the streamer chose. */
+.cf-viewer{margin:0 0 24px;padding:22px;border:1px solid #cdd7ca;border-radius:15px;background:#f5f7f1;color:#25372c;overflow-wrap:anywhere}
+.cf-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}.cf-head h2{margin:2px 0 0;font-size:20px}
+.cf-tools{display:flex;gap:8px;align-items:center}.cf-chip{display:inline-flex;align-items:center;min-height:34px;padding:4px 12px;border:1px solid #456b59;border-radius:20px;color:#2d6650;font-size:13px;font-weight:700;white-space:nowrap}
+.cf-layout{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(240px,1fr);gap:20px;margin-top:16px}
+.cf-felt{padding:20px 18px 24px;border-radius:26px;background:radial-gradient(ellipse at 50% 35%,#2a8a5a,#145236 72%,#0e3d28);box-shadow:inset 0 0 0 7px #6b3a16,inset 0 0 0 10px #c9a24a,inset 0 0 40px #00000080,0 8px 20px #0004}
+.cf-felt-title{text-align:center;font-weight:900;letter-spacing:.24em;font-size:12px;color:#c9a24acc;margin-bottom:14px}
+.cf-grid{display:flex;flex-wrap:wrap;justify-content:center;gap:10px;max-width:calc(var(--cols) * 78px + (var(--cols) - 1) * 10px);margin:0 auto}
+.cf-card{position:relative;margin:0;box-shadow:none;flex:0 0 calc((100% - (var(--cols) - 1) * 10px) / var(--cols));max-width:78px;height:104px;padding:0;border:0;background:none;perspective:600px;cursor:pointer;min-height:0}
+.cf-card:hover{background:none}.cf-card:disabled{cursor:default;opacity:1}
+.cf-in{position:relative;display:block;width:100%;height:100%;transition:transform .55s cubic-bezier(.3,1.4,.5,1);transform-style:preserve-3d}
+.cf-card.up .cf-in{transform:rotateY(180deg)}.cf-card.flipping .cf-in{animation:cf-flip .6s cubic-bezier(.3,0,.3,1) forwards}
+@keyframes cf-flip{from{transform:rotateY(0)}to{transform:rotateY(180deg)}}
+.cf-back,.cf-front{position:absolute;inset:0;border-radius:9px;backface-visibility:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px}
+.cf-back,.cf-deck span{background:repeating-linear-gradient(45deg,#ffffff2e 0 1.5px,transparent 1.5px 7px),repeating-linear-gradient(-45deg,#ffffff2e 0 1.5px,transparent 1.5px 7px),radial-gradient(circle at 50% 50%,#b3223a,#8c1628);background-clip:content-box;padding:6px;box-sizing:border-box;border:1px solid #d9d2c3;background-color:#fbf8f2;box-shadow:inset 0 0 0 5px #fbf8f2,inset 0 0 0 7px #b3223a,0 5px 10px #0006}
+.cf-card:not(:disabled):hover .cf-back{filter:brightness(1.1)}
+.cf-front{transform:rotateY(180deg);background:#fbf6ec;box-shadow:inset 0 0 0 2px #e6dccb,0 5px 10px #0006}
+.cf-front img{width:36px;height:36px;object-fit:cover;border-radius:8px}
+.cf-front span{font-size:11.5px;font-weight:700;line-height:1.25;color:#25332e;padding:0 5px;text-align:center;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;word-break:keep-all}
+.cf-card.pair .cf-front{box-shadow:inset 0 0 0 3px #2a8a5a,0 0 10px #2a8a5a88}.cf-card.win .cf-front{box-shadow:inset 0 0 0 3px #e8b13a,0 5px 10px #0006}.cf-card.dim{opacity:.5}
+.cf-symbol{font-size:29px;line-height:1}.cf-s0{color:#b7791f}.cf-s1{color:#2e5eaa}.cf-s2{color:#c2508a}.cf-s3{color:#1b8f84}.cf-s4{color:#d9731e}.cf-s5{color:#6b3f9e}.cf-s6{color:#2f7a45}.cf-s7{color:#c41d33}
+.cf-deckwrap{position:relative;display:flex;align-items:center;justify-content:center}.cf-deck{position:relative;width:78px;height:104px;transform:scale(1.25)}
+.cf-deck span{position:absolute;inset:0;border-radius:9px;transform:translate(calc(var(--k) * -1.2px),calc(var(--k) * -1.6px))}
+.cf-deck-count{position:absolute;left:0;right:0;text-align:center;top:calc(50% + 78px);font-size:13px;font-weight:800;color:#f6e2a8cc}
+.cf-status{margin:14px 0;padding:14px 16px;border-radius:12px;background:#e6ece3;font-weight:700}
+.cf-buttons{display:flex;flex-direction:column;align-items:center;gap:6px}.cf-buttons button{min-width:220px}
+.cf-box{padding:16px;border:1px solid #cdd7ca;border-radius:12px;background:#fbfcf8;margin-bottom:12px}.cf-box h3{margin:0 0 10px;font-size:15px}
+.cf-prizes,.cf-ways,.cf-rewards{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.cf-prizes li{display:flex;align-items:center;gap:10px;font-weight:700}.cf-prizes img{width:28px;height:28px;object-fit:cover;border-radius:6px}.cf-prizes .cf-symbol{font-size:22px;width:28px;text-align:center}
+.cf-ways li{font-size:13px;color:#4c5f51}.cf-rewards li{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.cf-tag{font-size:12px;color:#5b6e60;white-space:nowrap}.cf-muted{color:#5b6e60;font-size:13px;margin:0}
+@media(max-width:760px){.cf-viewer{padding:16px}.cf-layout{grid-template-columns:1fr}.cf-felt{padding:16px 10px 20px;border-radius:20px}.cf-grid{gap:7px;max-width:calc(var(--cols) * 78px + (var(--cols) - 1) * 7px)}.cf-card{flex-basis:calc((100% - (var(--cols) - 1) * 7px) / var(--cols));max-width:88px;height:auto;aspect-ratio:3/4}.cf-front span{font-size:10.5px}.cf-buttons button{width:100%}}
