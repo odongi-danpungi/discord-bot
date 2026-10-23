@@ -30,3 +30,7 @@
 .cf-ways li{font-size:13px;color:#4c5f51}.cf-rewards li{display:flex;justify-content:space-between;align-items:center;gap:10px}
 .cf-tag{font-size:12px;color:#5b6e60;white-space:nowrap}.cf-muted{color:#5b6e60;font-size:13px;margin:0}
 @media(max-width:760px){.cf-viewer{padding:16px}.cf-layout{grid-template-columns:1fr}.cf-felt{padding:16px 10px 20px;border-radius:20px}.cf-grid{gap:7px;max-width:calc(var(--cols) * 78px + (var(--cols) - 1) * 7px)}.cf-card{flex-basis:calc((100% - (var(--cols) - 1) * 7px) / var(--cols));max-width:88px;height:auto;aspect-ratio:3/4}.cf-front span{font-size:10.5px}.cf-buttons button{width:100%}}
+
+/* --- dark mode (generated from the light rules above) --- */
+:root[data-theme="dark"]{color-scheme:dark}
+:root[data-theme="dark"] .cf-viewer{border:1px solid #323531;background:#191a18;color:#d0d2d1}:root[data-theme="dark"] .cf-chip{border:1px solid #a4aaa7;color:#a4c7b9}:root[data-theme="dark"] .cf-box{border:1px solid #323531;background:#1d2013}:root[data-theme="dark"] .cf-ways li{color:#a7aca8}:root[data-theme="dark"] .cf-tag{color:#9ba19d}:root[data-theme="dark"] .cf-muted{color:#9ba19d}
