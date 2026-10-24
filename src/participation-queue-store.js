@@ -69,10 +69,10 @@ export class ParticipationQueueStore extends JsonStore {
   bindOperations(operations,{guard=()=>{}}={}){
     if(!operations||typeof operations.acceptCallPass!=='function'||typeof operations.acknowledgeCallPasses!=='function')throw TypeError('호출 패스에는 OperationsStore가 필요합니다.');
     const existing=this.coordinator.callPassBinding;
-    if(existing&&existing.operations.file!==operations.file)throw Error('Queue에 다른 운영 저장소를 연결할 수 없습니다.');
+    if(existing&&existing.operations.file!==operations.file)throw Error('대기열에 다른 운영 저장소를 연결할 수 없습니다.');
     this.coordinator.callPassBinding={operations,guard};return this;
   }
-  passRecoveryConflict(){return Object.assign(Error('호출 패스 복구 기록과 Queue가 일치하지 않습니다. 운영을 중지하고 전체 데이터 백업을 확인해 주세요.'),{status:503,code:'call_pass_recovery_conflict'});}
+  passRecoveryConflict(){return Object.assign(Error('호출 패스 복구 기록과 대기열이 일치하지 않습니다. 운영을 중지하고 전체 데이터 백업을 확인해 주세요.'),{status:503,code:'call_pass_recovery_conflict'});}
   assertCallPassOrigin(origin){
     const session=this.operations?.read().session;
     if(!session||session.id!==origin.sessionId||session.game!==origin.game||session.round!==origin.round||session.phase==='ended')throw Object.assign(Error('모집이 변경되어 이전 호출의 자동 진행을 중단했습니다.'),{status:409,code:'call_pass_advance_stale'});
@@ -230,7 +230,7 @@ export class ParticipationQueueStore extends JsonStore {
     });return result;
   }
   orderUndoPreview(){const state=this.read(),undo=state.orderUndo;if(!undo||undo.expiresAt<=Date.now()||undo.revision!==state.revision)return {available:false};return {available:true,id:undo.id,revision:state.revision,expiresAt:undo.expiresAt,changes:undo.before.map(item=>{const entry=state.entries.find(e=>e.id===item.id);return {displayName:entry?.displayName||'',currentPosition:entry?.position,restorePosition:item.position};})};}
-  async undoOrder({id,revision}={}){return this.update(state=>{const undo=state.orderUndo;if(!undo||undo.id!==id||undo.expiresAt<=Date.now()||state.revision!==revision||undo.revision!==state.revision)throw Object.assign(Error('Queue가 변경되었거나 되돌리기 시간이 만료됐습니다.'),{status:409});for(const item of undo.before){const entry=state.entries.find(e=>e.id===item.id);if(!entry)throw Object.assign(Error('Queue가 변경됐습니다.'),{status:409});entry.position=item.position;entry.updatedAt=Date.now();}state.orderUndo=null;state.revision++;note(state,'reorder_undo',null);return {ok:true};});}
+  async undoOrder({id,revision}={}){return this.update(state=>{const undo=state.orderUndo;if(!undo||undo.id!==id||undo.expiresAt<=Date.now()||state.revision!==revision||undo.revision!==state.revision)throw Object.assign(Error('대기열이 변경되었거나 되돌리기 시간이 만료됐습니다.'),{status:409});for(const item of undo.before){const entry=state.entries.find(e=>e.id===item.id);if(!entry)throw Object.assign(Error('대기열이 변경됐습니다.'),{status:409});entry.position=item.position;entry.updatedAt=Date.now();}state.orderUndo=null;state.revision++;note(state,'reorder_undo',null);return {ok:true};});}
   async cancelSource(source,reason='manual'){
     if(!PARTICIPATION_QUEUE_SOURCES.includes(source))throw Object.assign(new Error('참가 경로를 확인해 주세요.'),{status:400});let changed=0;
     await this.update(state=>{for(const entry of state.entries){if(entry.source!==source||!ACTIVE_STATUSES.has(entry.status))continue;entry.status='cancelled';entry.updatedAt=Date.now();note(state,'source_cancel',entry,{reason:String(reason||'manual').slice(0,80)});changed++;}if(changed){resequencePositions(state);state.revision++;}});return {changed,summary:this.summary()};
