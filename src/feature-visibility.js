@@ -20,7 +20,7 @@ export const OPERATOR_LOCKED = Object.freeze(['home', 'queue']);
 export const VIEWER_FEATURES = Object.freeze([
   ['참가', [['participation', '참가 현황·호출·준비']]],
   ['보상', [['card-flip', '카드 뒤집기']]],
-  ['방송 참여', [['poll', '방송 투표'], ['community', '알림·문의·규칙']]],
+  ['방송 참여', [['poll', '방송 투표'], ['community', '알림·문의·규칙'], ['lottery-board', '뽑기판 현황'], ['chat-commands', '채팅 명령어 안내']]],
   ['내 정보', [['race-profile', '레이스 색상'], ['account-link', '네이버 계정 연결']]]
 ]);
 export const VIEWER_LOCKED = Object.freeze(['participation']);
@@ -60,7 +60,7 @@ const OPERATOR_ROUTES = [
 ];
 const VIEWER_ROUTES = [
   P(/^\/viewer\/api\/card-flip(?:\/|$)/, 'card-flip'), P(/^\/viewer\/api\/poll(?:\/|$)/, 'poll'),
-  P(/^\/viewer\/api\/community(?:\/|$)/, 'community'), P(/^\/viewer\/api\/avatar$/, 'race-profile'),
+  P(/^\/viewer\/api\/community(?:\/|$)/, 'community'), P(/^\/viewer\/api\/lottery-board$/, 'lottery-board'), P(/^\/viewer\/api\/chat-commands$/, 'chat-commands'), P(/^\/viewer\/api\/avatar$/, 'race-profile'),
   P(/^\/viewer\/api\/account-link(?:\/|$)/, 'account-link')
 ];
 const PAGE_FILES = { 'operation-tools.html': { ready: 'ready', undo: 'undo' } };

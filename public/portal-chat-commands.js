@@ -6,7 +6,7 @@ const MAX = 30;
 export async function renderChatCommands({ p, el, button, run, request, reload }) {
   const data = await request('/api/chat-commands');
   if (!data || !Number.isSafeInteger(data.revision) || !data.settings || !Array.isArray(data.settings.commands)) throw Error('저장된 채팅 명령어를 확인하지 못했습니다. 다시 불러와 주세요.');
-  const s = data.settings, st = data.status || {}, names = data.builtinNames || { waiting: '대기', position: '순번', help: '명령어' };
+  const s = data.settings, st = data.status || {}, names = data.builtinNames || { waiting: '대기', position: '순번', help: '명령어', join: '신청' };
   const [label, cls] = states[st.state] || ['상태 확인 필요', 'readiness-attention'], [sendLabel, sendCls] = sendStates[st.send?.state] || sendStates.idle;
   const evidence = el('div', undefined, 'readiness-evidence');
   evidence.append(el('span', label, 'badge ' + cls), el('span', sendLabel, 'badge ' + sendCls), el('span', '실제 채팅 답장 검증 대기', 'badge readiness-pending'));
@@ -23,7 +23,8 @@ export async function renderChatCommands({ p, el, button, run, request, reload }
   const [wWrap, waiting] = check(`!${names.waiting}`, '지금 대기 중인 참가자 수를 알려 줘요.', s.builtins.waiting);
   const [pWrap, position] = check(`!${names.position}`, '보낸 시청자의 순서를 알려 줘요. 팔로워 인증으로 디스코드 계정을 연결한 시청자만 확인돼요.', s.builtins.position);
   const [hWrap, help] = check(`!${names.help}`, '쓸 수 있는 명령어 목록을 알려 줘요.', s.builtins.help);
-  f.append(wWrap, pWrap, hWrap, el('h2', '내가 만든 명령어'), el('p', '명령어 이름은 한글·영문·숫자 1~12자, 답장은 100자까지예요. 답장에 {닉네임}을 쓰면 보낸 시청자 이름으로 바뀌어요. 답장은 !로 시작할 수 없어요.', 'field-help'));
+  const [jWrap, join] = check(`!${names.join}`, '시참 모집 중일 때 채팅으로 신청해요. 팔로워 인증으로 디스코드와 연결된 시청자는 디스코드 참가와 같은 규칙으로, 그 밖의 시청자는 치지직 닉네임으로 대기열에 들어가요(접수 정원·중복 규칙 적용). 취소는 시청자 화면에서 해요.', Boolean(s.builtins.join));
+  f.append(wWrap, pWrap, hWrap, jWrap, el('h2', '내가 만든 명령어'), el('p', '명령어 이름은 한글·영문·숫자 1~12자, 답장은 100자까지예요. 답장에 {닉네임}을 쓰면 보낸 시청자 이름으로 바뀌어요. 답장은 !로 시작할 수 없어요.', 'field-help'));
   const list = el('div', undefined, 'cc-list'), rows = [];
   const addRow = cmd => {
     const row = el('div', undefined, 'cc-row'), tWrap = el('label', '명령어'), trigger = el('input'), rWrap = el('label', '답장'), response = el('input');
@@ -39,7 +40,7 @@ export async function renderChatCommands({ p, el, button, run, request, reload }
   f.onsubmit = e => {
     e.preventDefault();
     run(async () => {
-      await request('/api/chat-commands', { enabled: enabled.checked, cooldownSeconds: Number(cooldown.value), builtins: { waiting: waiting.checked, position: position.checked, help: help.checked }, revision: data.revision,
+      await request('/api/chat-commands', { enabled: enabled.checked, cooldownSeconds: Number(cooldown.value), builtins: { waiting: waiting.checked, position: position.checked, help: help.checked, join: join.checked }, revision: data.revision,
         commands: rows.map(r => ({ ...(r.id ? { id: r.id } : {}), trigger: r.trigger.value.trim().replace(/^!/, ''), response: r.response.value })) });
       await reload();
     });

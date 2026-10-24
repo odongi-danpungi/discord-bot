@@ -290,7 +290,7 @@ export function createApp({config,store,operations,recovery,discord,discordPolic
   });
   const participantOperationGuard=()=>{workspaceOperationGuard?.();if(draining||emergencyState().locked||['staging','applying','rolling-back','restart-required','rollback-restart-required'].includes(releaseCenter?.snapshot?.()?.status))throw Object.assign(Error('운영 잠금 또는 재시작 대기 중입니다.'),{status:423,statusCode:423});};
   installChzzkOAuthRoutes(app,chzzkVerification,participantOperationGuard);
-  app.use('/viewer',createViewerRouter({config,store,operations,viewerAuth,broadcastOps,participationQueue,participationCalls,emergencyState,readyCheckGuard:participantOperationGuard,workspaceViewerAuthenticate,cardFlip:()=>cardFlip,featureVisibility:featureVisibilityStore}));
+  app.use('/viewer',createViewerRouter({config,store,operations,viewerAuth,broadcastOps,participationQueue,participationCalls,emergencyState,readyCheckGuard:participantOperationGuard,workspaceViewerAuthenticate,cardFlip:()=>cardFlip,lotteryBoard:()=>lotteryBoard,chatCommands:()=>chatCommands,featureVisibility:featureVisibilityStore}));
   app.use('/auth',dashboardSessions.router);
   app.get('/naver/callback',async(req,res)=>{
     res.set({'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; form-action 'none'; frame-ancestors 'none'"});
@@ -410,7 +410,7 @@ export function createApp({config,store,operations,recovery,discord,discordPolic
   donationGoal?.sync();
   installDonationGoalRoutes({app,service:donationGoal});
   // 채팅 명령어: shares the chat subscription with the OBS chat window; replies go out as the broadcaster account.
-  chatCommands=chatCommandsStore?new ChatCommandsService({store:chatCommandsStore,chzzkVerification,participationQueue,guard:participantOperationGuard,reporter:chzzkReporter,
+  chatCommands=chatCommandsStore?new ChatCommandsService({store:chatCommandsStore,chzzkVerification,participationQueue,operations,participationCalls,records:()=>store.read().filter(record=>record.guildId===config.guildId),afterJoin:()=>discord.sync('sync'),guard:participantOperationGuard,reporter:chzzkReporter,
     sessionFactory:options=>chzzkHub.lease('CHAT',{accessToken:options.accessToken,onStatus:options.onStatus,onEvent:payload=>options.onChat(payload)})}):null;
   chatCommands?.sync();
   installChatCommandsRoutes({app,store:chatCommandsStore,service:chatCommands,guard:participantOperationGuard});
