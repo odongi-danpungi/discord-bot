@@ -173,7 +173,8 @@ export function mountViewerCardFlip({ api, host }) {
    */
   async function deal() {
     const grid = host.querySelector('.cf-grid');
-    if (!grid || !grid.animate || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    // Always played: the shuffle is the reward's show. (A device setting that turns animations off used to skip it.)
+    if (!grid || !grid.animate) return;
     const cards = [...grid.querySelectorAll('.cf-card')], g = grid.getBoundingClientRect(), cx = g.left + g.width / 2, cy = g.top + g.height / 2, n = cards.length, half = Math.ceil(n / 2), gap = Math.min(150, 2400 / n);
     const spread = Math.min(70, g.width * 0.18), fanR = Math.min(110, g.width * 0.28);
     animating = true; say('카드를 섞는 중…'); renderButtons();
