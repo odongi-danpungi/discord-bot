@@ -31,7 +31,7 @@ test('viewer displays current Discord intake capacity separately from Queue and 
   const ui=await viewer(t),card=ui.get('recruitmentSummary');
   assert.equal(card.dataset.state,'open');assert.equal(ui.get('recruitmentRemaining').textContent,'남은 자리 7명');
   assert.match(ui.get('recruitmentDetail').textContent,/현재 접수 3명 · 최대 10명 · 추첨 인원 5명/);assert.doesNotMatch(card.textContent,/99명/);
-  assert.match(ui.get('recruitmentDeadline').textContent,/1분 0초/);assert.match(card.textContent,/네이버 카페·수동 Queue의 인원은 합산하지 않습니다/);
+  assert.match(ui.get('recruitmentDeadline').textContent,/1분 0초/);assert.match(card.textContent,/네이버 카페·수동 대기열의 인원은 합산하지 않습니다/);
   assert.equal(ui.get('recruitmentStatus').getAttribute('role'),'status');assert.equal(ui.w.document.querySelectorAll('[data-participation-action="join"]').length,1);
   assert.deepEqual(ui.calls.map(call=>call.url).sort(),['/viewer/api/me','/viewer/api/mode','/viewer/api/participation','/viewer/api/poll','/viewer/api/ready-check','/viewer/api/account-link'].sort());
   assert.ok(ui.calls.every(call=>call.options.method===undefined&&call.options.body===undefined));
@@ -200,7 +200,7 @@ test('a persisted confirming result remains pending across reload and a later re
 
 test('missing retained history does not invent a pass result and joined is a neutral current Queue state',async t=>{
   const state=callFixture();state.queue.entry.status='postponed_next';state.queue.callResponse=null;state.actions={};const ui=await viewer(t,{state});assert.equal(ui.get('participationCall').hidden,true);assert.doesNotMatch(ui.get('participationCallTimer').textContent,/기록|예약으로 처리/);
-  state.queue.entry.status='joined';delete state.queue.callResponse;ui.setState(state);await ui.w.viewerTest.loadParticipation();assert.equal(ui.get('participationCall').dataset.state,'joined');assert.equal(ui.get('participationCallTitle').textContent,'현재 Queue 상태: 참가 확인');assert.doesNotMatch(ui.get('participationCall').textContent,/전송했습니다|예약으로 처리|완료되었습니다/);assert.equal(ui.get('participationCallActions').hidden,true);assert.ok(ui.calls.every(call=>!call.options.body));
+  state.queue.entry.status='joined';delete state.queue.callResponse;ui.setState(state);await ui.w.viewerTest.loadParticipation();assert.equal(ui.get('participationCall').dataset.state,'joined');assert.equal(ui.get('participationCallTitle').textContent,'현재 대기열 상태: 참가 확인');assert.doesNotMatch(ui.get('participationCall').textContent,/전송했습니다|예약으로 처리|완료되었습니다/);assert.equal(ui.get('participationCallActions').hidden,true);assert.ok(ui.calls.every(call=>!call.options.body));
 });
 
 test('malformed or mismatched call results fail closed without rendering payload text or enabling a hidden write',async t=>{

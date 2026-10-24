@@ -188,7 +188,7 @@ test('intake subpages show one feature at a time and preserve the other loaded f
   for(const [page,title,key,value]of [['intake-capacity','접수 인원 제한','maxApplicants','50'],['intake-duplicates','중복 접수 처리','duplicatePolicy','reject'],['intake-close','정원 도달 마감','closeOnCapacity',true]]){
     await w.portalTest.page(page);assert.equal(w.document.getElementById('breadcrumb').textContent,'통합 운영 / 참가 설정 / '+title);
     assert.equal(w.document.querySelectorAll('.intake-setting-card').length,1);assert.equal(w.document.querySelectorAll('.intake-form input,.intake-form select').length,1);
-    assert.match(w.document.getElementById('panel').textContent,/저장하면 각 서비스의 다음 모집부터 공통 조건/);assert.match(w.document.getElementById('panel').textContent,/현재 Queue와 진행 중인 회차는 바뀌지/);
+    assert.match(w.document.getElementById('panel').textContent,/저장하면 각 서비스의 다음 모집부터 공통 조건/);assert.match(w.document.getElementById('panel').textContent,/현재 대기열과 진행 중인 회차는 바뀌지/);
     const f=w.document.querySelector('form'),before=structuredClone(fixture.settings);if(key==='closeOnCapacity')f.elements[key].checked=value;else f.elements[key].value=value;await submit(w,f);
     const saved=calls.filter(c=>c.options.method==='POST').at(-1),expected={revision:fixture.revision-1,...before,[key]:key==='maxApplicants'?Number(value):value};assert.equal(saved.url,'/w/'+A+'/intake-settings');assert.deepEqual(JSON.parse(saved.options.body),expected);assert.equal(saved.options.headers['X-CSRF-Token'],'fixture-csrf');assert.ok(saved.options.headers['Idempotency-Key']);
   }

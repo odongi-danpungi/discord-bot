@@ -10,7 +10,7 @@ export function readyCheckView({operationsState,queue,userId=null,now=Date.now()
  return {check:{id:value.id,createdAt:value.createdAt,expiresAt:value.expiresAt,stale,expired,closed:Boolean(value.closedAt),participants:participants.map(p=>({id:p.id,displayName:p.displayName,source:p.source,readyAt:p.readyAt||0,manual:Boolean(p.manual)})),readyCount:userId?participants.filter(p=>p.readyAt).length:value.participants.filter(p=>p.readyAt).length,total:userId?participants.length:value.participants.length}};
 }
 export async function startReadyCheck({operations,queue,now=Date.now()}){
- const participants=active(queue).slice(0,200);if(!participants.length)throw fail('먼저 참가자를 Queue에 등록해 주세요.',400);if(active(queue).length>200)throw fail('준비 확인은 최대 200명까지 가능합니다.',400);
+ const participants=active(queue).slice(0,200);if(!participants.length)throw fail('먼저 참가자를 대기열에 등록해 주세요.',400);if(active(queue).length>200)throw fail('준비 확인은 최대 200명까지 가능합니다.',400);
  return operations.update(state=>{state.readyCheck={id:randomUUID(),createdAt:now,expiresAt:now+600000,sessionId:state.session?.id||null,fingerprint:fingerprint(queue),participants:participants.map(p=>({id:p.id,displayName:p.displayName,source:p.source,discordUserId:p.source==='discord'?p.discordUserId:null,readyAt:0,manual:false}))};state.revision=(state.revision||0)+1;});
 }
 export async function answerReadyCheck({operations,queue,checkId,userId=null,entryId=null,manual=false,now=Date.now()}){

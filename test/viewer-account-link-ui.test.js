@@ -44,7 +44,7 @@ test('participant account link is one collapsed read-only panel with explicit sc
   assert.equal(panel.hidden, false); assert.equal(panel.open, false); assert.equal(panel.dataset.state, 'unlinked');
   assert.equal(ui.get('accountLinkStart').disabled, true); assert.equal(ui.get('accountLinkConsent').checked, false);
   assert.match(panel.textContent, /카페 가입이나 게시글 작성자 신원이 확인되지는 않습니다/);
-  assert.match(panel.textContent, /Queue는 자동으로 합쳐지지 않습니다/);
+  assert.match(panel.textContent, /대기열은 자동으로 합쳐지지 않습니다/);
   assert.match(panel.textContent, /카페 운영용 네이버 계정과는 별도/);
   assert.equal(ui.calls.filter(call => call.url === '/viewer/api/account-link').length, 1); assert.equal(ui.posts().length, 0);
   assert.deepEqual(ui.intervals.map(item => item.delay), [10000, 1000]);

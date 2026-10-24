@@ -14,7 +14,7 @@ export function readExpectedLiveRevisions(headers={}){
   const get=name=>typeof headers.get==='function'?headers.get(name):headers[name]??headers[name.toLowerCase()]??headers[name.toUpperCase()];
   return {
     operations:parseRevision(get(HEADER_OPERATIONS),'운영 상태'),
-    queue:parseRevision(get(HEADER_QUEUE),'시참 Queue')
+    queue:parseRevision(get(HEADER_QUEUE),'시참 대기열')
   };
 }
 

@@ -19,7 +19,7 @@ function customEntries(){
  if(new Set(labels.map(s=>s.toLowerCase())).size!==labels.length)throw Error('중복된 항목을 제거해 주세요. 같은 항목으로 확률을 늘릴 수 없습니다.');
  return labels.map((label,i)=>({id:'preview-'+i,label}));
 }
-function candidates(){if(source()==='custom')return customEntries();const list=state?.queueEntries||[];if(!list.length&&typeof state?.queueMessage==='string'&&state.queueMessage)throw Error(state.queueMessage);if(!Number.isSafeInteger(state?.queueRevision))throw Error('Queue 대기 참가자를 가져올 권한 또는 설정을 확인해 주세요.');if(list.length<2)throw Error('Queue 대기 참가자가 2명 이상이어야 합니다.');return list;}
+function candidates(){if(source()==='custom')return customEntries();const list=state?.queueEntries||[];if(!list.length&&typeof state?.queueMessage==='string'&&state.queueMessage)throw Error(state.queueMessage);if(!Number.isSafeInteger(state?.queueRevision))throw Error('대기열 대기 참가자를 가져올 권한 또는 설정을 확인해 주세요.');if(list.length<2)throw Error('대기열 대기 참가자가 2명 이상이어야 합니다.');return list;}
 function controls(){
  const frozen=busy||animating||!!pending;
  for(const input of document.querySelectorAll('input[name=source],#items'))input.disabled=frozen;
@@ -48,10 +48,10 @@ function preview(){
  $('wheel').style.transition='none';rotation=0;$('wheel').style.transform='rotate(0deg)';wheel(entries);$('wheel-note').textContent=entries.length>16?'항목이 많아 이름은 전체 항목 목록에 표시합니다.':'위쪽 화살표가 가리키는 항목이 당첨됩니다.';controls();
 }
 function dateText(at){const date=new Date(at);return Number.isFinite(date.getTime())?date.toLocaleString('ko-KR'):'시각 확인 불가';}
-function announce(result,replayed=false){$('winner').textContent=result.winner.label;$('result-detail').textContent=dateText(result.at)+' · '+(result.source==='queue'?'Queue 대기 참가자':'직접 입력')+' · '+result.entries.length+'개 항목';message(replayed?'이미 저장된 같은 요청의 결과를 확인했습니다. 새 추첨을 실행하지 않았습니다.':'추첨 결과를 저장했습니다. Queue 상태는 변경하지 않았습니다.');}
+function announce(result,replayed=false){$('winner').textContent=result.winner.label;$('result-detail').textContent=dateText(result.at)+' · '+(result.source==='queue'?'대기열 대기 참가자':'직접 입력')+' · '+result.entries.length+'개 항목';message(replayed?'이미 저장된 같은 요청의 결과를 확인했습니다. 새 추첨을 실행하지 않았습니다.':'추첨 결과를 저장했습니다. 대기열 상태는 변경하지 않았습니다.');}
 function history(){
  const results=state?.history||[];$('history').replaceChildren();$('history-empty').hidden=results.length>0;
- for(const result of results){const item=node('li'),info=node('div');info.append(node('strong',result.winner.label),node('small',dateText(result.at)+' · '+(result.source==='queue'?'Queue':'직접 입력')+' · '+result.entries.length+'개 항목'));const show=node('button','결과 보기');show.type='button';show.className='secondary';show.onclick=()=>{if(busy||animating||pending||!alive)return;wheel(result.entries,result.winnerIndex);rotation=(360-(result.winnerIndex+.5)*360/result.entries.length)%360;$('wheel').style.transition='none';$('wheel').style.transform=`rotate(${rotation}deg)`;announce(result,true);};item.append(info,show);$('history').append(item);}
+ for(const result of results){const item=node('li'),info=node('div');info.append(node('strong',result.winner.label),node('small',dateText(result.at)+' · '+(result.source==='queue'?'대기열':'직접 입력')+' · '+result.entries.length+'개 항목'));const show=node('button','결과 보기');show.type='button';show.className='secondary';show.onclick=()=>{if(busy||animating||pending||!alive)return;wheel(result.entries,result.winnerIndex);rotation=(360-(result.winnerIndex+.5)*360/result.entries.length)%360;$('wheel').style.transition='none';$('wheel').style.transform=`rotate(${rotation}deg)`;announce(result,true);};item.append(info,show);$('history').append(item);}
  controls();
 }
 async function request(path,options={}){

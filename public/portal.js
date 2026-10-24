@@ -45,7 +45,7 @@ const menu=[
   ['Discord',[['서버 운영',['discord','members']]]],
   ['CHZZK',[['방송 계정',['chzzk','live']],['팔로워 인증',['panel']],['채팅',['chat-commands']]]]
 ];
-const titles={home:'운영 홈',queue:'통합 Queue',open:'참가 모집 시작',round:'경기 진행',ready:'경기 준비 확인',undo:'직전 순서 되돌리기',schedule:'방송 일정',poll:'방송 투표',community:'커뮤니티 운영',studio:'추첨·레이스',obs:'OBS 화면',archive:'방송 기록',practice:'운영 연습',naver:'네이버 계정 연결',cafe:'카페·게시판 설정',search:'카페 글 검색',write:'게시글 작성',memo:'칼바람 시참 접수',monitor:'새 글 알림',discord:'서버 채널 준비',members:'참가자 정보',chzzk:'방송 계정 연결',panel:'인증 안내 게시'};
+const titles={home:'운영 홈',queue:'통합 대기열',open:'참가 모집 시작',round:'경기 진행',ready:'경기 준비 확인',undo:'직전 순서 되돌리기',schedule:'방송 일정',poll:'방송 투표',community:'커뮤니티 운영',studio:'추첨·레이스',obs:'OBS 화면',archive:'방송 기록',practice:'운영 연습',naver:'네이버 계정 연결',cafe:'카페·게시판 설정',search:'카페 글 검색',write:'게시글 작성',memo:'칼바람 시참 접수',monitor:'새 글 알림',discord:'서버 채널 준비',members:'참가자 정보',chzzk:'방송 계정 연결',panel:'인증 안내 게시'};
 Object.assign(titles,{subscriptions:'알림 구독',fairness:'공정 선발',recruitment:'모집·공지 초안', 'my-panel':'내 시참 패널',recap:'방송 후기',publication:'게시 미리보기',guide:'규칙·FAQ',tickets:'참가자 문의',live:'방송 시작·종료 알림'});
 Object.assign(titles,{presets:'모집 프리셋',timeline:'방송 타임라인',stats:'방송 통계',notifications:'알림 설정'});
 Object.assign(titles,{onboarding:'운영 시작 안내',handoff:'운영 인수인계'});
@@ -81,7 +81,7 @@ async function page(id){
   const op=async(action,body={})=>{const state=snapshot||await snap();snapshot=await request('/api/operations/'+action,{requestId:crypto.randomUUID(),sessionId:state.state?.session?.id||null,...body});};
   const actions=(...buttons)=>{const a=el('div',undefined,'actions');a.append(...buttons);p.append(a);};
   if(id==='home'){
-    const data=await snap(),stats=el('div',undefined,'stats');for(const [label,value]of [['대기 참가자',data.participationQueue?.activeCount||0],['현재 회차',data.state?.session?.round||'—'],['방송 운영',data.paused?'일시 중지':'사용 가능']]){const c=el('div',label,'stat');c.append(el('strong',String(value)));stats.append(c);}p.append(stats,el('p','왼쪽 메뉴에서 사용할 기능 하나를 선택하세요.'));actions(button('Queue 보기',()=>page('queue')),button('경기 진행',()=>page('round'),'secondary'),button('운영 시작 안내',()=>page('onboarding'),'secondary'));
+    const data=await snap(),stats=el('div',undefined,'stats');for(const [label,value]of [['대기 참가자',data.participationQueue?.activeCount||0],['현재 회차',data.state?.session?.round||'—'],['방송 운영',data.paused?'일시 중지':'사용 가능']]){const c=el('div',label,'stat');c.append(el('strong',String(value)));stats.append(c);}p.append(stats,el('p','왼쪽 메뉴에서 사용할 기능 하나를 선택하세요.'));actions(button('대기열 보기',()=>page('queue')),button('경기 진행',()=>page('round'),'secondary'),button('운영 시작 안내',()=>page('onboarding'),'secondary'));
   }else if(id==='onboarding'||id==='handoff'){
     const data=await request('/readiness'),checked=new Date(data.checkedAt),hasTime=typeof data.checkedAt==='number'&&Number.isFinite(checked.getTime());
     const evidence=el('div',undefined,'readiness-evidence');evidence.append(el('span','저장된 설정 기준','badge readiness-configured'),el('span','실제 연결 검증 대기','badge readiness-pending'));p.append(evidence,el('p',hasTime?'확인 시각 · '+checked.toLocaleString('ko-KR'):'확인 시각을 가져오지 못했습니다.','muted readiness-time'));
@@ -107,14 +107,14 @@ async function page(id){
     const data=await request('/intake-settings'),settings=data?.settings;
     const valid=Number.isSafeInteger(data?.revision)&&data.revision>=0&&settings&&typeof settings==='object'&&!Array.isArray(settings)&&Number.isInteger(settings.maxApplicants)&&settings.maxApplicants>=0&&settings.maxApplicants<=1000&&['keep_existing','reject'].includes(settings.duplicatePolicy)&&typeof settings.closeOnCapacity==='boolean'&&(!settings.closeOnCapacity||settings.maxApplicants>0);
     if(!valid){const message='저장된 접수 조건을 확인하지 못했습니다. 다시 불러온 뒤 저장해 주세요.';$('panel').replaceChildren(el('p',message),button('설정 다시 불러오기',()=>page(id),'secondary'));throw Error(message);}
-    p.append(el('p','저장하면 각 서비스의 다음 모집부터 공통 조건이 적용됩니다. 현재 Queue와 진행 중인 회차는 바뀌지 않습니다.','settings-guidance'));
+    p.append(el('p','저장하면 각 서비스의 다음 모집부터 공통 조건이 적용됩니다. 현재 대기열과 진행 중인 회차는 바뀌지 않습니다.','settings-guidance'));
     const f=el('form',undefined,'form settings-form intake-form'),card=el('div',undefined,'intake-setting-card'),message=el('p','', 'settings-feedback');message.setAttribute('role','status');let dirty=false,input;
     card.append(el('h2',titles[id]));
     if(id==='intake-capacity'){
       card.append(el('p','Discord 모집과 네이버 카페 모집에 각각 적용하는 정원입니다. 두 서비스의 접수 인원을 합산한 제한은 아닙니다.','muted'));
       input=field(card,'maxApplicants','최대 접수 인원',settings.maxApplicants,'number');input.min='0';input.max='1000';input.step='1';input.required=true;input.parentElement.append(el('span','0은 무제한 · 1~1000명 사이의 정수로 입력하세요.','field-help'));
       card.append(el('p','Discord 모집은 추첨 선정 인원 이상으로 설정하세요. 0은 제한 없음입니다.','field-help'));
-      card.append(el('p','운영자가 통합 Queue에 직접 추가하는 참가자는 이 정원의 대상이 아닙니다.','field-help'));
+      card.append(el('p','운영자가 통합 대기열에 직접 추가하는 참가자는 이 정원의 대상이 아닙니다.','field-help'));
       if(settings.closeOnCapacity)card.append(el('p','정원 도달 마감이 켜져 있습니다. 무제한으로 바꾸려면 정원 도달 마감을 먼저 해제하세요.','field-help'));
     }else if(id==='intake-duplicates'){
       card.append(el('p','이미 접수한 참가자가 다시 신청했을 때의 처리 방식입니다. 두 방식 모두 참가자를 중복으로 추가하지 않습니다.','muted'));
@@ -161,7 +161,7 @@ async function page(id){
     let practice=newPractice(),acting=false;
     const steps=[['register','가상 접수','Discord 5명과 네이버 5명의 가상 참가자를 접수합니다.'],['call','호출','첫 참가자를 부르는 흐름을 연습합니다.'],['ready','준비','가상 참가자의 응답과 준비 완료를 확인합니다.'],['draw','추첨','10명 중 6명을 연습용 무작위 추첨으로 선발합니다.'],['teams','팀 배정','선발된 가상 참가자를 A/B 팀으로 나눕니다.'],['end','방송 종료','연습 회차를 종료합니다. 실제 방송은 종료하지 않습니다.']];
     const phases=['접수 전','접수 완료','호출 완료','준비 완료','추첨 완료','팀 배정 완료','방송 종료'];
-    p.append(el('p','연습 전용 · 실제 운영에 반영되지 않습니다.','practice-banner'),el('p','이 화면의 가상 참가자만 사용합니다. Discord·네이버·CHZZK에 요청을 보내거나 실제 Queue를 변경하지 않습니다. 화면이나 서버를 바꾸면 연습 내용이 초기화됩니다.','muted'));
+    p.append(el('p','연습 전용 · 실제 운영에 반영되지 않습니다.','practice-banner'),el('p','이 화면의 가상 참가자만 사용합니다. Discord·네이버·CHZZK에 요청을 보내거나 실제 대기열을 변경하지 않습니다. 화면이나 서버를 바꾸면 연습 내용이 초기화됩니다.','muted'));
     const progress=el('ol',undefined,'practice-progress'),content=el('div',undefined,'practice-stage'),feedback=el('p','', 'settings-feedback');feedback.setAttribute('role','status');
     const render=()=>{const index=phases.indexOf(practice.phase);progress.replaceChildren();for(const [position,[,label]]of steps.entries()){const item=el('li',`${position+1}. ${label}`,position<index?'complete':position===index?'current':'');if(position===index)item.setAttribute('aria-current','step');progress.append(item);}content.replaceChildren();
       if(index>=steps.length){content.append(el('h2','연습 완료'),el('p','접수부터 방송 종료까지 6단계를 완료했습니다. 초기화하면 처음부터 다시 연습할 수 있습니다.'));}
@@ -230,7 +230,7 @@ async function page(id){
     const states={unavailable:['준비 안 됨','readiness-optional'],not_connected:['방송 계정 연결 필요','readiness-attention'],disabled:['사용 안 함','readiness-optional'],stopped:['중지','readiness-optional'],connecting:['연결 중','readiness-pending'],subscribing:['구독 요청 중','readiness-pending'],subscribed:['후원 구독 요청 완료','readiness-configured'],reconnecting:['재연결 대기','readiness-attention'],auth_required:['후원 조회 권한 동의 필요','readiness-attention']};
     const [label,cls]=states[st.state]||['상태 확인 필요','readiness-attention'],evidence=el('div',undefined,'readiness-evidence');
     evidence.append(el('span',label,'badge '+cls),el('span','실제 후원 수신 검증 대기','badge readiness-pending'));
-    p.append(el('p','치지직에서 정한 금액 이상 치즈 후원이 들어오면, 후원 금액이 해당하는 가장 높은 구간의 목록으로 룰렛을 돌립니다. 결과는 룰렛 기록과 OBS 후원 룰렛 화면에 후원자 닉네임과 함께 표시됩니다. Queue는 바뀌지 않습니다.','settings-guidance'),evidence);
+    p.append(el('p','치지직에서 정한 금액 이상 치즈 후원이 들어오면, 후원 금액이 해당하는 가장 높은 구간의 목록으로 룰렛을 돌립니다. 결과는 룰렛 기록과 OBS 후원 룰렛 화면에 후원자 닉네임과 함께 표시됩니다. 대기열은 바뀌지 않습니다.','settings-guidance'),evidence);
     if(st.detail)p.append(el('p',safeText(st.detail,200),'muted'));
     if(st.state==='not_connected')p.append(el('p','CHZZK → 방송 계정 연결에서 이 서버의 방송 계정을 먼저 연결해 주세요. 후원 조회 권한(후원 조회 Scope)에 동의해야 합니다.','muted'));
     const f=el('form',undefined,'form settings-form donation-form'),message=el('p','','settings-feedback');message.setAttribute('role','status');

@@ -27,7 +27,7 @@ test('scoped page uses relative APIs and animates only the persisted winner inde
  assert.equal(w.document.getElementById('winner').textContent,'봄이');assert.equal(w.document.getElementById('wheel').dataset.winnerIndex,'1');
  const angle=Number(/rotate\(([-.\d]+)deg\)/.exec(w.document.getElementById('wheel').style.transform)[1]);
  assert.equal((angle+(1+.5)*120)%360,0,'server winner sector center meets the fixed top pointer');
- assert.equal(w.document.querySelectorAll('#history>li').length,1);assert.match(w.document.body.textContent,/Queue.*변경하지 않았습니다/);
+ assert.equal(w.document.querySelectorAll('#history>li').length,1);assert.match(w.document.body.textContent,/대기열.*변경하지 않았습니다/);
 });
 test('uncertain POST never spins again automatically and explicit retry keeps the exact body and key',async t=>{
  const calls=[];let attempts=0;const w=await page(t,async(url,options)=>{calls.push({url,options});if(url==='api/roulette')return response(snapshot());if(++attempts===1)throw Error('response lost');return response({revision:1,result:result(JSON.parse(options.body).requestId),replayed:true});});
@@ -69,7 +69,7 @@ test('Queue with fewer than two entries and malformed state fail closed',async t
 });
 test('custom roulette remains usable without Queue access and Queue restrictions explain the blocker',async t=>{
  for(const queueRevision of [null,0]){
-  const w=await page(t,async()=>response({...snapshot(),queueRevision,queueEntries:[],queueMessage:queueRevision===null?'Queue 조회 권한이 없습니다.':'참가자가 100명을 초과했습니다. 대상을 줄여 주세요.'}));input(w);assert.equal(w.document.getElementById('spin').disabled,false);
+  const w=await page(t,async()=>response({...snapshot(),queueRevision,queueEntries:[],queueMessage:queueRevision===null?'대기열 조회 권한이 없습니다.':'참가자가 100명을 초과했습니다. 대상을 줄여 주세요.'}));input(w);assert.equal(w.document.getElementById('spin').disabled,false);
   const queue=w.document.querySelector('[value=queue]');queue.checked=true;queue.dispatchEvent(new w.Event('change'));assert.equal(w.document.getElementById('spin').disabled,true);assert.match(w.document.getElementById('validation').textContent,queueRevision===null?/조회 권한/:/100명을 초과/);
  }
 });

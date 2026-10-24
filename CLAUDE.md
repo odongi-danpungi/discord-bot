@@ -17,6 +17,7 @@ Discord·네이버 카페·CHZZK를 연결하는 방송 운영 봇. 여러 방�
 ## UI (세이지 워크스페이스)
 - 토큰: 배경 #E9EEE7, 카드 #F5F7F1, 사이드바 #E0E7DD, 글자 #25372C, 보조 #5B6E60, 구분선 #CDD7CA, 강조 #456B59. (`public/portal.css`, `login.css`, `roulette.css`)
 - 로고는 `public/brand-logo.svg`(사용자 제공 선화). 임의 새 로고 금지.
+- 화면 문구에 영어 "Queue"를 쓰지 않고 "대기열"이라고 쓴다(사용자 결정 2026-10-24). 코드 식별자·API 경로(`participation-queue` 등)는 그대로.
 - 대분류 → 중분류 → 소분류, 한 화면에 한 기능. 포털 메뉴 정의: `public/portal.js`의 `menu`/`titles`. 대분류: 통합 운영(참가 진행·운영 준비·참가 설정·커뮤니티) · 방송(방송 도구·OBS·룰렛·방송 기록) · 네이버 카페 · Discord · CHZZK. 방송은 통합 운영 바로 옆(사용자 확정 2026-10-20).
 - 확인 크기: PC 1440×1024, 모바일 390×844, 360폭.
 - 2차 통일 완료(2026-10-23): 대시보드(`business-theme.css` 등 테마 층), `mobile-control.*`, `community.*`, `viewer.*`(다크 모드 포함). 방송 송출 화면 `broadcast.*`/`overlay.*`는 방송용 어두운 디자인 유지. OBS 후원 룰렛은 서커스 핀 휠(사용자 선택).

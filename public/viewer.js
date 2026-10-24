@@ -118,10 +118,10 @@ function renderCall(view){
  let state='hidden',title='',detail='';
  if(unknown){state='unknown';title='응답 처리 결과를 확인해 주세요.';detail='연결이 끊겨 처리 결과를 확인하지 못했습니다. 다시 전송하지 말고 상태 다시 확인을 눌러 주세요.';}
  else if(!stale&&queue.callResponse!=null&&!response){state='unavailable';title='호출 응답 기록을 확인할 수 없습니다.';detail='상태를 다시 확인해 주세요. 확인 전에는 호출에 응답할 수 없습니다.';}
- else if(pending||response?.state==='confirming'){state='confirming';title='패스 응답은 저장되었습니다.';detail='Queue 반영 상태를 확인 중입니다. 상태 다시 확인으로 결과를 확인해 주세요.';}
+ else if(pending||response?.state==='confirming'){state='confirming';title='패스 응답은 저장되었습니다.';detail='대기열 반영 상태를 확인 중입니다. 상태 다시 확인으로 결과를 확인해 주세요.';}
  else if(response?.state==='recorded'){state='recorded';title='이번판 패스 응답이 기록되었습니다.';detail=`응답 당시 ${response.targetRound}판 예약으로 처리했습니다. 현재 예약은 아래 예약 목록에서 확인해 주세요. 이 기록은 Discord 전송 완료를 뜻하지 않습니다.`;}
  else if(current){const seconds=Number.isFinite(entry.callDeadline)?Math.max(0,Math.ceil((entry.callDeadline-participationNow())/1000)):0;if(seconds>0){state='current';title='진행자가 지금 호출했습니다.';detail=`${seconds}초 안에 응답해 주세요.`;}else{state='expired';title='호출 응답 시간이 지났습니다.';detail='응답 버튼을 사용할 수 없습니다. 상태를 다시 확인하거나 진행자에게 문의해 주세요.';}}
- else if(joined){state='joined';title='현재 Queue 상태: 참가 확인';detail='진행자의 다음 안내를 기다려 주세요.';}
+ else if(joined){state='joined';title='현재 대기열 상태: 참가 확인';detail='진행자의 다음 안내를 기다려 주세요.';}
  const panel=$('participationCall');panel.hidden=state==='hidden';panel.dataset.state=state;$('participationCallTitle').textContent=title;$('participationCallTimer').textContent=detail;$('participationCallActions').hidden=state!=='current';
  document.querySelectorAll('[data-participation-action="call_join"],[data-participation-action="call_pass"]').forEach(button=>{const action=button.dataset.participationAction,key=action==='call_join'?'callJoin':'callPass',expectedCall=binding?{...binding}:null;button.disabled=participationBusy||state!=='current'||!actions[key];button.onclick=()=>runParticipationAction(action,undefined,expectedCall);});
  const refresh=$('participationCallRefresh');refresh.hidden=!['unknown','unavailable','confirming','expired'].includes(state);refresh.disabled=participationBusy;
@@ -155,7 +155,7 @@ function renderParticipation(){
  else if(session?.confirmed)hint='참석 확인까지 완료되었습니다. 진행자의 다음 안내를 기다려 주세요.';
  else if(session?.winner&&session?.phase==='checking')hint='당첨되었습니다. 참석 확인 시간이 끝나기 전에 준비 완료를 눌러 주세요.';
  else if(session?.postponed)hint=actions.join?'다음 회차 예약 상태입니다. 현재판으로 다시 복귀할 수 있습니다.':'다음 회차 예약 상태입니다. 현재판에 참가 가능한 자리가 생기고 접수 중일 때 복귀할 수 있습니다.';
- else if(session?.applicant)hint=`현재 시참에 신청되어 있습니다.${entry?.position?` 통합 Queue ${entry.position}번입니다.`:''}`;
+ else if(session?.applicant)hint=`현재 시참에 신청되어 있습니다.${entry?.position?` 통합 대기열 ${entry.position}번입니다.`:''}`;
  else if(stale)hint='이 모집은 종료되었습니다. 진행자가 공유한 최신 모집 링크로 다시 접속해 주세요.';
  else if(!view.recruitment)hint='접수 상태를 확인할 수 없습니다. 새로고침한 뒤 다시 확인해 주세요.';
  else if(view.recruitment.status==='full')hint='현재 모집 정원이 가득 찼습니다. 자리가 생기거나 다음 모집이 열릴 때 다시 확인해 주세요.';

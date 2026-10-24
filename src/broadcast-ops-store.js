@@ -11,10 +11,10 @@ const MAX_CUSTOM_PRESETS=12,MAX_SCHEDULES=100,MAX_POLLS=50,MAX_TIMELINE=300,MAX_
 export const DEFAULT_BROADCAST_RUNBOOK_STEPS=Object.freeze([
   Object.freeze({id:'preflight-review',phase:'pre',title:'방송 사전 점검 확인',detail:'Preflight의 FAIL을 해소하고 WARN 항목의 영향 범위를 확인합니다.'}),
   Object.freeze({id:'connectors-ready',phase:'pre',title:'Discord · CHZZK 연결 확인',detail:'Discord 연결과 CHZZK 방송 감지 상태를 확인합니다.'}),
-  Object.freeze({id:'participation-plan',phase:'pre',title:'시참 · Queue 운영 계획 확인',detail:'모집 게임·인원·Queue 및 호출 흐름을 확인합니다.'}),
+  Object.freeze({id:'participation-plan',phase:'pre',title:'시참 · 대기열 운영 계획 확인',detail:'모집 게임·인원·대기열 및 호출 흐름을 확인합니다.'}),
   Object.freeze({id:'broadcast-scene-ready',phase:'pre',title:'OBS · 방송 장면 확인',detail:'OBS Browser Source와 방송 장면/프리셋을 확인합니다.'}),
   Object.freeze({id:'runtime-watch',phase:'live',title:'Runtime · 장애 상태 확인',detail:'Health와 Incident Center를 확인하고 이상 징후를 기록합니다.'}),
-  Object.freeze({id:'queue-flow',phase:'live',title:'Queue · 참가자 호출 흐름 확인',detail:'대기열 순서, 호출 응답, 노쇼·미루기 상태를 확인합니다.'}),
+  Object.freeze({id:'queue-flow',phase:'live',title:'대기열 · 참가자 호출 흐름 확인',detail:'대기열 순서, 호출 응답, 노쇼·미루기 상태를 확인합니다.'}),
   Object.freeze({id:'broadcast-hub',phase:'live',title:'일정 · 투표 · 알림 확인',detail:'필요한 방송 일정, 시청자 투표, 통합 알림을 관리합니다.'}),
   Object.freeze({id:'handoff-ready',phase:'live',title:'교대 전 상태 메모',detail:'다음 운영자가 바로 이어갈 수 있도록 현재 상황을 인수인계합니다.'}),
   Object.freeze({id:'session-close',phase:'post',title:'회차 · 모집 종료 확인',detail:'진행 중인 회차와 모집이 의도한 상태로 종료됐는지 확인합니다.'}),

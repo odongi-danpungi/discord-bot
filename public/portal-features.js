@@ -59,7 +59,7 @@ export async function renderFeatureVisibility({ p, el, run, request, menu, title
   const viewerTree = [['시청자 화면', data.viewerFeatures.map(([group, items]) => [group, items.map(([id, label]) => [String(id), String(label)])])]];
   const layout = el('div', undefined, 'fv-layout');
   layout.append(
-    section('operator', '내 메뉴 · 스트리머', '끄면 왼쪽 메뉴에서 사라지고, 서버에서도 그 화면의 설정·실행 요청을 막아요. 운영 홈과 통합 Queue는 숨길 수 없고, 이 화면은 오른쪽 위 톱니바퀴로 언제든 열 수 있어요. 켜 둔 자동 기능(예: 치즈 후원 룰렛)은 숨겨도 계속 동작해요.', operatorTree),
+    section('operator', '내 메뉴 · 스트리머', '끄면 왼쪽 메뉴에서 사라지고, 서버에서도 그 화면의 설정·실행 요청을 막아요. 운영 홈과 통합 대기열은 숨길 수 없고, 이 화면은 오른쪽 위 톱니바퀴로 언제든 열 수 있어요. 켜 둔 자동 기능(예: 치즈 후원 룰렛)은 숨겨도 계속 동작해요.', operatorTree),
     section('viewer', '시청자 화면', '끄면 시청자 화면에서 사라지고, 서버에서도 그 기능 요청을 막아요. 참가 현황은 항상 표시돼요. 숨겨도 설정과 기록은 그대로 남아요.', viewerTree)
   );
   p.append(layout);

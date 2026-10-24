@@ -29,7 +29,7 @@ function sessionCheck({state,records=[],chzzkLive,queue,now}){
   if(session.phase==='open'&&target>0&&ready<target)return {id:'participation-session',label:'시참 회차',status:'warn',detail:`${session.round||1}판 모집 중 · 추첨 가능 ${ready}/${target}명 · 목표 인원까지 ${target-ready}명 부족`,target:'live'};
   if(session.phase==='checking'&&Array.isArray(session.winners)){const confirmed=new Set(Array.isArray(session.confirmed)?session.confirmed:[]),pending=session.winners.filter(id=>!confirmed.has(id)).length;if(pending)return {id:'participation-session',label:'시참 회차',status:'warn',detail:`${session.round||1}판 참석 확인 중 · 응답 대기 ${pending}명`,target:'live'};}
   const activeQueue=Math.max(0,finite(queue?.activeCount));
-  return {id:'participation-session',label:'시참 회차',status:'pass',detail:`${session.round||1}판 ${text(session.phase,30)} · 통합 Queue ${activeQueue}명`,target:'live'};
+  return {id:'participation-session',label:'시참 회차',status:'pass',detail:`${session.round||1}판 ${text(session.phase,30)} · 통합 대기열 ${activeQueue}명`,target:'live'};
 }
 
 export function buildBroadcastPreflight({
