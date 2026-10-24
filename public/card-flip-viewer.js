@@ -1,7 +1,7 @@
 // Viewer reward "카드 뒤집기". The server holds the deck; this page only animates what the server reveals.
 const SYMBOLS = ['♛', '♪', '♥', '★', '☀', '◆', '♣', '●'];
 const IMAGE_BASE = '/viewer/api/card-flip/image/';
-const FLIP_MS = 600, SHUFFLE_MS = 2900, FLY_MS = 420;
+const FLIP_MS = 600, SHUFFLE_MS = 3700, FLY_MS = 420;
 
 const node = (tag, text, cls) => { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; };
 /** Columns (4–7, or 3–4 on a phone) that leave the fewest empty places on the last row. */
@@ -28,6 +28,8 @@ function sound(kind) {
     const tone = (at, freq, len, vol) => { const o = ac.createOscillator(), g = ac.createGain(); o.type = 'triangle'; o.frequency.value = freq; g.gain.setValueAtTime(0, at); g.gain.linearRampToValueAtTime(vol, at + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, at + len); o.connect(g); g.connect(ac.destination); o.start(at); o.stop(at + len + 0.02); };
     if (kind === 'tap') burst(t0, 0.06, 'lowpass', 1200, 0.08);
     else if (kind === 'riffle') for (let q = 0; q < 38; q++) burst(t0 + q * 0.022 + Math.random() * 0.006, 0.02, 'bandpass', 2400 + Math.random() * 1200, 0.045 * (1 - q / 50), 6);
+    else if (kind === 'bridge') for (let q = 0; q < 30; q++) burst(t0 + q * 0.018 + Math.random() * 0.004, 0.018, 'bandpass', 1800 + Math.random() * 900, 0.04 * (1 - q / 40), 7);
+    else if (kind === 'spread') { for (let q = 0; q < 16; q++) burst(t0 + q * 0.02, 0.03, 'bandpass', 3000 + q * 120, 0.03, 5); }
     else if (kind === 'chak') burst(t0, 0.05, 'bandpass', 2200, 0.1, 10);
     else if (kind === 'flip') { burst(t0, 0.07, 'bandpass', 3200, 0.12, 7); burst(t0 + 0.06, 0.05, 'lowpass', 900, 0.08, 9); }
     else if (kind === 'pair') [523, 659].forEach((f, j) => tone(t0 + j * 0.09, f, 0.22, 0.035));
@@ -164,22 +166,38 @@ export function mountViewerCardFlip({ api, host }) {
     });
   }
 
-  /** Shuffle in the middle (overhand, cut, riffle) and throw each card to its place. */
+  /**
+   * Riffle shuffle with a bridge, a fan flourish, then each card is thrown to its place:
+   * split into two halves → riffle into a V → bend into an arch (bridge) and let the cards cascade →
+   * square up → spread a fan and close it → deal.
+   */
   async function deal() {
     const grid = host.querySelector('.cf-grid');
-    if (!grid || !grid.animate) return;
+    if (!grid || !grid.animate || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
     const cards = [...grid.querySelectorAll('.cf-card')], g = grid.getBoundingClientRect(), cx = g.left + g.width / 2, cy = g.top + g.height / 2, n = cards.length, half = Math.ceil(n / 2), gap = Math.min(150, 2400 / n);
+    const spread = Math.min(70, g.width * 0.18), fanR = Math.min(110, g.width * 0.28);
     animating = true; say('카드를 섞는 중…'); renderButtons();
-    [380, 780, 1180].forEach(t => setTimeout(() => sound('tap'), t)); setTimeout(() => sound('riffle'), 1700); setTimeout(() => sound('tap'), 2780);
+    setTimeout(() => sound('tap'), 300); setTimeout(() => sound('riffle'), 380); setTimeout(() => sound('bridge'), 1720); setTimeout(() => sound('tap'), 2360);
+    setTimeout(() => { sound('spread'); say('카드를 펼치는 중…'); }, 2460); setTimeout(() => sound('tap'), 3560);
     const done = cards.map((el, i) => new Promise(resolve => {
       const r = el.getBoundingClientRect(), dx = cx - (r.left + r.width / 2), dy = cy - (r.top + r.height / 2), left = i < half, k = left ? i : i - half, order = left ? 2 * k : 2 * k + 1, sd = left ? -1 : 1;
-      const at = (x, y, rot) => `translate(${(dx + x).toFixed(1)}px,${(dy + y).toFixed(1)}px) rotate(${rot}deg)`, home = at(0, -order * 0.35, 0);
-      const frames = [[0, home]];
-      [0, 400, 800].forEach((t0, s) => { const up = (order + s) % 2 === 0; frames.push([t0 + 180, up ? at(s % 2 ? 6 : -6, -74 - order * 0.35, s % 2 ? 3 : -3) : home], [t0 + 380, home]); });
-      const side = at(sd * 62, -order * 0.35, -sd * 6), lift = at(sd * 62, -26 - order * 0.35, -sd * 10), turn = 1700 + 850 * order / n;
-      frames.push([1300, home], [1550, side], [1650, lift], [turn, lift], [turn + 90, home], [2700, home], [2780, at(0, -8 - order * 0.35, 0)], [SHUFFLE_MS, home]);
+      const at = (x, y, rot, scale = 1) => `translate(${(dx + x).toFixed(1)}px,${(dy + y).toFixed(1)}px) rotate(${rot.toFixed(1)}deg) scale(${scale})`;
+      const home = at(0, -order * 0.35, 0), lift = -k * 0.4;
+      // 1. Split: two halves to the sides.
+      const halfPos = at(sd * spread, lift, sd * 4);
+      // 2. Riffle: the cards drop alternately into a V in the middle.
+      const vPos = at(sd * 16, -order * 0.35, -sd * 8), drop = 360 + 800 * order / n;
+      // 3. Bridge: both halves bend up into an arch, then cascade down into one deck.
+      const arch = at(sd * 10, -26 - order * 0.35 - (1 - Math.abs(order / Math.max(1, n - 1) - 0.5) * 2) * 6, sd * 16, 1.02), fall = 1720 + 540 * order / n;
+      // 4. Flourish: spread a fan, hold it, and close it again.
+      const a = n > 1 ? -55 + 110 * order / (n - 1) : 0, rad = a * Math.PI / 180;
+      const fan = at(Math.sin(rad) * fanR, -Math.cos(rad) * fanR * 0.45 + fanR * 0.2, a, 1.04), open = 2460 + 300 * order / n;
+      const frames = [[0, home], [300, halfPos], [drop, halfPos], [drop + 80, vPos], [1260, vPos], [1600, arch], [fall, arch], [fall + 90, home],
+        [2360, home], [2400, at(0, -6 - order * 0.35, 0)], [2460, home], [open, home], [open + 260, fan], [3260, fan], [3520, home], [SHUFFLE_MS, home]];
       el.style.zIndex = String(order + 1);
-      const a1 = el.animate(frames.map(([t, transform]) => ({ transform, offset: t / SHUFFLE_MS })), { duration: SHUFFLE_MS, easing: 'ease-in-out', fill: 'both' });
+      // Keyframe offsets must never go backwards.
+      for (let f = 1; f < frames.length; f++) frames[f][0] = Math.max(frames[f][0], frames[f - 1][0]);
+      const a1 = el.animate(frames.map(([t, transform]) => ({ transform, offset: Math.min(1, t / SHUFFLE_MS) })), { duration: SHUFFLE_MS, easing: 'ease-in-out', fill: 'both' });
       a1.finished.then(() => {
         if (i === 0) say('카드를 나눠 주는 중…');
         el.style.zIndex = String(200 + i);
