@@ -1,6 +1,8 @@
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { JsonStore } from './json-store.js';
 import { ChzzkEventSession, normalizeChatSender } from './chzzk-session.js';
+import { readSessionIntakePolicy } from './intake-policy.js';
+import { performParticipantSelfServiceAction } from './participant-self-service.js';
 
 // 채팅 명령어: the bot answers "!명령어" in the broadcaster's CHZZK chat (official API, scope "채팅 메시지 쓰기").
 // Saved: settings and the streamer's own commands only (`operations.json.chat-commands.json`).
@@ -15,10 +17,13 @@ const clean = (value, limit) => String(value ?? '').replace(CONTROL, ' ').replac
 const int = (value, [min, max]) => Number.isInteger(value) && value >= min && value <= max;
 
 export const CHAT_COMMAND_LIMITS = Object.freeze({ commands: 30, response: 100, cooldown: [3, 300], sendIntervalMs: 1000, outbox: 5, testIntervalMs: 500 });
-export const BUILTIN_COMMANDS = Object.freeze({ waiting: '대기', position: '순번', help: '명령어' });
+export const BUILTIN_COMMANDS = Object.freeze({ waiting: '대기', position: '순번', help: '명령어', join: '신청' });
 const TRIGGER = /^[가-힣A-Za-z0-9]{1,12}$/;
 const ACTIVE = new Set(['waiting', 'called', 'joined', 'postponed_next', 'postponed_next2']);
-const DEFAULTS = () => ({ enabled: false, cooldownSeconds: 10, builtins: { waiting: true, position: true, help: true }, commands: [] });
+const DEFAULTS = () => ({ enabled: false, cooldownSeconds: 10, builtins: { waiting: true, position: true, help: true, join: false }, commands: [] });
+// Saved before !신청 existed: three built-ins. Read as "!신청 off".
+const LEGACY_BUILTIN_KEYS = ['waiting', 'position', 'help'];
+const withJoin = settings => ({ ...settings, builtins: { join: false, ...settings.builtins } });
 const SETTING_KEYS = ['enabled', 'cooldownSeconds', 'builtins', 'commands'];
 const BUILTIN_KEYS = Object.keys(BUILTIN_COMMANDS);
 const commandId = value => typeof value === 'string' && /^m[a-f0-9]{8}$/.test(value);
@@ -27,7 +32,8 @@ const reserved = trigger => Object.values(BUILTIN_COMMANDS).includes(trigger);
 function validResponse(text) { return typeof text === 'string' && text.length >= 1 && text.length <= CHAT_COMMAND_LIMITS.response && text === clean(text, CHAT_COMMAND_LIMITS.response) && !text.startsWith('!'); }
 function validSettings(s) {
   if (!plain(s) || Object.keys(s).sort().join() !== [...SETTING_KEYS].sort().join() || typeof s.enabled !== 'boolean' || !int(s.cooldownSeconds, CHAT_COMMAND_LIMITS.cooldown)) return false;
-  if (!plain(s.builtins) || Object.keys(s.builtins).sort().join() !== [...BUILTIN_KEYS].sort().join() || !BUILTIN_KEYS.every(key => typeof s.builtins[key] === 'boolean')) return false;
+  const keys = plain(s.builtins) ? Object.keys(s.builtins).sort().join() : '';
+  if ((keys !== [...BUILTIN_KEYS].sort().join() && keys !== [...LEGACY_BUILTIN_KEYS].sort().join()) || !Object.values(s.builtins).every(value => typeof value === 'boolean')) return false;
   if (!Array.isArray(s.commands) || s.commands.length > CHAT_COMMAND_LIMITS.commands) return false;
   const seen = new Set();
   for (const c of s.commands) {
@@ -68,7 +74,7 @@ export class ChatCommandsStore extends JsonStore {
     super(operationsFile + '.chat-commands.json', { version: 1, revision: 0, settings: DEFAULTS() },
       state => plain(state) && state.version === 1 && revision(state.revision) && validSettings(state.settings), { maxBytes: 128 * 1024 });
   }
-  snapshot() { const state = this.read(); return { settings: structuredClone(state.settings), revision: state.revision }; }
+  snapshot() { const state = this.read(); return { settings: withJoin(structuredClone(state.settings)), revision: state.revision }; }
   async configure(input, { guard = () => {} } = {}) {
     const value = validateChatCommandsInput(input, new Set(this.read().settings.commands.map(c => c.id)));
     let result;
@@ -97,12 +103,12 @@ export async function sendChzzkChat({ token, message, fetchImpl = globalThis.fet
 }
 
 export class ChatCommandsService {
-  constructor({ store, chzzkVerification = null, participationQueue = null, guard = () => {}, now = Date.now, reporter = () => {}, send = sendChzzkChat,
+  constructor({ store, chzzkVerification = null, participationQueue = null, operations = null, participationCalls = null, records = () => [], afterJoin = async () => {}, selfServiceJoin = performParticipantSelfServiceAction, guard = () => {}, now = Date.now, reporter = () => {}, send = sendChzzkChat,
     sessionFactory = options => new ChzzkEventSession({ accessToken: options.accessToken, onStatus: options.onStatus, handlers: { CHAT: payload => options.onChat(payload) } }) }) {
-    Object.assign(this, { store, chzzkVerification, participationQueue, guard, now, reporter, send, sessionFactory });
+    Object.assign(this, { store, chzzkVerification, participationQueue, operations, participationCalls, records, afterJoin, selfServiceJoin, guard, now, reporter, send, sessionFactory });
     this.session = null; this.sessionChannel = ''; this.lastUsed = new Map(); this.outbox = []; this.sending = false; this.lastSentAt = 0; this.cooldownUntil = 0;
     this.recentSent = []; this.lastTestAt = 0;
-    this.counts = { replied: 0, cooldown: 0, dropped: 0, failed: 0, otherChannel: 0 };
+    this.counts = { replied: 0, cooldown: 0, dropped: 0, failed: 0, otherChannel: 0, joined: 0 };
     this.sendState = { state: 'idle', detail: '', at: 0 };
     const off = [store.subscribe(() => this.sync()), chzzkVerification?.store?.subscribe?.(() => this.sync()) || (() => {})];
     this.unsubscribe = () => off.forEach(fn => fn());
@@ -142,6 +148,37 @@ export class ChatCommandsService {
     const rank = entries.filter(entry => entry.status === 'waiting').findIndex(entry => entry.id === mine.id) + 1;
     return `${nickname}님은 대기 ${rank}번째예요.`;
   }
+  /** !신청 for one sender. A linked viewer joins the Discord way (same rules as the join button); anyone else joins by CHZZK nickname. */
+  async joinReply(nickname, senderChannelId) {
+    const session = this.operations?.read?.().session;
+    if (!session || session.phase !== 'open' || (session.closeAt && this.now() >= session.closeAt)) return `${nickname}님, 지금은 시참 모집 중이 아니에요.`;
+    try { this.guard(); } catch { return `${nickname}님, 지금은 신청을 받을 수 없어요. 잠시 후 다시 해 주세요.`; }
+    const said = error => `${nickname}님, ${String(error?.message || '신청하지 못했어요.')}`.slice(0, CHAT_COMMAND_LIMITS.response);
+    const user = this.linkedUser(senderChannelId), records = this.records() || [], profile = user ? records.find(record => record.discordId === user.userId) : null;
+    if (user && profile) {
+      try {
+        await this.selfServiceJoin({ action: 'join', userId: user.userId, profile, operations: this.operations, participationQueue: this.participationQueue, participationCalls: this.participationCalls, records });
+      } catch (error) { return said(error); }
+      this.counts.joined++; await this.afterJoin().catch(() => {});
+      return ('신청 완료! ' + this.positionReply(nickname, senderChannelId).replace('대기열에 없어요.', '신청했어요.')).slice(0, CHAT_COMMAND_LIMITS.response);
+    }
+    if (!senderChannelId) return `${nickname}님, 채팅 계정을 확인하지 못했어요.`;
+    // CHZZK-only viewers: a separate intake (like the cafe) with the same capacity and duplicate rules.
+    let policy; try { policy = readSessionIntakePolicy(session); } catch (error) { return said(error); }
+    const identityKey = 'chzzk:' + createHash('sha256').update('chzzk-chat:' + senderChannelId).digest('hex').slice(0, 40);
+    const entries = this.participationQueue?.summary?.().entries || [];
+    const mine = entries.find(entry => entry.identityKey === identityKey && ACTIVE.has(entry.status));
+    const waitingRank = id => entries.filter(entry => entry.status === 'waiting').findIndex(entry => entry.id === id) + 1;
+    if (mine) return policy.duplicatePolicy === 'reject' ? `${nickname}님은 이미 신청했어요.` : `${nickname}님은 이미 신청했어요. 대기 ${waitingRank(mine.id) || '-'}번째예요.`;
+    const count = entries.filter(entry => entry.source === 'chzzk' && entry.sessionId === session.id && ACTIVE.has(entry.status)).length;
+    if (policy.maxApplicants > 0 && count >= policy.maxApplicants) return `${nickname}님, 채팅 신청 정원이 다 찼어요.`;
+    try {
+      const result = await this.participationQueue.register({ source: 'chzzk', displayName: nickname, identityKey, sessionId: session.id, game: session.game || null, mode: session.mode || null, round: Number.isInteger(session.round) ? session.round : null });
+      this.counts.joined++;
+      const fresh = (this.participationQueue.summary().entries || []).filter(entry => entry.status === 'waiting').findIndex(entry => entry.id === result.entry.id) + 1;
+      return `${nickname}님 신청 완료! 대기 ${fresh || '-'}번째예요.`;
+    } catch (error) { return said(error); }
+  }
   /** The reply for one chat message, or null. Never sends. */
   reply(content, { nickname = '익명', senderChannelId = '' } = {}) {
     const { settings } = this.store.snapshot();
@@ -152,7 +189,8 @@ export class ChatCommandsService {
       const counts = this.participationQueue?.summary?.().counts || {};
       return { trigger, text: `지금 대기 중인 참가자는 ${Number(counts.waiting) || 0}명이에요.` };
     }
-    if (trigger === BUILTIN_COMMANDS.position && b.position) return { trigger, text: this.positionReply(nickname, senderChannelId) };
+    if (trigger === BUILTIN_COMMANDS.position && b.position) return { trigger, perSender: true, text: this.positionReply(nickname, senderChannelId) };
+    if (trigger === BUILTIN_COMMANDS.join && b.join) return { trigger, perSender: true, join: true };
     if (trigger === BUILTIN_COMMANDS.help && b.help) {
       const names = [...BUILTIN_KEYS.filter(k => b[k]).map(k => BUILTIN_COMMANDS[k]), ...settings.commands.map(c => c.trigger)].map(n => '!' + n);
       let text = '명령어:'; for (const name of names) { if ((text + ' ' + name).length > CHAT_COMMAND_LIMITS.response) break; text += ' ' + name; }
@@ -162,8 +200,8 @@ export class ChatCommandsService {
     if (!custom) return null;
     return { trigger: custom.trigger, text: custom.response.replaceAll('{닉네임}', nickname).slice(0, CHAT_COMMAND_LIMITS.response) };
   }
-  /** A CHZZK CHAT payload. Returns the queued reply text or false. */
-  receive(payload) {
+  /** A CHZZK CHAT payload. Resolves to the queued reply text or false. */
+  async receive(payload) {
     const chat = normalizeChatSender(payload);
     if (!chat) return false;
     let target = ''; try { target = this.chzzkVerification.targetChannelId(); } catch {}
@@ -175,11 +213,14 @@ export class ChatCommandsService {
     if (this.recentSent.some(item => item.text === chat.content)) return false;
     const answer = this.reply(chat.content, chat);
     if (!answer) return false;
-    const key = answer.trigger.toLowerCase(), last = this.lastUsed.get(key) || 0;
+    // !순번·!신청 wait per viewer; other commands wait for everyone.
+    const key = answer.trigger.toLowerCase() + (answer.perSender ? ':' + (chat.senderChannelId || chat.nickname) : ''), last = this.lastUsed.get(key) || 0;
     if (now - last < settings.cooldownSeconds * 1000) { this.counts.cooldown++; return false; }
-    try { this.guard(); } catch { return false; }
-    if (this.outbox.length >= CHAT_COMMAND_LIMITS.outbox) { this.counts.dropped++; return false; }
     this.lastUsed.set(key, now);
+    if (answer.join) answer.text = await this.joinReply(chat.nickname, chat.senderChannelId);
+    try { this.guard(); } catch { return false; }
+    // A join still counts when the reply is dropped; only the chat answer is skipped.
+    if (this.outbox.length >= CHAT_COMMAND_LIMITS.outbox) { this.counts.dropped++; return false; }
     this.outbox.push(answer.text); void this.flush();
     return answer.text;
   }
@@ -215,7 +256,16 @@ export class ChatCommandsService {
     if (now - this.lastTestAt < CHAT_COMMAND_LIMITS.testIntervalMs) throw fail('잠시 후 다시 해 주세요.', 429);
     this.lastTestAt = now;
     const answer = this.reply(content, { nickname: clean(input.nickname, 20) || '테스트' });
+    if (answer?.join) return { reply: '(미리 보기) 실제 채팅에서만 신청을 처리해요. 모집 중이면 대기열에 넣고 순번을 알려 줘요.' };
     return { reply: answer ? answer.text : null };
+  }
+  /** Commands viewers can use (for the viewer page). Empty while the feature is off. */
+  publicList() {
+    const { settings } = this.store.snapshot();
+    if (!settings.enabled) return { enabled: false, commands: [] };
+    const about = { waiting: '지금 대기 중인 참가자 수', position: '내 순서 (팔로워 인증 연결 시)', help: '쓸 수 있는 명령어 목록', join: '시참 신청 (모집 중일 때)' };
+    const builtins = BUILTIN_KEYS.filter(key => settings.builtins[key]).map(key => ({ trigger: BUILTIN_COMMANDS[key], about: about[key] }));
+    return { enabled: true, commands: [...builtins, ...settings.commands.map(c => ({ trigger: c.trigger, about: c.response.replaceAll('{닉네임}', '내 닉네임') }))] };
   }
   async close() { this.unsubscribe(); if (this.session) { this.session.stop(); this.session = null; } this.outbox = []; }
 }

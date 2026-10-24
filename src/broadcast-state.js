@@ -59,7 +59,7 @@ export function buildBroadcastSnapshot(state,records=[],version='0.0.0',now=Date
 
 const OVERLAY_ACTIVE_STATUSES=new Set(['waiting','called','joined','postponed_next','postponed_next2']);
 const OVERLAY_STATUS_LABELS={waiting:'대기',called:'호출 중',joined:'참가 확정',postponed_next:'다음 판',postponed_next2:'다다음 판',cancelled:'취소',no_show:'노쇼'};
-const OVERLAY_SOURCE_LABELS={discord:'Discord',naver:'Naver',dashboard:'Dashboard'};
+const OVERLAY_SOURCE_LABELS={discord:'Discord',naver:'Naver',dashboard:'Dashboard',chzzk:'CHZZK'};
 
 function safeOverlayEntry(entry){
   if(!entry||typeof entry!=='object')return null;

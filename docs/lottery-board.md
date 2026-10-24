@@ -8,4 +8,5 @@
 - OBS: `/w/:서버/broadcast/lottery-board?token=...`(방송 토큰). 투명 배경, 새로 열린 칸은 뒤집히며 결과 띠가 나옵니다.
 - 테스트 후원: 스트리머 화면 → OBS 테스트. 닉네임과 번호를 넣으면 상품 비율로 무작위 결과를 정해 OBS에 `[테스트]`로 잠깐 보여 줍니다. 실제 뽑기판·보류 기회·기록은 바뀌지 않고, 결과는 서버 메모리에 최근 20개만 둡니다(3초에 한 번, `POST /api/lottery-board/test`). 뽑기판이 있어야 보낼 수 있습니다.
 - 연습 모드: `npm run demo` 후 `http://127.0.0.1:3001/portal/` → 연습 방송 서버 → 방송 → 룰렛 → 뽑기판. OBS 화면은 `http://127.0.0.1:3001/broadcast/lottery-board`.
+- 시청자 화면: "치즈 뽑기판" 칸에 열린 칸·남은 상품·참여 방법을 보여 줍니다(15초마다 새로 고침, 배치는 비공개, `GET /viewer/api/lottery-board`, 시청자 기능 숨기기 `lottery-board`).
 - **PENDING**: 실제 치지직 후원 메시지로 번호가 열리는지(공식 Session API 후원 이벤트의 `donationText` 기준), 실제 OBS 표시, 배포.

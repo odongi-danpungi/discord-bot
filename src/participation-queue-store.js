@@ -3,7 +3,7 @@ import { JsonStore } from './json-store.js';
 import { assertCallPassOperationsState, callPassId } from './call-pass.js';
 
 export const PARTICIPATION_QUEUE_STATUSES=['waiting','called','joined','postponed_next','postponed_next2','cancelled','no_show'];
-export const PARTICIPATION_QUEUE_SOURCES=['discord','naver','dashboard'];
+export const PARTICIPATION_QUEUE_SOURCES=['discord','naver','dashboard','chzzk'];
 const ACTIVE_STATUSES=new Set(['waiting','called','joined','postponed_next','postponed_next2']);
 
 function initialState(){return {version:1,revision:0,nextSequence:1,entries:[],history:[]};}
